@@ -22,8 +22,10 @@ Design philosophy
   taste).
 """
 from __future__ import absolute_import
+import os, sys, shutil
 import difflib
 import argparse
+from argparse import RawDescriptionHelpFormatter
 from itertools import groupby, chain
 
 from .tools import run_foreground, run_background, submit_job
@@ -333,8 +335,7 @@ class JobTemplate(object):
                             submit script ( '-w 1' means the job will be killed \
                             after 1 hour) (default: %(default)s)")
 
-        self.parser, prog_group = parent_parser(outdir_default, description)
-        self.add_prog_arguments(prog_group)
+        self.parser = parser
 
 
     def add_prog_arguments(self, group):
@@ -354,7 +355,7 @@ class JobTemplate(object):
     def parse_args_and_run(self):
         args = self.parser.parse_args()
 
-        prog = self.parse_prog()
+        prog = self.parse_prog(args)
 
         # Get the runs as list of parameters not yet combined
         # [[a1, a2, a3], [b1, b2]] for parameters a and b, with 3 and 2 possible values, respectively
