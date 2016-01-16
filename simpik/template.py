@@ -138,7 +138,7 @@ class Program(object):
 
 # run a program for an ensemble of parameters
 # -------------------------------------------
-def run_ensemble(prog, batch, outdir, interactive=False, dry_run=False, autodir=False, submit=False, foreground=False, **job_args):
+def run_ensemble(prog, batch, outdir, interactive=False, dry_run=False, autodir=False, submit=False, background=False, **job_args):
     """setup output directory and run ensemble
 
     prog : Program instance - like
@@ -192,12 +192,12 @@ def run_ensemble(prog, batch, outdir, interactive=False, dry_run=False, autodir=
             continue
         print "Start simulation (submit to queue = {})...".format(submit)
 
-        if foreground:
-            job_id = run_foreground(exe, cmd_args)
+        if background:
+            job_id = run_background(exe, cmd_args, outfldr)
         elif submit:
             job_id = submit_job(exe, cmd_args, outfldr, **job_args)
         else:
-            job_id = run_background(exe, cmd_args, outfldr)
+            job_id = run_foreground(exe, cmd_args)
     
         joblist.append(subfldr)
 
@@ -319,13 +319,13 @@ class JobTemplate(object):
 
         group = parser.add_argument_group("Job submission (queue)")
 
-        group.add_argument('--foreground', action="store_true",
-                            help="execute the job in the terminal, for easy debugging")
+        group.add_argument('--background', action="store_true",
+                            help="execute the job as a background process; default is to run the job in the terminal")
 
         group.add_argument('-s', '--submit', action="store_true",
-                            help="Send the job to the queue; default is to run the job as a background process")
+                            help="send the job to the queue; default is to run the job in the terminal")
 
-        group.add_argument('--job-class', default="medium", help="Job class, values depend on the queuing system used. On slurm (PIK): `squeue`, on loadleveler (old PIK): `llclass`")
+        group.add_argument('--job-class', default="medium", help="job class, values depend on the queuing system used. On slurm (PIK): `squeue`, on loadleveler (old PIK): `llclass`")
 
         group.add_argument('--system', default="slurm", choices = ["slurm", "qsub", "loadleveler"], 
                            help="queueing system name, if `--submit` is passed. TODO: detect automatically based on machine architecture.")
@@ -426,4 +426,4 @@ class JobTemplate(object):
             shutil.rmtree(args.out_dir)
 
         return run_ensemble(prog, batch, args.out_dir,  interactive=args.interactive, dry_run=args.dry_run,
-                     autodir=args.auto_dir, submit=args.submit, wtime=args.wtime, job_class=args.job_class, foreground=args.foreground)
+                     autodir=args.auto_dir, submit=args.submit, wtime=args.wtime, job_class=args.job_class, background=args.background)
