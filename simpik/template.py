@@ -286,8 +286,7 @@ class JobTemplate(object):
 
         # Program specific
         # ================
-        group = parser.add_argument_group("Program-specific arguments")
-        self.add_prog_arguments(group)  # to be subclassed
+        self.add_prog_arguments(parser)  # to be subclassed
 
         # Generic arguments
         # =================
@@ -300,7 +299,7 @@ class JobTemplate(object):
 
         group.add_argument('--include-default', action="store_true", help="Perform a default control run in addition to perturbed simulation? (if --params is provided)")
 
-        group = parser.add_argument_group("Program setup")
+        group = parser.add_argument_group("Output directory, miscellaneous")
 
         group.add_argument('-o','--out-dir', 
                            help="Specify the output directory where all program \
@@ -338,8 +337,8 @@ class JobTemplate(object):
         self.parser = parser
 
 
-    def add_prog_arguments(self, group):
-        raise NotImplementedError("need to be subclassed")
+    def add_prog_arguments(self, parser):
+        pass
 
     def parse_prog(self, args):
         """initialize program instance based on parsed parameters
