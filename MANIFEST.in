@@ -1,2 +1,2 @@
 include versioneer.py
-include simpik/_version.py
+include runner/_version.py

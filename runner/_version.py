@@ -37,8 +37,8 @@ def get_config():
     cfg.VCS = "git"
     cfg.style = "pep440"
     cfg.tag_prefix = ""
-    cfg.parentdir_prefix = "simpik-"
-    cfg.versionfile_source = "simpik/_version.py"
+    cfg.parentdir_prefix = "runner-"
+    cfg.versionfile_source = "runner/_version.py"
     cfg.verbose = False
     return cfg
 
