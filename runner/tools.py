@@ -93,13 +93,16 @@ def ask_user(msg=None, skip=False):
 def run_background(executable, cmd_args=(), outfldr="./"):
     " execute in the background "
     print "Running job in background: %s" % (executable)
+    cmd = " ".join(cmd_args) if not isinstance(cmd_args, basestring) else cmd_args
     #print "Storing output in: %s" % (outfldr)
-    code = os.system ("%s %s > %s &" % (executable, " ".join(cmd_args), os.path.join(outfldr,"out.out")))
+    code = os.system ("%s %s > %s &" % (executable, cmd, os.path.join(outfldr,"out.out")))
     return code
 
 def run_foreground(executable, cmd_args=()):
     " execute in terminal, with blocking behaviour "
-    code = os.system ("%s %s" % (executable, " ".join(cmd_args)))
+    cmd = " ".join(cmd_args) if not isinstance(cmd_args, basestring) else cmd_args
+    cmd = "%s %s" % (executable, cmd)
+    code = os.system (cmd)
     return code
 
 
