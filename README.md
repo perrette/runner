@@ -48,29 +48,29 @@ Let's also assume that the model can be run via the executable `model.x`
 python script), and that both the path of the input parameter file and the 
 output directory can be provided as input arguments:
 
-    `./model.x params.json output`
+    ./model.x params.json output
 
 Just import the base `Model` class and overwrite the relevant methods:
 
-    ```python
-    import os
-    from runner.core import Model
+```python
+import os
+from runner.core import Model
 
-    class MyModel(Model):
-        """My model
-        """
-        def __init__(self, param_file):
-            self.params = Params.read(param_file) 
+class MyModel(Model):
+    """My model
+    """
+    def __init__(self, param_file):
+        self.params = Params.read(param_file) 
 
-        def setup_outdir(self, outdir):
-            param_file = os.path.join(outdir, 'params.json') # modified params
-            self.params.write(param_file)
-            # here you may copy/link necessary input file etc... or even call
-            # an external script, or just do everything in the executable script.
-            exe = "model.x"  # executable
-            cmd = param_file, outdir
-            return exe, cmd
-    ```
+    def setup_outdir(self, outdir):
+        param_file = os.path.join(outdir, 'params.json') # modified params
+        self.params.write(param_file)
+        # here you may copy/link necessary input file etc... or even call
+        # an external script, or just do everything in the executable script.
+        exe = "model.x"  # executable
+        cmd = param_file, outdir
+        return exe, cmd
+```
 
 For now, that's it !
 
@@ -93,20 +93,20 @@ You need to provide the default `Job` class with additional command-line argumen
 required by your model, and to teach it how to initialize your model. You might 
 need to take a look at `argparse` documentation...
 
-    ```python
-    from runner.core import Job
-    
-    class MyJob(Job):
+```python
+from runner.core import Job
 
-        def add_model_arguments(self, parser):
-            " parser is a argparse.ArgumentParser instance, and more precisely, a group "
-            parser.add_argument("--default-params", default="params.json", help="default parameter file")
+class MyJob(Job):
 
-        def init_model(self, args):
-            " args is the result of argparse.ArgumentParser.parse_args() "
-            model = MyModel(args.default_params)  # this is the `__init__` function implemented above !
-            return model
-    ```
+    def add_model_arguments(self, parser):
+        " parser is a argparse.ArgumentParser instance, and more precisely, a group "
+        parser.add_argument("--default-params", default="params.json", help="default parameter file")
+
+    def init_model(self, args):
+        " args is the result of argparse.ArgumentParser.parse_args() "
+        model = MyModel(args.default_params)  # this is the `__init__` function implemented above !
+        return model
+```
 
 One caveat here: the arguments added in `add_model_arguments` must be distinct
 from existing pre-defined arguments. So check out existing arguments by running
@@ -117,11 +117,11 @@ The `Job.init_model` bit just initialize `Model` class from command-line argumen
 
 The last lines required to make the runner script are:
     
-    ```python
-    if __name__ == "__main__":
-        job = MyJob(description="some description", outdir_default="out")
-        job.parse_args_and_run()
-    ```
+```python
+if __name__ == "__main__":
+    job = MyJob(description="some description", outdir_default="out")
+    job.parse_args_and_run()
+```
 
 Note the description could also be passed `__doc__` 
 if you bothered adding a python docstring to the file.
@@ -175,24 +175,24 @@ namelist (`runner.namelist.Namelist`). It is also possible to define
 new parameter formats, by simply subclassing the `Params` class
 and subclassing the `Params.parse` and `Params.format` methods:
 
-    ```python
-    from runner.params import Param, Params
+```python
+from runner.params import Param, Params
 
-    class MyParams(Params):
+class MyParams(Params):
 
-        @classmethod
-        def parse(cls, string):
-            # convert the string (text file content) 
-            # as a list of Param instances
-            ...
-            return cls(params)
+    @classmethod
+    def parse(cls, string):
+        # convert the string (text file content) 
+        # as a list of Param instances
+        ...
+        return cls(params)
 
-        def format(self):
-            # convert self (a list of Param instance) into 
-            # a string which represents the content of a parameter file.
-            ...
-            return string
-    ```
+    def format(self):
+        # convert self (a list of Param instance) into 
+        # a string which represents the content of a parameter file.
+        ...
+        return string
+```
 
 Check out the source code of the Namelist example for a practical implementation.
 
@@ -204,33 +204,34 @@ via `MyParams.read(file_name)` and do not forget to write `params.write()` in `M
 Several parameter files
 -----------------------
 
-The python trick is to use a `property` as params attribute:
+The python trick consists in defining the combined parameters as just the 
+concatenated list of the various subcomponents.
 
-    ```python
-    class MyModel(Model):
-        """My model
-        """
-        def __init__(self, param_file1, param_file2):
-            self.params1 = Params.read(param_file1) 
-            self.params2 = Params.read(param_file2) 
-            
-            # in case parameter names conflict, make sure the `module` attribute is set
-            for p in self.params1:
-                p.module = "mod1"
-            for p in self.params2:
-                p.module = "mod2"
+```python
+class MyModel(Model):
+    """My model
+    """
+    def __init__(self, param_file1, param_file2):
+        self.params1 = Params.read(param_file1) 
+        self.params2 = Params.read(param_file2) 
+        
+        # in case parameter names conflict, make sure the `module` attribute is set
+        for p in self.params1:
+            p.module = "mod1"
+        for p in self.params2:
+            p.module = "mod2"
 
-        @property
-        def params(self):
-            return self.params1 + self.params2
+        # modifying params will affect params1 and param2
+        # since only the container change, but the Param instances are not copied
+        self.params = self.params1 + self.params2
 
-        def setup_outdir(self, outdir):
-            self.params1.write(...)
-            self.params2.write(...)
-            exe = ...
-            cmd = ...
-            return exe, cmd
-    ```
+    def setup_outdir(self, outdir):
+        self.params1.write(...)
+        self.params2.write(...)
+        exe = ...
+        cmd = ...
+        return exe, cmd
+```
 
 Custom parameter update
 -----------------------
