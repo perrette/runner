@@ -167,13 +167,13 @@ def lookup_param(pname, params, default_module=None, default_block=None):
 
 # run a model for an ensemble of parameters
 # =========================================
-def run_ensemble(model, batch, outdir, interactive=False, dry_run=False, autodir=False, submit=False, background=False, **job_args):
+def run_ensemble(model, pnames, pmatrix, outdir, interactive=False, dry_run=False, autodir=False, submit=False, background=False, **job_args):
     """setup output directory and run ensemble
 
     model : Model instance - like
         This requires `update_params` and `setup_outdir` methods
-    batch : list of parameter sets
-        A paramter set is a Params instance (itself a list of Param instances)
+    pmatrix : list of list of parameter values (n x p)
+    pnames : corresponding list of parameter name (p)
     outdir : output directory
     autodir : bool, optional
         automatic naming of folders based on param names=
@@ -185,7 +185,7 @@ def run_ensemble(model, batch, outdir, interactive=False, dry_run=False, autodir
     """
     outdir = os.path.abspath(outdir) + '/'
 
-    if len(batch) == 0:
+    if len(pmatrix) == 0:
         raise ValueError("Empty batch !") # make sure this does not happen
 
     if not os.path.exists(outdir):
@@ -195,16 +195,25 @@ def run_ensemble(model, batch, outdir, interactive=False, dry_run=False, autodir
     with open(os.path.join(outdir, 'job.command'), 'w') as f:
         f.write(" ".join(sys.argv)+'\n')
 
+    # write ensemble parameter file
+    write_params_file(os.path.join(outdir, 'job.params'), pnames, pmatrix)
+
+    # match params and model
+    params = [lookup_param(pname, model.params) for pname in pnames]
+
     joblist = [] # if run is True
 
-    for i, params in enumerate(batch):
+    for i, pset in enumerate(pmatrix):
 
         # update default parameters for each module
-        model.update_params(params)
+        for j, val in enumerate(pset):
+            params[j].value = val
+
+        model.update_params(params) # redundant...
 
         print 
         # print "({}/{}):".format(i+1, len(batch)), ", ".join(str(p) for p in params) if len(params) > 0 else "default"
-        print "({}/{}):".format(i+1, len(batch)), "(default)" if len(params) == 0 else ""
+        print "({}/{}):".format(i+1, len(pmatrix)), "(default)" if len(params) == 0 else ""
         if len(params) > 0:
             print " "+"\n ".join(str(model.params[model.params.index(p)]) for p in params if p.name)
             # print " "+"\n ".join(str(p) for p in params)
@@ -366,7 +375,7 @@ def read_params_file(params_file, dtype=None):
     import numpy as np
     pmatrix = np.genfromtxt(params_file, names=True, dtype=dtype)
     pnames = pmatrix.dtype.names
-    return pnames, pmatrix
+    return pnames, pmatrix.tolist()
 
 
 def write_params_file(params_file, pnames, pmatrix):
@@ -435,7 +444,7 @@ class Job(object):
 
         group.add_argument('--include-default', action="store_true", help="Perform a default control run in addition to perturbed simulation? (if --params is provided)")
 
-        group.add_argument('--params-file-save', help="Write modified parameters to a file, for later use.")
+        # group.add_argument('--params-file-save', help="Write modified parameters to a file, for later use.")
 
         group = parser.add_argument_group("Output directory, miscellaneous")
 
@@ -536,8 +545,6 @@ class Job(object):
                 
             assert len(pmatrix) > 0, repr(factors) # this is always true, contains mind. []
 
-            print pmatrix
-
         return pnames, pmatrix
 
 
@@ -547,8 +554,8 @@ class Job(object):
         Returns
         -------
         model : Model instance with default parameters
-        params_def : default Params list (redundant...)
-        batch : list of parameter sets
+        pnames : list of parameter names
+        pmatrix : list of parameter sets
             A paramter set is a Params instance (itself a list of Param instances)
         args : all arguments as returned by ArgumentParser.parse_args
         """
@@ -561,28 +568,13 @@ class Job(object):
         # Parse parameter sets to be combined
         pnames, pmatrix = self.get_params_matrix(args)
 
-        # save to file if required
-        if args.params_file_save:
-            write_params_file(args.params_file_save, pnames, pmatrix)
-
         # Lookup corresponding default parameters, as a combination
         # between pnames and model.params
         params_def = Params()
         for pname in pnames:
             param_def = lookup_param(pname, model.params, default_module=args.module, default_block=args.block)
             params_def.append(param_def)
-
-        # Convert pmatrix to a list of list of parameter instances
-        batch = []
-        for i, parset in enumerate(pmatrix):
-            # assert len(parset) == len(params_def), "Invalid params-file format. {} param nanes != {} param values in set {}".format(len(params_def), len(parset), i)
-            params_set = Params()
-            for j, param_def in enumerate(params_def):
-                p = copy.copy(param_def)  # make sure default parameters are not modified
-                p.value = pmatrix[i][j]
-                params_set.append(p)
-            batch.append(params_set)
-
+        pdefault = [p.value for p in params_def]
 
         # Write summary to screen
         print
@@ -606,24 +598,24 @@ class Job(object):
 
             # add default parameter version?
             print "include default version: ", args.include_default
-            batch = [[]]*args.include_default + batch # default = empty set
+            pmatrix = pdefault*args.include_default + pmatrix # default = empty set
 
-        print "number of simulations:", len(batch)
+        print "number of simulations:", len(pmatrix)
         print "output directory:",args.out_dir,"(",("already exists"+" - will be deleted"*args.clean) \
             if os.path.exists(args.out_dir) else "to be created",")"    
         print
 
-        return model, params_def, batch, args
+        return model, pnames, pmatrix, args
 
 
     def parse_args_and_run(self):
 
-        model, params_def, batch, args = self.parse_job()
+        model, pnames, pmatrix, args = self.parse_job()
 
         if args.interactive: ask_user()
 
         if os.path.exists(args.out_dir) and args.clean:
             shutil.rmtree(args.out_dir)
 
-        return run_ensemble(model, batch, args.out_dir,  interactive=args.interactive, dry_run=args.dry_run,
+        return run_ensemble(model, pnames, pmatrix, args.out_dir,  interactive=args.interactive, dry_run=args.dry_run,
                             autodir=args.auto_dir, submit=args.submit, wtime=args.wtime, job_class=args.job_class, background=args.background)
