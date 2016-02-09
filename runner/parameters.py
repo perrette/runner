@@ -97,7 +97,10 @@ class Params(list):
 
     def to_json(self, indent=2, **kwargs):
         import json
-        return json.dumps([vars(p) for p in self], indent=indent, **kwargs)
+        def par_dict(p):
+            d = vars(p)
+            return {k:d[k] for k in d if d[k] is not None}
+        return json.dumps([par_dict(p) for p in self], indent=indent, **kwargs)
 
     @classmethod
     def from_json(cls, string):
@@ -161,3 +164,5 @@ class Params(list):
                 self.append(p)
             else:
                 self[self.index(p)] = p  
+
+

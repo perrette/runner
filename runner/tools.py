@@ -90,16 +90,16 @@ def ask_user(msg=None, skip=False):
 # Run / Submit Job
 # ----------------
 
-def run_background(executable, cmd_args="", outfldr="./"):
+def run_background(executable, cmd_args=(), outfldr="./"):
     " execute in the background "
     print "Running job in background: %s" % (executable)
     #print "Storing output in: %s" % (outfldr)
-    code = os.system ("%s %s > %s &" % (executable, cmd_args, os.path.join(outfldr,"out.out")))
+    code = os.system ("%s %s > %s &" % (executable, " ".join(cmd_args), os.path.join(outfldr,"out.out")))
     return code
 
-def run_foreground(executable, cmd_args=""):
+def run_foreground(executable, cmd_args=()):
     " execute in terminal, with blocking behaviour "
-    code = os.system ("%s %s" % (executable, cmd_args))
+    code = os.system ("%s %s" % (executable, " ".join(cmd_args)))
     return code
 
 
@@ -210,4 +210,5 @@ def submit_job(executable, outfldr, system="slurm", account=None, wtime=24, **jo
         sys.exit(2)
 
     return stat
+
 
