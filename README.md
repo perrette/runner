@@ -175,6 +175,18 @@ a file, or read a full parameter ensemble from file (combined from some outside 
 Just check out the the `--help`.
 
 
+Note on model-specific parameters
+---------------------------------
+All model-specific parameters may be passed as a string after `--model-args`:
+
+    `./job --model-args "p1 --param2 p2"`  # mind the quotes !
+
+accordingly to the provided `model_parser`. Alternatively, these arguments may be passed
+after a trailing `--`, which does not require quotes: 
+
+    `./job -- p1 --param2 p2`.
+
+
 Other parameter formats
 -----------------------
 A few alternative parameter formats are already defined, such as 
