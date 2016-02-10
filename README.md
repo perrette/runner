@@ -118,9 +118,15 @@ if __name__ == '__main__':
     job.run()
 ```
 
-Note that when `model_parser` is provided, the `Model` class is exepected to
+Note that when `model_parser` is provided, the `Model` class is expected to
 take one argument `args`, which is returned by `parser.parse_args()` applied
 on model arguments.
+
+Alternatively you may provide any function `init_model(args)` that intialize 
+a model based on cmd-line str or arg Namespace, and returns it (this is 
+especially useful when the intiialization involves choosing between various 
+model classes, e.g. when several executable might be used).
+
 
 That is it for your runner script !
 
