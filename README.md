@@ -84,8 +84,8 @@ The `Model` class comes up with a few handy methods, check them out. Most useful
 This may already be useful to play around with your model in python. 
 
 
-Build the job script
---------------------
+Initialize a job instance
+-------------------------
 In the simple case like above, where only one string parameter is required to 
 intialize the model, there is nothing to do beyond importing the `Job` class
 and providing it with your model class. This means appending the following:
@@ -97,6 +97,21 @@ if __name__ == '__main__':
     job = Job(model_class=MyModel)
     job.run()
 ```
+
+That is it. The `--model-args` parameter of the job script will expect a string
+to be passed to `MyModel` for initialization.
+
+Note the the `job` instance discloses a number of interesting attributes
+such as:
+
+- `job.model` : `Model` instance (initialized)
+- `pmatrix` : list of list of parameters defining the ensemble
+- `pnames` : corresponding parameter names
+- `args` : parsed parameters to the job script.
+
+
+Job script with argument parser
+-------------------------------
 
 In more complex but common cases where more complex arguments are required 
 to initialize a model class, you may use `argparse.ArgumentParser` to document
