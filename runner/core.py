@@ -394,6 +394,11 @@ class Job(object):
         # now parse arguments
         args = parser.parse_args() # general
 
+        # now back to '--' syntax for easy printing
+        if '--model-args' in sys.argv:
+            i = sys.argv.index('--model-args')
+            sys.argv = sys.argv[:i] + ['--'] + sys.argv[i+1].split()
+
         if args.model_help:
             if model_parser is not None:
                 model_parser.parse_args(['--help'])
@@ -412,7 +417,6 @@ class Job(object):
         assert model_class is not None, "must provide model class !"
 
         # initialize model
-        print model_args
         model = model_class(model_args)
 
         # Parse parameter sets to be combined
