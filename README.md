@@ -179,12 +179,12 @@ Note on model-specific parameters
 ---------------------------------
 All model-specific parameters may be passed as a string after `--model-args`:
 
-    `./job --model-args "p1 --param2 p2"`  # mind the quotes !
+    ./job --model-args "p1 --param2 p2"  # mind the quotes !
 
 accordingly to the provided `model_parser`. Alternatively, these arguments may be passed
 after a trailing `--`, which does not require quotes: 
 
-    `./job -- p1 --param2 p2`.
+    ./job -- p1 --param2 p2
 
 
 Other parameter formats
