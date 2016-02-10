@@ -3,7 +3,7 @@
 ---------------------------------------
 """
 
-import os
+import os, argparse
 from runner.core import Model, Job, Params
 
 DEFAULT_PARAMS = 'params_example.json'
@@ -11,8 +11,8 @@ DEFAULT_PARAMS = 'params_example.json'
 class MyModel(Model):
     """My model
     """
-    def __init__(self, param_file):
-        self.params = Params.read(param_file) 
+    def __init__(self, args):
+        self.params = Params.read(args.param_file) 
 
     def setup_outdir(self, outdir):
         param_file = os.path.join(outdir, DEFAULT_PARAMS) # modified params
@@ -31,19 +31,13 @@ class MyModel(Model):
         cmd = param_file, outdir
         return exe, cmd
 
-class MyJob(Job):
-
-    def add_model_arguments(self, parser):
-        " parser is a argparse.ArgumentParser instance, and more precisely, a group "
-        parser.add_argument("--default-params", default=DEFAULT_PARAMS, help="default parameter file")
-
-    def init_model(self, args):
-        " args is the result of argparse.ArgumentParser.parse_args() "
-        model = MyModel(args.default_params)  # this is the `__init__` function implemented above !
-        return model
 
 if __name__ == "__main__":
-    job = MyJob(description=__doc__, outdir_default="out", epilog=
+
+    parser = argparse.ArgumentParser('model-specific help')
+    parser.add_argument('param_file', default=DEFAULT_PARAMS, help="model parameter file")
+
+    job = Job(model_class=MyModel, model_parser=parser, description=__doc__, outdir_default="out", epilog=
 """
 Examples
 --------
@@ -79,4 +73,4 @@ Just check out the the `--help`.
 
 --------
 """)
-    job.parse_args_and_run()
+    job.run()

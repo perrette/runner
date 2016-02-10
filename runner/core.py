@@ -164,6 +164,377 @@ def lookup_param(pname, params, default_module=None, default_block=None):
 
 
 
+# parse parameters from command-line
+# ==================================
+def _parse_val(s):
+    " string to int, float, str "
+    try:
+        val = int(s)
+    except:
+        try:
+            val = float(s)
+        except:
+            val = s
+    return val
+
+
+def parse_param_factors(string):
+    """modified parameters as NAME=VALUE[,VALUE,...]
+
+    Returns
+    -------
+    name : str
+    values : list of values (int, float, str)
+    """
+    name, value = string.split('=')
+    if ',' in value:
+        values = value.split(',')
+    else:
+        values = [value]
+    return name, [_parse_val(value) for value in values]
+
+
+def params_parser(string):
+    """used as type by ArgumentParser
+    """
+    try:
+        params = parse_param_factors(string)
+    except Exception as error:
+        print "ERROR:",error.message
+        raise
+    return params
+
+
+# Parameters ensemble
+# ===================
+# Note that Param / Params classes are more for I/O with the model
+# while parameters ensemble uses python object to handle parameter combinations internally.
+
+# String representation of parameter ensembles
+# --------------------------------------------
+def str_pmatrix(pnames, pmatrix, max_rows=10, include_index=True):
+    """Pretty-print parameters matrix like in pandas, but using only basic python functions
+    """
+    # determine columns width
+    col_width_default = 6
+    col_fmt = []
+    col_width = []
+    for p in pnames:
+        w = max(col_width_default, len(p))
+        col_width.append( w )
+        col_fmt.append( "{:>"+str(w)+"}" )
+
+    # also add index !
+    if include_index:
+        idx_w = len(str(len(pmatrix)-1)) # width of last line index
+        idx_fmt = "{:<"+str(idx_w)+"}" # aligned left
+        col_fmt.insert(0, idx_fmt)
+        pnames = [""]+list(pnames)
+        col_width = [idx_w] + col_width
+
+    line_fmt = " ".join(col_fmt)
+
+    header = line_fmt.format(*pnames)
+
+    # format all lines
+    lines = []
+    for i, pset in enumerate(pmatrix):
+        if include_index:
+            pset = [i] + list(pset)
+        lines.append(line_fmt.format(*pset))
+
+    n = len(lines)
+    # full print
+    if n <= max_rows:
+        return "\n".join([header]+lines)
+
+    # partial print
+    else:
+        sep = line_fmt.format(*['.'*min(3,w) for w in col_width])  # separator '...'
+        return "\n".join([header]+lines[:max_rows/2]+[sep]+lines[-max_rows/2:])
+
+
+def str_factors(factors):
+    """
+    factors is a list of (pname, pvalues),  not yet combined
+    e.g. [("a", [1, 2, 3]), ("b", [1.1, 2.2, 3.3])]
+    """
+    lines = []
+    for nm, values in factors:
+        lines.append(" {} = {}".format(nm, ", ".join([repr(v) for v in values])))
+    return "\n".join(lines)
+
+
+# Parameters ensemble I/O
+# -----------------------
+def read_params_file(params_file, dtype=None):
+    """read parameters matrix (from previous ensemble)
+    dtype: parameters' type (by default: None means guessed from file)
+    """
+    import numpy as np
+    pmatrix = np.genfromtxt(params_file, names=True, dtype=dtype)
+    pnames = pmatrix.dtype.names
+    return pnames, pmatrix.tolist()
+
+
+def write_params_file(params_file, pnames, pmatrix):
+    """write parameters matrix
+    """
+    txt = str_pmatrix(pnames, pmatrix, max_rows=len(pmatrix), include_index=False)
+    with open(params_file, 'w') as f:
+        f.write(txt)
+    # import numpy as np
+    # np.savetxt(params_file, pmatrix, header=" ".join(pnames), comments="")
+
+
+# class Ensemble(object):
+#     """ensemble of parameters
+#     """
+#     def __init__(self, pnames, pmatrix):
+#         self.pnames = pnames
+#         self.pmatrix = pmatrix
+#
+#     def write(self, params_file):
+#         write_params_file(params_file, self.pnames, self.pmatrix)
+#
+#     @classmethod
+#     def read(cls, params_file):
+#         pnames, pmatrix = read_params_file(params_file)
+#         return cls(pnames, pmatrix)
+
+
+# Driver with command-line arguments
+# ==================================
+class Job(object):
+    """Generic job class
+
+    Attributes
+    ----------
+    model : Model instance with default parameters
+    pnames : list of parameter names
+    pmatrix : list of parameter sets (as a list of list)
+    pdefault : default param values
+    params : subset of model.params that are to be modified (only container change, but same individual Param ==> easy to modify)
+    args : all arguments as returned by ArgumentParser.parse_args
+
+
+    Methods
+    -------
+    __init__ : parse everything and initialize the above attributes
+    run: basically the main() function
+    """
+
+    def __init__(self, model_parser=None, model_class=None, outdir_default="output", description=None, epilog=None, formatter_class=RawDescriptionHelpFormatter, **kwargs):
+
+        parser = argparse.ArgumentParser(description=description, epilog=epilog, formatter_class=formatter_class, **kwargs)
+
+        group = parser.add_argument_group("Model-Specific")
+        group.add_argument('--model-args', default="", help="model-specific command-line args")
+        group.add_argument('--model-help', action="store_true", help="help on --model-args")
+
+        group = parser.add_argument_group("Modified parameters")
+        e_group = group.add_mutually_exclusive_group()
+        e_group.add_argument('-p', '--params', default=[], type=params_parser, nargs='*', metavar="MODULE:BLOCK&NAME=VALUE", 
+                           help="Modified parameters. Full specification: [MODULE:][BLOCK&]NAME=VALUE[,VALUE...]")
+
+        e_group.add_argument('--params-file', help="Input parameter file. Header line of parameter names (with string quotation marks for each name), then one line per parameter set. Names and values are separated by empty spaces. Example:\n 'a' 'b' 'c'\n 1 2 3 \n 1.2 2.1 2.9")
+
+        # group.add_argument('-m', '--module', help="Default module for --params", choices=["sico","rembo","climber2"])
+        group.add_argument('-m', '--module', help="Default module for --params")
+        group.add_argument('-b', '--block', help="Default block for --params")
+
+        group.add_argument('--include-default', action="store_true", help="Perform a default control run in addition to perturbed simulation? (if --params is provided)")
+
+        # group.add_argument('--params-file-save', help="Write modified parameters to a file, for later use.")
+
+        group = parser.add_argument_group("Output directory, miscellaneous")
+
+        group.add_argument('-o','--out-dir', 
+                           help="Specify the output directory where all model \
+                           output and parameter files will be stored (default = %(default)s)", default=outdir_default)
+
+        group.add_argument('-a','--auto-dir', action="store_true", help="subdirectory will be generated \
+                            based on the parameter arguments automatically (always true in batch mode)")
+
+        group.add_argument('-i','--interactive', action="store_true", 
+                           help="Interactive submission: this will ask for user confirmation at various steps before running the model.")
+
+        group.add_argument('--dry-run', action="store_true", help="Setup directories, but do not submit.")
+
+        group.add_argument('-D','--clean', action="store_true", 
+                           help="clean output directory by deleting any pre-existing files")
+
+        group = parser.add_argument_group("Job submission (queue)")
+
+        group.add_argument('--background', action="store_true",
+                            help="execute the job as a background process; default is to run the job in the terminal")
+
+        group.add_argument('-s', '--submit', action="store_true",
+                            help="send the job to the queue; default is to run the job in the terminal")
+
+        group.add_argument('--job-class', default="medium", help="job class, values depend on the queuing system used. On slurm (PIK): `squeue`, on loadleveler (old PIK): `llclass`")
+
+        group.add_argument('--system', default="slurm", choices = ["slurm", "qsub", "loadleveler"], 
+                           help="queueing system name, if `--submit` is passed. TODO: detect automatically based on machine architecture.")
+
+        group.add_argument('-w','--wall', default="24", dest="wtime",
+                            help="Wall clock time, specify the wall clock limit in the \
+                            submit script ( '-w 1' means the job will be killed \
+                            after 1 hour) (default: %(default)s)")
+
+        # parse arguments
+        # ---------------
+         
+        # -- syntax instead of model args?
+        if '--' in sys.argv:
+            assert '--model-args' not in sys.argv, "if --model-args is defined, the '--' separator is invalid"
+            i = sys.argv.index('--')
+            sys.argv = sys.argv[:i] + ['--model-args'] + [" ".join(sys.argv[i+1:])]
+
+        # now parse arguments
+        args = parser.parse_args() # general
+
+        if args.model_help:
+            if model_parser is not None:
+                model_parser.parse_args(['--help'])
+            else:
+                print "No model help provided, pass-on command line arguments via `--model-args=my_string`"
+                sys.exit()
+
+        # model arg parser
+        if model_parser is not None:
+            model_args = model_parser.parse_args(args.model_args.split())
+        else:
+            model_args = args.model_args  # just pass on
+
+        # model init
+        # ----------
+        assert model_class is not None, "must provide model class !"
+
+        # initialize model
+        print model_args
+        model = model_class(model_args)
+
+        # Parse parameter sets to be combined
+        # -----------------------------------
+        pnames, pmatrix = self.get_params_matrix(args)
+
+        # Lookup pnames vs model, and extract actual Param instances from model
+        # ---------------------------------------------------------------------
+        params = Params()
+        for pname in pnames:
+            # TODO: lookup_param should be a model method
+            param = lookup_param(pname, model.params, default_module=args.module, default_block=args.block)
+            params.append(param)
+
+        # for the record
+        self.model = model
+        self.args = args
+        self.pnames = pnames
+        self.pmatrix = pmatrix
+        self.pdefault = [p.value for p in params] # default values
+        self.params = params # Parameter list extracted from Model
+
+
+    def get_params_matrix(self, args):
+        """Parse parameters based solely on parameter's input format, without 
+        cross-checking with Model instance at that point.
+
+        Parameters
+        ----------
+        args : Namespace as returned by ArgumentParser.parse_args 
+
+        Returns
+        -------
+        pnames : list of parameter names
+        pmatrix : list of parameter sets
+            Each parameter set is a list/tuple of values
+        """
+        if args.params_file:
+            # User-input parameter sets: combination done outside this model
+            pnames, pmatrix = read_params_file(args.params_file)
+
+        else:
+            # args.params is a list of (pname, pvalues),  not yet combined
+            # e.g. [("a", [1, 2, 3]), ("b", [1.1, 2.2, 3.3])]
+            # Use zip to separate names from values: ["a", "b"] and [[1, 2, 3], [1.1, 2.2, 3.3]]
+            if len(args.params) > 0:
+                pnames, factors = zip(*args.params)
+            else:
+                pnames, factors = [], []
+
+            # Combine all parameters as a list of parameter sets
+            #  [[a1, a2, a3], [b1, b2]]   ---->
+            #            [[a1, b1],   # set 1 (across modules)
+            #             [a2, b1],   # set 2
+            #             [a3, b1],   # set 3
+            #             [a1, b2],   # set 4
+            #             [a2, b2],   # set 5
+            #             [a3, b2]]   # set 6
+            pmatrix = combiner(factors)
+                
+            assert len(pmatrix) > 0, repr(factors) # this is always true, contains mind. []
+
+        return pnames, pmatrix
+
+
+    def job_summary(self):
+        """Print job summary
+        """
+        args = self.args
+
+        # Write summary to screen
+        print
+        print "Job script"
+        print "----------"
+        if hasattr(self.model, 'executable') and self.model.executable: 
+            print "executable:", self.model.executable
+
+        # print_params_summary(model, params_def, pmatrix, args)
+        if len(self.params) == 0:
+            print "default parameters"
+        else:
+            # print "default parameters (to be modified):"
+            # print " "+"\n ".join(str(p) for p in self.params)
+            print "modified parameters"
+            if args.params_file:
+                print "from file: "+args.params_file
+            else: 
+                # for now only factorial design
+                print "factorial design"
+                print str_factors(args.params)
+
+            print "ensemble"
+            print str_pmatrix(self.pnames, self.pmatrix)
+
+            # add default parameter version?
+            print "include default version: ", args.include_default
+
+        print "number of simulations:", len(self.pmatrix)
+        print "output directory:",args.out_dir,"(",("already exists"+" - will be deleted"*args.clean) \
+            if os.path.exists(args.out_dir) else "to be created",")"    
+        print
+
+
+    def run(self):
+
+        args = self.args
+        pnames = self.pnames
+        pmatrix = self.pmatrix
+
+        self.job_summary()
+
+        if args.interactive: ask_user()
+
+        if len(self.params) > 0  and args.include_default:
+            pmatrix = self.pdefault*args.include_default + pmatrix # default = empty set
+
+        if os.path.exists(args.out_dir) and args.clean:
+            shutil.rmtree(args.out_dir)
+
+        return run_ensemble(self.model, pnames, pmatrix, args.out_dir,  interactive=False, dry_run=args.dry_run,
+                            autodir=args.auto_dir, submit=args.submit, wtime=args.wtime, job_class=args.job_class, background=args.background)
+
 
 # run a model for an ensemble of parameters
 # =========================================
@@ -264,358 +635,3 @@ def run_ensemble(model, pnames, pmatrix, outdir, interactive=False, dry_run=Fals
 
     return joblist
 
-
-# parse parameters from command-line
-# ==================================
-def _parse_val(s):
-    " string to int, float, str "
-    try:
-        val = int(s)
-    except:
-        try:
-            val = float(s)
-        except:
-            val = s
-    return val
-
-
-def parse_param_factors(string):
-    """modified parameters as NAME=VALUE[,VALUE,...]
-
-    Returns
-    -------
-    name : str
-    values : list of values (int, float, str)
-    """
-    name, value = string.split('=')
-    if ',' in value:
-        values = value.split(',')
-    else:
-        values = [value]
-    return name, [_parse_val(value) for value in values]
-
-
-def params_parser(string):
-    """used as type by ArgumentParser
-    """
-    try:
-        params = parse_param_factors(string)
-    except Exception as error:
-        print "ERROR:",error.message
-        raise
-    return params
-
-
-# Parameters ensemble
-# ===================
-# Note that Param / Params classes are more for I/O with the model
-# while parameters ensemble uses python object to handle parameter combinations internally.
-
-# String representation of parameter ensembles
-# --------------------------------------------
-def str_pmatrix(pnames, pmatrix, max_rows=10, include_index=True):
-    """Pretty-print parameters matrix like in pandas, but using only basic python functions
-    """
-    # determine columns width
-    col_width_default = 6
-    col_fmt = []
-    col_width = []
-    for p in pnames:
-        w = max(col_width_default, len(p))
-        col_width.append( w )
-        col_fmt.append( "{:>"+str(w)+"}" )
-
-    # also add index !
-    if include_index:
-        idx_w = len(str(len(pmatrix)-1)) # width of last line index
-        idx_fmt = "{:<"+str(idx_w)+"}" # aligned left
-        col_fmt.insert(0, idx_fmt)
-        pnames = [""]+list(pnames)
-        col_width = [idx_w] + col_width
-
-    line_fmt = " ".join(col_fmt)
-
-    header = line_fmt.format(*pnames)
-
-    # format all lines
-    lines = []
-    for i, pset in enumerate(pmatrix):
-        if include_index:
-            pset = [i] + list(pset)
-        lines.append(line_fmt.format(*pset))
-
-    n = len(lines)
-    # full print
-    if n <= max_rows:
-        return "\n".join([header]+lines)
-
-    # partial print
-    else:
-        sep = line_fmt.format(*['.'*min(3,w) for w in col_width])  # separator '...'
-        return "\n".join([header]+lines[:max_rows/2]+[sep]+lines[-max_rows/2:])
-
-
-def str_factors(factors):
-    """
-    factors is a list of (pname, pvalues),  not yet combined
-    e.g. [("a", [1, 2, 3]), ("b", [1.1, 2.2, 3.3])]
-    """
-    lines = ["factorial design"]
-    for nm, values in factors:
-        lines.append(" {} = {}".format(nm, ", ".join([repr(v) for v in values])))
-    return "\n".join(lines)
-
-
-# Parameters ensemble I/O
-# -----------------------
-def read_params_file(params_file, dtype=None):
-    """read parameters matrix (from previous ensemble)
-    dtype: parameters' type (by default: None means guessed from file)
-    """
-    import numpy as np
-    pmatrix = np.genfromtxt(params_file, names=True, dtype=dtype)
-    pnames = pmatrix.dtype.names
-    return pnames, pmatrix.tolist()
-
-
-def write_params_file(params_file, pnames, pmatrix):
-    """write parameters matrix
-    """
-    txt = str_pmatrix(pnames, pmatrix, max_rows=len(pmatrix), include_index=False)
-    with open(params_file, 'w') as f:
-        f.write(txt)
-    # import numpy as np
-    # np.savetxt(params_file, pmatrix, header=" ".join(pnames), comments="")
-
-
-# class Ensemble(object):
-#     """ensemble of parameters
-#     """
-#     def __init__(self, pnames, pmatrix):
-#         self.pnames = pnames
-#         self.pmatrix = pmatrix
-#
-#     def write(self, params_file):
-#         write_params_file(params_file, self.pnames, self.pmatrix)
-#
-#     @classmethod
-#     def read(cls, params_file):
-#         pnames, pmatrix = read_params_file(params_file)
-#         return cls(pnames, pmatrix)
-
-
-# Driver with command-line arguments
-# ==================================
-class Job(object):
-    """Generic job class
-
-    Attributes
-    ----------
-    parser: ArgumentParser instance
-
-    Methods
-    -------
-    add_model_arguments: initialize model instance based on parsed parameters (to be subclassed)
-    init_model: initialize model instance based on parsed parameters (to be subclassed)
-    parse_args_and_run: basically the main() function.
-    """
-
-    def __init__(self, outdir_default="output", description=None, model_class=None, formatter_class=RawDescriptionHelpFormatter, **kwargs):
-
-        parser = argparse.ArgumentParser(description=description, formatter_class=formatter_class, **kwargs)
-
-        # Model specific
-        # ================
-        self.model_class = model_class or Model
-        group = parser.add_argument_group("Model-specific")
-        self.add_model_arguments(group)  # to be subclassed
-
-        # Generic arguments
-        # =================
-        group = parser.add_argument_group("Modified parameters")
-        e_group = group.add_mutually_exclusive_group()
-        e_group.add_argument('-p', '--params', default=[], type=params_parser, nargs='*', metavar="MODULE:BLOCK&NAME=VALUE", 
-                           help="Modified parameters. Full specification: [MODULE:][BLOCK&]NAME=VALUE[,VALUE...]")
-        e_group.add_argument('--params-file', help="Input parameter file. Header line of parameter names (with string quotation marks for each name), then one line per parameter set. Names and values are separated by empty spaces. Example:\n 'a' 'b' 'c'\n 1 2 3 \n 1.2 2.1 2.9")
-
-        # group.add_argument('-m', '--module', help="Default module for --params", choices=["sico","rembo","climber2"])
-        group.add_argument('-m', '--module', help="Default module for --params")
-        group.add_argument('-b', '--block', help="Default block for --params")
-
-        group.add_argument('--include-default', action="store_true", help="Perform a default control run in addition to perturbed simulation? (if --params is provided)")
-
-        # group.add_argument('--params-file-save', help="Write modified parameters to a file, for later use.")
-
-        group = parser.add_argument_group("Output directory, miscellaneous")
-
-        group.add_argument('-o','--out-dir', 
-                           help="Specify the output directory where all model \
-                           output and parameter files will be stored (default = %(default)s)", default=outdir_default)
-
-        group.add_argument('-a','--auto-dir', action="store_true", help="subdirectory will be generated \
-                            based on the parameter arguments automatically (always true in batch mode)")
-
-        group.add_argument('-i','--interactive', action="store_true", 
-                           help="Interactive submission: this will ask for user confirmation at various steps before running the model.")
-
-        group.add_argument('--dry-run', action="store_true", help="Setup directories, but do not submit.")
-
-        group.add_argument('-D','--clean', action="store_true", 
-                           help="clean output directory by deleting any pre-existing files")
-
-        group = parser.add_argument_group("Job submission (queue)")
-
-        group.add_argument('--background', action="store_true",
-                            help="execute the job as a background process; default is to run the job in the terminal")
-
-        group.add_argument('-s', '--submit', action="store_true",
-                            help="send the job to the queue; default is to run the job in the terminal")
-
-        group.add_argument('--job-class', default="medium", help="job class, values depend on the queuing system used. On slurm (PIK): `squeue`, on loadleveler (old PIK): `llclass`")
-
-        group.add_argument('--system', default="slurm", choices = ["slurm", "qsub", "loadleveler"], 
-                           help="queueing system name, if `--submit` is passed. TODO: detect automatically based on machine architecture.")
-
-        group.add_argument('-w','--wall', default="24", dest="wtime",
-                            help="Wall clock time, specify the wall clock limit in the \
-                            submit script ( '-w 1' means the job will be killed \
-                            after 1 hour) (default: %(default)s)")
-
-        self.parser = parser
-
-
-    # To be sublassed by user  >>>>
-    # -----------------------
-    def add_model_arguments(self, group):
-        """Add model-specific command-line arguments
-
-        This method needs to be subclassed.
-        Some typical implementation is provided below.
-        """
-        group.add_argument('--default-params', help="default parameter file")
-
-
-    def init_model(self, args):
-        """initialize model instance based on parsed parameters
-        
-        This method needs to be subclassed.
-        Some typical implementation is provided below.
-        """
-        return self.model_class(args.default_params)
-
-    # <<<< end of user-subclassable part
-
-
-    def get_params_matrix(self, args):
-        """Parse parameters based solely on parameter's input format, without 
-        cross-checking with Model instance at that point.
-
-        Parameters
-        ----------
-        args : Namespace as returned by ArgumentParser.parse_args 
-
-        Returns
-        -------
-        pnames : list of parameter names
-        pmatrix : list of parameter sets
-            Each parameter set is a list/tuple of values
-        """
-        if args.params_file:
-            # User-input parameter sets: combination done outside this model
-            pnames, pmatrix = read_params_file(args.params_file)
-
-        else:
-            # args.params is a list of (pname, pvalues),  not yet combined
-            # e.g. [("a", [1, 2, 3]), ("b", [1.1, 2.2, 3.3])]
-            # Use zip to separate names from values: ["a", "b"] and [[1, 2, 3], [1.1, 2.2, 3.3]]
-            if len(args.params) > 0:
-                pnames, factors = zip(*args.params)
-            else:
-                pnames, factors = [], []
-
-            # Combine all parameters as a list of parameter sets
-            #  [[a1, a2, a3], [b1, b2]]   ---->
-            #            [[a1, b1],   # set 1 (across modules)
-            #             [a2, b1],   # set 2
-            #             [a3, b1],   # set 3
-            #             [a1, b2],   # set 4
-            #             [a2, b2],   # set 5
-            #             [a3, b2]]   # set 6
-            pmatrix = combiner(factors)
-                
-            assert len(pmatrix) > 0, repr(factors) # this is always true, contains mind. []
-
-        return pnames, pmatrix
-
-
-    def parse_job(self):
-        """Parse job
-
-        Returns
-        -------
-        model : Model instance with default parameters
-        pnames : list of parameter names
-        pmatrix : list of parameter sets
-            A paramter set is a Params instance (itself a list of Param instances)
-        args : all arguments as returned by ArgumentParser.parse_args
-        """
-        # Raw argument parser
-        args = self.parser.parse_args()
-
-        # Initialize default model version
-        model = self.init_model(args)
-
-        # Parse parameter sets to be combined
-        pnames, pmatrix = self.get_params_matrix(args)
-
-        # Lookup corresponding default parameters, as a combination
-        # between pnames and model.params
-        params_def = Params()
-        for pname in pnames:
-            param_def = lookup_param(pname, model.params, default_module=args.module, default_block=args.block)
-            params_def.append(param_def)
-        pdefault = [p.value for p in params_def]
-
-        # Write summary to screen
-        print
-        print "Job script"
-        print "----------"
-        if model.executable: 
-            print "executable:", model.executable
-
-        # print_params_summary(model, params_def, pmatrix, args)
-        if len(params_def) == 0:
-            print "default parameters"
-        else:
-            print "default parameters (to be modified):"
-            print " "+"\n ".join(str(p) for p in params_def)
-            if args.params_file:
-                print "from file: "+args.params_file
-                print str_pmatrix(pnames, pmatrix)
-            else: 
-                # for now only factorial design
-                print str_factors(args.params)
-
-            # add default parameter version?
-            print "include default version: ", args.include_default
-            pmatrix = pdefault*args.include_default + pmatrix # default = empty set
-
-        print "number of simulations:", len(pmatrix)
-        print "output directory:",args.out_dir,"(",("already exists"+" - will be deleted"*args.clean) \
-            if os.path.exists(args.out_dir) else "to be created",")"    
-        print
-
-        return model, pnames, pmatrix, args
-
-
-    def parse_args_and_run(self):
-
-        model, pnames, pmatrix, args = self.parse_job()
-
-        if args.interactive: ask_user()
-
-        if os.path.exists(args.out_dir) and args.clean:
-            shutil.rmtree(args.out_dir)
-
-        return run_ensemble(model, pnames, pmatrix, args.out_dir,  interactive=args.interactive, dry_run=args.dry_run,
-                            autodir=args.auto_dir, submit=args.submit, wtime=args.wtime, job_class=args.job_class, background=args.background)

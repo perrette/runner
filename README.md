@@ -60,6 +60,7 @@ class MyModel(Model):
     """My model
     """
     def __init__(self, param_file):
+        param_file = param_file or "params.json"
         self.params = Params.read(param_file) 
 
     def setup_outdir(self, outdir):
@@ -85,46 +86,41 @@ This may already be useful to play around with your model in python.
 
 Build the job script
 --------------------
-Here you will learn how to build a powerful command-line interface for parameter 
-sensitivity studies. Let's assume your model is successfully wrapped 
-(see simple case above, or more complex cases detailled in following sections).
-
-You need to provide the default `Job` class with additional command-line arguments
-required by your model, and to teach it how to initialize your model. You might 
-need to take a look at `argparse` documentation...
+In the simple case like above, where only one string parameter is required to 
+intialize the model, there is nothing to do beyond importing the `Job` class
+and providing it with your model class. This means appending the following:
 
 ```python
 from runner.core import Job
 
-class MyJob(Job):
-
-    def add_model_arguments(self, parser):
-        " parser is a argparse.ArgumentParser instance, and more precisely, a group "
-        parser.add_argument("--default-params", default="params.json", help="default parameter file")
-
-    def init_model(self, args):
-        " args is the result of argparse.ArgumentParser.parse_args() "
-        model = MyModel(args.default_params)  # this is the `__init__` function implemented above !
-        return model
+if __name__ == '__main__':
+    job = Job(model_class=MyModel)
+    job.run()
 ```
 
-One caveat here: the arguments added in `add_model_arguments` must be distinct
-from existing pre-defined arguments. So check out existing arguments by running
-an empty Job, or play trial and error... Long names and usage will reduce the
-chances of conflict.
+In more complex but common cases where more complex arguments are required 
+to initialize a model class, you may use `argparse.ArgumentParser` to document
+model command-line parameters. Here on our simple example:
 
-The `Job.init_model` bit just initialize `Model` class from command-line arguments .
-
-The last lines required to make the runner script are:
-    
 ```python
-if __name__ == "__main__":
-    job = MyJob(description="some description", outdir_default="out")
-    job.parse_args_and_run()
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument('param_file', default='params.json', help='parameter file for default values')
+
+class MyModel(Model):
+    def __init__(self, args):
+        param_file = args.param_file
+        ...
+
+if __name__ == '__main__':
+    job = Job(model_class=MyModel, model_parser=parser)
+    job.run()
 ```
 
-Note the description could also be passed `__doc__` 
-if you bothered adding a python docstring to the file.
+Note that when `model_parser` is provided, the `Model` class is exepected to
+take one argument `args`, which is returned by `parser.parse_args()` applied
+on model arguments.
 
 That is it for your runner script !
 
@@ -132,15 +128,20 @@ That is it for your runner script !
 Try it out !
 ------------
 
+Now you can use a powerful command-line interface for parameter sensitivity studies.
+
 Let's assume your runner script was written as an executable script as `job`
 (in linux, you may simply add the header: `#!/usr/bin/env python2.7` 
 and make the file executable `chmod +x job`). Otherwise, say if you instead
 used wrote a normal python module such as `run_model.py`, just replace
 `job` in the example below with `python run_model.py`:
 
-Check out the command line help:
+Check out the command line help for `runner` parameters.
 
     ./job --help 
+
+(_NOTE_: `./job --model-help` can also by used to check help for `--model-args`, 
+in case a model parser has been provided !)
 
 Change one parameter (here let's assume `a` and `b` are acceptable parameters):
 
@@ -211,9 +212,9 @@ concatenated list of the various subcomponents.
 class MyModel(Model):
     """My model
     """
-    def __init__(self, param_file1, param_file2):
-        self.params1 = Params.read(param_file1) 
-        self.params2 = Params.read(param_file2) 
+    def __init__(self, args):
+        self.params1 = Params.read(args.param_file1) 
+        self.params2 = Params.read(args.param_file2) 
         
         # in case parameter names conflict, make sure the `module` attribute is set
         for p in self.params1:
