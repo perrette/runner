@@ -90,18 +90,32 @@ def ask_user(msg=None, skip=False):
 # Run / Submit Job
 # ----------------
 
-def run_background(executable, cmd_args=(), outfldr="./"):
+def run_background(executable, cmd_args=(), ini_dir='.', out_dir="."):
     " execute in the background "
     print "Running job in background: %s" % (executable)
+    print "...initial directory : %s" % (ini_dir)
+    print "...output directory : %s" % (out_dir)
     cmd = " ".join(cmd_args) if not isinstance(cmd_args, basestring) else cmd_args
-    #print "Storing output in: %s" % (outfldr)
-    code = os.system ("%s %s > %s &" % (executable, cmd, os.path.join(outfldr,"out.out")))
+    #print "Storing output in: %s" % (out_dir)
+    cmd = "%s %s > %s &" % (executable, cmd, os.path.join(out_dir,"out.out"))
+    if ini_dir != os.path.curdir:
+        cmd = "cd %s && " % (ini_dir) + cmd  # go to initial directory prior to execution
+
+    print cmd
+    code = os.system (cmd)
+
     return code
 
-def run_foreground(executable, cmd_args=()):
+def run_foreground(executable, cmd_args=(), ini_dir='.'):
     " execute in terminal, with blocking behaviour "
     cmd = " ".join(cmd_args) if not isinstance(cmd_args, basestring) else cmd_args
     cmd = "%s %s" % (executable, cmd)
+
+    # execute from directory...
+    if ini_dir != os.path.curdir:
+        cmd = "cd %s && " % (ini_dir) + cmd
+
+    print cmd
     code = os.system (cmd)
     return code
 
@@ -173,12 +187,14 @@ def submit_job(executable, outfldr, system="slurm", account=None, wtime=24, **jo
 
     if system == "loadleveler":
         account = account or get_account()
+        job.info.pop("ini_dir", None) # check out option (not supported yet)
         script = jobscript_ll(executable, outfldr, account, wtime, **job_info)
         llq = '/opt/ibmll/LoadL/full/bin/llq'
         llsubmit = '/opt/ibmll/LoadL/full/bin/llsubmit'
         llcancel = '/opt/ibmll/LoadL/full/bin/llcancel'
 
     elif system == "slurm":
+        job.info.pop("ini_dir", None) # check out option (not supported yet)
         llsubmit = "sbatch"  # /p/system/slurm/bin/sbatch
         llq = "squeue" 
         llcancel = "scancel"
@@ -187,6 +203,7 @@ def submit_job(executable, outfldr, system="slurm", account=None, wtime=24, **jo
 
     elif system == "qsub":
         raise NotImplementedError("Alex, take a look: llq, llsubmit, llcancel need to be defined")
+        job.info.pop("ini_dir", None) # check out option (not supported yet)
         account = account or get_account()
         script = jobscript_qsub(executable, outfldr, account, wtime, **job_info)
 

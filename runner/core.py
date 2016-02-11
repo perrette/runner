@@ -79,15 +79,15 @@ class Model(object):
         return os.path.abspath(self.executable), self.cmd_args.format(outdir=outdir)
 
 
-    def run(self, out_dir, background=False):
+    def run(self, out_dir, background=False, ini_dir='.'):
         """Run model locally (terminal or background)
         """
         exe, cmd_args = self.setup_outdir(out_dir)
 
         if background:
-            job_id = run_background(exe, cmd_args, out_dir)
+            job_id = run_background(exe, cmd_args, ini_dir, out_dir)
         else:
-            job_id = run_foreground(exe, cmd_args)
+            job_id = run_foreground(exe, cmd_args, ini_dir)
         return job_id
 
 
@@ -324,7 +324,7 @@ class Job(object):
     run: basically the main() function
     """
 
-    def __init__(self, model_parser=None, model_class=None, outdir_default="output", description=None, epilog=None, formatter_class=RawDescriptionHelpFormatter, **kwargs):
+    def __init__(self, model_parser=None, model_class=None, outdir_default="output", inidir_default=".", description=None, epilog=None, formatter_class=RawDescriptionHelpFormatter, **kwargs):
 
         parser = argparse.ArgumentParser(description=description, epilog=epilog, formatter_class=formatter_class, **kwargs)
 
@@ -365,6 +365,8 @@ class Job(object):
                            help="clean output directory by deleting any pre-existing files")
 
         group = parser.add_argument_group("Job submission (queue)")
+
+        group.add_argument('--ini-dir', default=inidir_default, help="directory where to execute the program from")
 
         group.add_argument('--background', action="store_true",
                             help="execute the job as a background process; default is to run the job in the terminal")
@@ -537,12 +539,12 @@ class Job(object):
             shutil.rmtree(args.out_dir)
 
         return run_ensemble(self.model, pnames, pmatrix, args.out_dir,  interactive=False, dry_run=args.dry_run,
-                            autodir=args.auto_dir, submit=args.submit, wtime=args.wtime, job_class=args.job_class, background=args.background)
+                            autodir=args.auto_dir, submit=args.submit, wtime=args.wtime, job_class=args.job_class, background=args.background, inidir=args.ini_dir)
 
 
 # run a model for an ensemble of parameters
 # =========================================
-def run_ensemble(model, pnames, pmatrix, outdir, interactive=False, dry_run=False, autodir=False, submit=False, background=False, **job_args):
+def run_ensemble(model, pnames, pmatrix, outdir, interactive=False, dry_run=False, autodir=False, submit=False, background=False, inidir=".", **job_args):
     """setup output directory and run ensemble
 
     model : Model instance - like
@@ -614,10 +616,10 @@ def run_ensemble(model, pnames, pmatrix, outdir, interactive=False, dry_run=Fals
             os.makedirs(outfldr)
 
         if submit:
-            job_id = model.submit(outfldr, **job_args)
+            job_id = model.submit(outfldr, ini_dir=inidir, **job_args)
 
         else:
-            job_id = model.run(outfldr, background=background)
+            job_id = model.run(outfldr, ini_dir=inidir, background=background)
     
         joblist.append(subfldr)
 
