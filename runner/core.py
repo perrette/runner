@@ -79,7 +79,7 @@ class Model(object):
         return os.path.abspath(self.executable), self.cmd_args.format(outdir=outdir)
 
 
-    def run(self, out_dir, background=False, ini_dir='.'):
+    def run(self, out_dir, background=False, ini_dir=None):
         """Run model locally (terminal or background)
         """
         exe, cmd_args = self.setup_outdir(out_dir)
@@ -324,7 +324,16 @@ class Job(object):
     run: basically the main() function
     """
 
-    def __init__(self, model_parser=None, model_class=None, outdir_default="output", inidir_default=".", description=None, epilog=None, formatter_class=RawDescriptionHelpFormatter, **kwargs):
+    def __init__(self, model_parser=None, model_class=None, outdir_default="output", inidir_default=None, description=None, epilog=None, formatter_class=RawDescriptionHelpFormatter, **kwargs):
+        """
+        model_parser : parser for --model-args command-line argument (or after --)
+        model_class : callable (function or Model class) that take a string as input argument (if model_parser is None)
+            or the Namespace object returned by argparse.ArgumentParser.parse_args (if model_parser is provided).
+        outdir_default : default directory for model output
+        inidir_default : default directory from which to start the executable
+            if not provided, model is run from the the output directory by default
+        description, epilog, formatter_class, **kwargs : passed to `argparse.ArgumentParser`
+        """
 
         parser = argparse.ArgumentParser(description=description, epilog=epilog, formatter_class=formatter_class, **kwargs)
 
@@ -544,7 +553,7 @@ class Job(object):
 
 # run a model for an ensemble of parameters
 # =========================================
-def run_ensemble(model, pnames, pmatrix, outdir, interactive=False, dry_run=False, autodir=False, submit=False, background=False, inidir=".", **job_args):
+def run_ensemble(model, pnames, pmatrix, outdir, interactive=False, dry_run=False, autodir=False, submit=False, background=False, inidir=None, **job_args):
     """setup output directory and run ensemble
 
     model : Model instance - like
@@ -615,11 +624,14 @@ def run_ensemble(model, pnames, pmatrix, outdir, interactive=False, dry_run=Fals
         if not os.path.exists(outfldr):
             os.makedirs(outfldr)
 
+        # set initial directory to output directory by default
+        ini_dir = outfldr if inidir is None else inidir
+
         if submit:
-            job_id = model.submit(outfldr, ini_dir=inidir, **job_args)
+            job_id = model.submit(outfldr, ini_dir=ini_dir, **job_args)
 
         else:
-            job_id = model.run(outfldr, ini_dir=inidir, background=background)
+            job_id = model.run(outfldr, ini_dir=ini_dir, background=background)
     
         joblist.append(subfldr)
 
