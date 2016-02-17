@@ -324,14 +324,17 @@ class Job(object):
     run: basically the main() function
     """
 
-    def __init__(self, model_parser=None, model_class=None, outdir_default="output", inidir_default=None, description=None, epilog=None, formatter_class=RawDescriptionHelpFormatter, **kwargs):
+    def __init__(self, model_parser=None, model_class=None, outdir_default="output", inidir=None, description=None, epilog=None, formatter_class=RawDescriptionHelpFormatter, **kwargs):
         """
         model_parser : parser for --model-args command-line argument (or after --)
         model_class : callable (function or Model class) that take a string as input argument (if model_parser is None)
             or the Namespace object returned by argparse.ArgumentParser.parse_args (if model_parser is provided).
         outdir_default : default directory for model output
-        inidir_default : default directory from which to start the executable
-            if not provided, model is run from the the output directory by default
+        inidir : directory from which to start the executable
+            Note instead of a static path, the special strings '{outdir}' or '{subdir}'
+            will be formatted dynamically, according to user-input parameters.
+            `{outdir}` corresponds to --out-dir parameter, while `{subdir}` is the 
+            actual model output directory, different for each model realization.
         description, epilog, formatter_class, **kwargs : passed to `argparse.ArgumentParser`
         """
 
@@ -374,8 +377,6 @@ class Job(object):
                            help="clean output directory by deleting any pre-existing files")
 
         group = parser.add_argument_group("Job submission (queue)")
-
-        group.add_argument('--ini-dir', default=inidir_default, help="directory where to execute the program from")
 
         group.add_argument('--background', action="store_true",
                             help="execute the job as a background process; default is to run the job in the terminal")
@@ -449,6 +450,7 @@ class Job(object):
         self.pmatrix = pmatrix
         self.pdefault = [p.value for p in params] # default values
         self.params = params # Parameter list extracted from Model
+        self.ini_dir = inidir
 
 
     def get_params_matrix(self, args):
@@ -548,7 +550,7 @@ class Job(object):
             shutil.rmtree(args.out_dir)
 
         return run_ensemble(self.model, pnames, pmatrix, args.out_dir,  interactive=False, dry_run=args.dry_run,
-                            autodir=args.auto_dir, submit=args.submit, wtime=args.wtime, job_class=args.job_class, background=args.background, inidir=args.ini_dir)
+                            autodir=args.auto_dir, submit=args.submit, wtime=args.wtime, job_class=args.job_class, background=args.background, inidir=self.ini_dir)
 
 
 # run a model for an ensemble of parameters
@@ -624,8 +626,8 @@ def run_ensemble(model, pnames, pmatrix, outdir, interactive=False, dry_run=Fals
         if not os.path.exists(outfldr):
             os.makedirs(outfldr)
 
-        # set initial directory to output directory by default
-        ini_dir = outfldr if inidir is None else inidir
+        # format initial directory
+        ini_dir = '.' if inidir is None else inidir.format(outdir=outdir, subdir=outfldr)
 
         if submit:
             job_id = model.submit(outfldr, ini_dir=ini_dir, **job_args)
