@@ -331,9 +331,7 @@ class Job(object):
             or the Namespace object returned by argparse.ArgumentParser.parse_args (if model_parser is provided).
         outdir_default : default directory for model output
         inidir : directory from which to start the executable
-            Any occurrence of the `{outdir}` string will be formatted accordingly
-            to the output directory, different for each simulation. 
-            The default behaviour is to execute the model from the caller's directory.
+            The default behaviour is to execute the model from the output directory.
         description, epilog, formatter_class, **kwargs : passed to `argparse.ArgumentParser`
         """
 
@@ -638,7 +636,7 @@ def run_ensemble(model, pnames, pmatrix, outdir, interactive=False, dry_run=Fals
             os.makedirs(outfldr)
 
         # format initial directory
-        ini_dir = '.' if inidir is None else inidir.format(outdir=outfldr)
+        ini_dir = outfldr if inidir is None else inidir
 
         if submit:
             job_id = model.submit(outfldr, ini_dir=ini_dir, **job_args)
