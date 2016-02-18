@@ -368,6 +368,8 @@ class Job(object):
         group.add_argument('-a','--auto-dir', action="store_true", help="subdirectory will be generated \
                             based on the parameter arguments automatically (always true in batch mode)")
 
+        group.add_argument('-1','--single', action="store_true", help="flatten output directory structure when ensemble size is 1")
+
         group.add_argument('-i','--interactive', action="store_true", 
                            help="Interactive submission: this will ask for user confirmation at various steps before running the model.")
 
@@ -550,25 +552,28 @@ class Job(object):
             shutil.rmtree(args.out_dir)
 
         return run_ensemble(self.model, pnames, pmatrix, args.out_dir,  interactive=False, dry_run=args.dry_run,
-                            autodir=args.auto_dir, submit=args.submit, wtime=args.wtime, job_class=args.job_class, background=args.background, inidir=self.ini_dir)
+                            autodir=args.auto_dir, submit=args.submit, wtime=args.wtime, job_class=args.job_class, background=args.background, inidir=self.ini_dir, single=arg.single)
 
 
 # run a model for an ensemble of parameters
 # =========================================
-def run_ensemble(model, pnames, pmatrix, outdir, interactive=False, dry_run=False, autodir=False, submit=False, background=False, inidir=None, **job_args):
+def run_ensemble(model, pnames, pmatrix, outdir, interactive=False, dry_run=False, autodir=False, submit=False, background=False, inidir=None, single=False, **job_args):
     """setup output directory and run ensemble
 
     model : Model instance - like
         This requires `update_params` and `setup_outdir` methods
-    pmatrix : list of list of parameter values (n x p)
     pnames : corresponding list of parameter name (p)
+    pmatrix : list of list of parameter values (n x p)
     outdir : output directory
+    interactive : interactive submission (default to False)
+    dry_run : do not setup output directory nor execute/submit job
     autodir : bool, optional
         automatic naming of folders based on param names=
         default: False, use run number as name
-    interactive : interactive submission (default to False)
-    dry_run : do not setup output directory nor execute/submit job
-    submit : submit to queue instead of background ?
+    submit : submit to queue instead of terminal ?
+    background : run as background in the terminal
+    inidir : directory from which to launch the executable
+    single : flatten the output directory structure where there is only one ensemble member.
     **job_args : passed to submit_job
     """
     outdir = os.path.abspath(outdir) + '/'
@@ -591,6 +596,9 @@ def run_ensemble(model, pnames, pmatrix, outdir, interactive=False, dry_run=Fals
 
     joblist = [] # if run is True
 
+    N = len(pmatrix)
+    single = single and N == 1  # single run in a flatten output directory?
+
     for i, pset in enumerate(pmatrix):
 
         # update default parameters for each module
@@ -601,22 +609,26 @@ def run_ensemble(model, pnames, pmatrix, outdir, interactive=False, dry_run=Fals
 
         print 
         # print "({}/{}):".format(i+1, len(batch)), ", ".join(str(p) for p in params) if len(params) > 0 else "default"
-        print "({}/{}):".format(i+1, len(pmatrix)), "(default)" if len(params) == 0 else ""
+        print "({}/{}):".format(i+1, N), "(default)" if len(params) == 0 else ""
         if len(params) > 0:
             print " "+"\n ".join(str(model.params[model.params.index(p)]) for p in params if p.name)
             # print " "+"\n ".join(str(p) for p in params)
 
         # setup the output directory
-        if autodir:
-            subfldr = autofolder(params, "")
+        if single:
+            outfldr = outdir
         else:
-            subfldr = "out.{:>05}".format(i)
-        outfldr = outdir + subfldr
+            if autodir:
+                subfldr = autofolder(params, "")
+            else:
+                subfldr = "{:>05}".format(i)
+            outfldr = outdir + subfldr
 
-        print "sub-folder:", subfldr
-        if interactive: 
-            response = ask_user(skip=True)
-            if response == 's': continue
+            print "sub-folder:", subfldr
+
+        # if interactive: 
+        #     response = ask_user(skip=True)
+        #     if response == 's': continue
 
         if dry_run:
             continue
