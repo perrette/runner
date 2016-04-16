@@ -113,7 +113,7 @@ def run_foreground(executable, cmd_args=(), ini_dir='.'):
 
     # execute from directory...
     if ini_dir != os.path.curdir:
-        cmd = "cd %s && " % (ini_dir) + cmd
+        cmd = "cd '%s' && " % (ini_dir) + cmd
 
     print cmd
     code = os.system (cmd)
