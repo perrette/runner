@@ -97,9 +97,9 @@ def run_background(executable, cmd_args=(), ini_dir='.', out_dir="."):
     print "...output directory : %s" % (out_dir)
     cmd = " ".join(cmd_args) if not isinstance(cmd_args, basestring) else cmd_args
     #print "Storing output in: %s" % (out_dir)
-    cmd = "%s %s > %s &" % (executable, cmd, os.path.join(out_dir,"out.out"))
+    cmd = "'%s' %s > '%s' &" % (executable, cmd, os.path.join(out_dir,"out.out"))
     if ini_dir != os.path.curdir:
-        cmd = "cd %s && " % (ini_dir) + cmd  # go to initial directory prior to execution
+        cmd = "cd '%s' && " % (ini_dir) + cmd  # go to initial directory prior to execution
 
     print cmd
     code = os.system (cmd)
