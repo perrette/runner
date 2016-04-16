@@ -549,7 +549,7 @@ class Job(object):
             shutil.rmtree(args.out_dir)
 
         return run_ensemble(self.model, pnames, pmatrix, args.out_dir,  interactive=False, dry_run=args.dry_run,
-                            autodir=args.auto_dir, submit=args.submit, wtime=args.wtime, job_class=args.job_class, background=args.background, inidir=self.ini_dir, single=arg.single)
+                            autodir=args.auto_dir, submit=args.submit, wtime=args.wtime, job_class=args.job_class, background=args.background, inidir=self.ini_dir, single=args.single)
 
 
 # run a model for an ensemble of parameters
