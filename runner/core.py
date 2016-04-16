@@ -147,6 +147,10 @@ def lookup_param(pname, params, default_module=None, default_block=None):
 
     p = Param(name=name, group=block, module=module)
 
+    # if not default model parameters are provided, just pass along
+    if not params:
+        return p
+
     import difflib
     matches = [par for par in params if par==p]
     if not matches:
