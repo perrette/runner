@@ -102,7 +102,7 @@ class Model(object):
 # ------------------------------------------------------
 
 def parse_param_name(string):
-    """input_string : [MODULE:][BLOCK&]NAME
+    """input_string : [MODULE:][BLOCK.]NAME
     parse and return name, block, module ; None if not provided
 
     where BLOCK and MODULE, if not provided, will be guessed from model's default parameters.
@@ -114,8 +114,8 @@ def parse_param_name(string):
         module, name = name.split(':')
     else:
         module = None
-    if '&' in name:
-        block, name = name.split("&")
+    if '.' in name:
+        block, name = name.split(".")
     else:
         block = None
     return name, block, module
@@ -127,7 +127,7 @@ def lookup_param(pname, params, default_module=None, default_block=None):
     Parameters
     ----------
     pname : str
-        parameter name as [MODULE:][BLOCK&]NAME
+        parameter name as [MODULE:][BLOCK.]NAME
     params : Params' instance
         default Model's parameters
 
@@ -161,7 +161,7 @@ def lookup_param(pname, params, default_module=None, default_block=None):
     elif len(matches) > 1:
         print sys.argv[0], ":: error :: several matches for param", repr(p.key)
         print "Matches:",matches
-        print "Please specify module or block as [MODULE:][BLOCK&]NAME=VALUE[,VALUE...] or via --module and --block parameters"
+        print "Please specify module or block as [MODULE:][BLOCK.]NAME=VALUE[,VALUE...] or via --module and --block parameters"
         sys.exit(-1)
     assert len(matches) == 1
     return matches[0]
@@ -347,8 +347,8 @@ class Job(object):
 
         group = parser.add_argument_group("Modified parameters")
         e_group = group.add_mutually_exclusive_group()
-        e_group.add_argument('-p', '--params', default=[], type=params_parser, nargs='*', metavar="MODULE:BLOCK&NAME=VALUE", 
-                           help="Modified parameters. Full specification: [MODULE:][BLOCK&]NAME=VALUE[,VALUE...]")
+        e_group.add_argument('-p', '--params', default=[], type=params_parser, nargs='*', metavar="MODULE:BLOCK.NAME=VALUE", 
+                           help="Modified parameters. Full specification: [MODULE:][BLOCK.]NAME=VALUE[,VALUE...]")
 
         e_group.add_argument('--params-file', help="Input parameter file. Header line of parameter names (with string quotation marks for each name), then one line per parameter set. Names and values are separated by empty spaces. Example:\n 'a' 'b' 'c'\n 1 2 3 \n 1.2 2.1 2.9")
 

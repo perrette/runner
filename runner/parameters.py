@@ -16,9 +16,7 @@ class Param(object):
     """
 
     def __init__(self, name, value=None, group=None, help=None, units=None, module=None):
-        # TODO: think whether the `group` attribute should really be part of the `Param` class.
-        # In fact, this is very specific to the namelist format, and could simply 
-        # be part of the name via a `&` sign.
+        # TODO: remote `group` and `module` attributes, which should be dealt at a higher level...
         # This would simplify things, programatically (remove the need for a `key` property).
         self.name = name
         self.value = value
@@ -33,7 +31,7 @@ class Param(object):
         """
         key = self.name
         if self.group:
-            key = self.group+"&"+key
+            key = self.group+"."+key
         if self.module:
             key = self.module+":"+key
         return key
