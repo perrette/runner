@@ -122,7 +122,7 @@ def run_foreground(executable, cmd_args=(), ini_dir='.'):
 
 # Submit job to supercomputer queue
 # ---------------------------------
-def jobscript_qsub(executable,outfldr,account,wtime, job_class=None):
+def jobscript_qsub(executable,cmd_args, outfldr,account,wtime, job_class=None):
     '''Definition of the job script'''
     script = """#!/bin/bash
 #$ -V                             # Ensure user enivronment variables are available
@@ -140,7 +140,7 @@ time ./%s %s
 """  % (outfldr,outfldr,wtime,executable,outfldr)
     return script
 
-def jobscript_ll(executable, outfldr, account, wtime, job_class="Medium", job_type="serial"):
+def jobscript_ll(executable, cmd_args, outfldr, account, wtime, job_class="Medium", job_type="serial"):
     # https://docs.loni.org/wiki/LoadLeveler_Command_File_Syntax
 
     return """#!/bin/ksh
@@ -155,20 +155,19 @@ def jobscript_ll(executable, outfldr, account, wtime, job_class="Medium", job_ty
 # @ queue
     """.format(**locals())
 
-def jobscript_slurm(executable, outfldr, account, wtime=None, job_class="medium", job_name="sicopolis-rembo"):
-    return """
-    #!/bin/bash
+def jobscript_slurm(executable, cmd_args, outfldr, account, wtime=None, job_class="medium", job_name="runner_job"):
+    return """#!/bin/bash
 
-    #SBATCH --qos={job_class}
-    #SBATCH --job-name={job_name}
-    #SBATCH --account={account}
-    #SBATCH --output={outfldr}/log-%j.out
-    #SBATCH --error={outfldr}/log-%j.err
+#SBATCH --qos={job_class}
+#SBATCH --job-name={job_name}
+#SBATCH --account={account}
+#SBATCH --output={outfldr}/log-%j.out
+#SBATCH --error={outfldr}/log-%j.err
 
-    hostname
+{executable} {cmd_args}
     """.format(**locals())
 
-def get_account(knowngroups=[]):
+def get_account(knowngroups=['megarun']):
     " return default username and group for loadleveler submission "
     groups = check_output('groups').strip().split()
     group = groups[0]
@@ -179,7 +178,7 @@ def get_account(knowngroups=[]):
                 break
     return group
 
-def submit_job(executable, outfldr, system="slurm", account=None, wtime=24, **job_info):
+def submit_job(executable, cmd_args, outfldr, system="slurm", account=None, username="", wtime=24, **job_info):
 
     nm_jobscript = 'job.submit'    # Name of job submit script  
     outfldr += '/'
@@ -187,25 +186,26 @@ def submit_job(executable, outfldr, system="slurm", account=None, wtime=24, **jo
 
     if system == "loadleveler":
         account = account or get_account()
-        job.info.pop("ini_dir", None) # check out option (not supported yet)
-        script = jobscript_ll(executable, outfldr, account, wtime, **job_info)
+        job_info.pop("ini_dir", None) # check out option (not supported yet)
+        script = jobscript_ll(executable, cmd_args, outfldr, account, wtime, **job_info)
         llq = '/opt/ibmll/LoadL/full/bin/llq'
         llsubmit = '/opt/ibmll/LoadL/full/bin/llsubmit'
         llcancel = '/opt/ibmll/LoadL/full/bin/llcancel'
 
     elif system == "slurm":
-        job.info.pop("ini_dir", None) # check out option (not supported yet)
+        job_info.pop("ini_dir", None) # check out option (not supported yet)
         llsubmit = "sbatch"  # /p/system/slurm/bin/sbatch
         llq = "squeue" 
         llcancel = "scancel"
-        account = account or check_output("sacctmgr show assoc where user", shell=True).strip().split()[0]
-        script = jobscript_slurm(executable, outfldr, account, wtime, **job_info)
+        #account = account #or check_output("sacctmgr show assoc where user="+username, shell=True).strip().split()[0]
+        account = account or get_account()
+        script = jobscript_slurm(executable, cmd_args, outfldr, account, wtime, **job_info)
 
     elif system == "qsub":
         raise NotImplementedError("Alex, take a look: llq, llsubmit, llcancel need to be defined")
-        job.info.pop("ini_dir", None) # check out option (not supported yet)
+        job_info.pop("ini_dir", None) # check out option (not supported yet)
         account = account or get_account()
-        script = jobscript_qsub(executable, outfldr, account, wtime, **job_info)
+        script = jobscript_qsub(executable, cmd_args, outfldr, account, wtime, **job_info)
 
     else:
         raise NotImplementedError("Unknown cluster queuing system: "+repr(system))
