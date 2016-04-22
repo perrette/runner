@@ -387,7 +387,7 @@ class Job(object):
         group.add_argument('-s', '--submit', action="store_true",
                             help="send the job to the queue; default is to run the job in the terminal")
 
-        group.add_argument('--job-class', default="medium", help="job class, values depend on the queuing system used. On slurm (PIK): `squeue`, on loadleveler (old PIK): `llclass`")
+        group.add_argument('--job-class', default="short", help="job class, values depend on the queuing system used. On slurm (PIK): `squeue`, on loadleveler (old PIK): `llclass`")
 
         group.add_argument('--system', default="slurm", choices = ["slurm", "qsub", "loadleveler"], 
                            help="queueing system name, if `--submit` is passed. TODO: detect automatically based on machine architecture.")
