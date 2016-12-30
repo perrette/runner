@@ -57,7 +57,7 @@ def params_parser(string):
     return name,params
 
 
-def str_pmatrix(pnames, pmatrix, max_rows=10, include_index=True, index=None):
+def str_pmatrix(pnames, pmatrix, max_rows=1e20, include_index=True, index=None):
     """Pretty-print parameters matrix like in pandas, but using only basic python functions
     """
     # determine columns width
@@ -100,7 +100,7 @@ def str_pmatrix(pnames, pmatrix, max_rows=10, include_index=True, index=None):
         return "\n".join([header]+lines[:max_rows//2]+[sep]+lines[-max_rows//2:])
 
 
-if __name__ == '__main__':
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
             epilog='Examples: \n ./genparams.py -p a=0,2 b=0:3:1 c=4 \n ./genparams.py -p a=uniform?0,10 b=norm?0,2 --mode lhs -N 4',
             formatter_class=RawDescriptionHelpFormatter)
@@ -116,7 +116,7 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--out', help="Output parameter file")
     parser.add_argument('--seed', type=int, help="random seed, for reproducible results (default to None)")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     pnames = [nm for nm, vals in args.params]
 
@@ -172,3 +172,7 @@ if __name__ == '__main__':
             f.write(params_str)
     else:
         print (params_str)
+
+
+if __name__ == '__main__':
+    main()
