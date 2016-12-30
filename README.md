@@ -5,3 +5,11 @@ Files in this project:
 - requirements.txt : result of `pip freeze`, to provide a *sufficient* python configuration for reproductibility.
 
 - scripts/ : general purpose scripts
+
+- glaciers/ : netCDF files for base glacier geometry
+
+- config.json : 
+    + model default configuration 
+    + glacier-specific configs
+    + prior parameter distributions
+    + contraints

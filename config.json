@@ -1,0 +1,95 @@
+{
+    "default": {
+        "geometry%mode":"from_file",
+
+        "upstream_U" : "dUdx",
+        "dUdx0": 0,
+        "upstream_H": "H",
+
+        "fjordmelt%mode": "constant",
+
+        "dynamics%till_mode": "constant",
+
+        "smb%mode": "relax",
+        "smb%k": 0.2,
+        "lateralflux%mode": "prescribed",
+
+        "calving%mode": "CD",
+        "calving%fwd" : 0,
+
+        "basalhydro_mode": "none",
+        "sealevel_pressure": true,
+
+        "control%adaptive_dt": true
+    },
+
+    "glaciers": [
+        {
+            "name": "daugaard-jensen",
+            "params": {
+                "H0":1327.22719965
+            }
+        }
+    ],
+
+    "prior": [
+        {
+            "name": "e", 
+            "range": [1, 10],
+            "desc": "entrainment factor (dimensionless)"
+        },
+        { 
+            "name": "n", 
+            "range": [3, 3.5],
+            "desc": "Glen's flow law exponent"
+        },
+        {
+            "name": "q", 
+            "range": [0.05, 0.33],
+            "desc": "sliding law exponent 1/m = q"
+        },
+        {
+            "name": "plastic_phi", 
+            "range": [1, 40],
+            "desc": "sliding law coefficient C = tan(phi)"
+        },
+        {
+            "name": "wscale", 
+            "range": [1, 2],
+            "desc": "scaling coef for width in the lateral stress"
+        },
+        {
+            "name": "fjordmelt%cst_rate",
+            "range": [10, 1000],
+            "desc": "submarine melt rate [m/a]"
+        }
+    ],
+
+    "constraints": [
+        {
+            "name": "flux_gl",
+            "std_as_fraction": 0.1,
+            "desc": "flux through grounding line [m^3/a]"
+        },
+        {
+            "name": "thk_gl",
+            "std_as_fraction": 0.1,
+            "desc": "thickness at the grounding line [m]"
+        },
+        {
+            "name": "gl",
+            "std": 1e3,
+            "desc": "grounding line position [m]"
+        },
+        {
+            "name": "volume",
+            "std_as_fraction": 0.1,
+            "desc": "glacier volume [m^3]"
+        },
+        {
+            "name": "smb_mean",
+            "std": 1,
+            "desc": "mean smb over glacer domain [m/a], to avoid unrealistically large relaxation"
+        }
+    ]
+}
