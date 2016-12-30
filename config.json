@@ -6,13 +6,13 @@
         "dUdx0": 0,
         "upstream_H": "H",
 
-        "fjordmelt%mode": "constant",
+        "fjordmelt_mode": "constant",
 
         "dynamics%till_mode": "constant",
 
-        "smb%mode": "relax",
-        "smb%k": 0.2,
-        "lateralflux%mode": "prescribed",
+        "smb_mode": "relax",
+        "smb_relax": 5,
+        "latflx_mode": "prescribed",
 
         "calving%mode": "CD",
         "calving%fwd" : 0,
@@ -22,16 +22,6 @@
 
         "control%adaptive_dt": true
     },
-
-    "glaciers": [
-        {
-            "name": "daugaard-jensen",
-            "params": {
-                "H0":1327.22719965
-            }
-        }
-    ],
-
 
     "prior": {
         "size" : 100,

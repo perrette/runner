@@ -21,7 +21,7 @@ Fiona==1.7.0.post2
 Flask==0.11.1
 functools32==3.2.3.post2
 geos==0.1.0
-glacier1d==0+untagged.698.g1851df6.dirty
+glacier1d==0+untagged.701.ged891da
 glaciermap===unknown
 icedata==1.0+36.g0461c15
 ipykernel==4.5.0
