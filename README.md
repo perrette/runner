@@ -10,6 +10,5 @@ Files in this project:
 
 - config.json : 
     + model default configuration 
-    + glacier-specific configs
     + prior parameter distributions
     + contraints
