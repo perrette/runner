@@ -29,7 +29,7 @@
         "seed" : 0,
         "params": [
             {
-                "name": "dynamics%e",
+                "name": "dynamics%E",
                 "range": [1,10],
                 "desc": "Enhancement factor"
             },
@@ -54,7 +54,7 @@
                 "desc": "scaling coef for width in the lateral stress"
             },
             {
-                "name": "fjordmelt%cst_rate",
+                "name": "fjordmelt_cst",
                 "range": [10, 1000],
                 "desc": "submarine melt rate [m/a]"
             }
