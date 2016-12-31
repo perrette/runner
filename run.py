@@ -11,6 +11,7 @@ from collections import OrderedDict as odict
 import numpy as np
 
 GLACIER = "glacier"
+SEC_IN_YEAR = 3600*24*365.25
 
 def read_ensemble_params(pfile):
     pnames = open(pfile).readline().split()
@@ -33,7 +34,7 @@ def autoset_params(netcdf):
 
     tauc_max = driving_stress(ds["x"][:2], ds["surf"][:2], ds["H"][:2])[0]
     assert tauc_max > 0, 'driving stress < 0, cant autoset sliding params, maybe smooth?'
-    uq = ds["U"][0]
+    uq = ds["U"][0]*SEC_IN_YEAR
     h0 = ds["H"][0]
 
     ds.close()
