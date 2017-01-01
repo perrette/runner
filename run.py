@@ -9,6 +9,7 @@ import os
 import json
 from collections import OrderedDict as odict
 import numpy as np
+from parseconfig import get_expconfig
 
 GLACIER = "glacier"
 SEC_IN_YEAR = 3600*24*365.25
@@ -52,7 +53,7 @@ def run_background(executable, cmd_args=(), ini_dir='.', out_dir="."):
     if ini_dir != os.path.curdir:
         cmd = "cd '%s' && " % (ini_dir) + cmd  # go to initial directory prior to execution
 
-    print(cmd)
+    #print(cmd)
     code = os.system (cmd)
 
     return code
@@ -66,7 +67,7 @@ def run_foreground(executable, cmd_args=(), ini_dir='.'):
     if ini_dir != os.path.curdir:
         cmd = "cd '%s' && " % (ini_dir) + cmd
 
-    print(cmd)
+    #print(cmd)
     code = os.system (cmd)
     return code
 
@@ -82,6 +83,8 @@ def main(argv=None):
                         help="executable (default=%(default)s)")
     parser.add_argument("--config", default="config.json", 
                         help="default experiment config (default=%(default)s)")
+    parser.add_argument("--experiment", required=True,
+                        help="experiment name to look for in config")
 
     parser.add_argument("--file", '-i',
                         help="ensemble parameter file produced by params.txt")
@@ -109,7 +112,8 @@ def main(argv=None):
         args.out_dir = os.path.join(args.out_dir, runid)
 
     # create full command line
-    cfg = json.load(open(args.config))
+    rootcfg = json.load(open(args.config))
+    cfg = get_expconfig(rootcfg, args.experiment)
 
     # first create a dictionary of parameters
     params = odict()
