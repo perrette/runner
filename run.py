@@ -40,6 +40,37 @@ def autoset_params(netcdf):
     ds.close()
     return tauc_max, uq, h0
 
+
+def run_background(executable, cmd_args=(), ini_dir='.', out_dir="."):
+    " execute in the background "
+    print("Running job in background: %s" % (executable))
+    print("...initial directory : %s" % (ini_dir))
+    print("...output directory : %s" % (out_dir))
+    cmd = " ".join(cmd_args) if not isinstance(cmd_args, basestring) else cmd_args
+    #print "Storing output in: %s" % (out_dir)
+    cmd = "'%s' %s > '%s' &" % (executable, cmd, os.path.join(out_dir,"out.out"))
+    if ini_dir != os.path.curdir:
+        cmd = "cd '%s' && " % (ini_dir) + cmd  # go to initial directory prior to execution
+
+    print(cmd)
+    code = os.system (cmd)
+
+    return code
+
+def run_foreground(executable, cmd_args=(), ini_dir='.'):
+    " execute in terminal, with blocking behaviour "
+    cmd = " ".join(cmd_args) if not isinstance(cmd_args, basestring) else cmd_args
+    cmd = "%s %s" % (executable, cmd)
+
+    # execute from directory...
+    if ini_dir != os.path.curdir:
+        cmd = "cd '%s' && " % (ini_dir) + cmd
+
+    print(cmd)
+    code = os.system (cmd)
+    return code
+
+
 def main(argv=None):
     import argparse
 
@@ -56,6 +87,8 @@ def main(argv=None):
                         help="ensemble parameter file produced by params.txt")
     parser.add_argument("--id", type=int, 
                         help="experiment ID, required if --file is provided")
+    parser.add_argument("--auto-subdir", action="store_true", 
+                        help="subdirectory with run-id")
 
     parser.add_argument("--cmd", 
                         help="additional command-line arguments for glacier executable")
@@ -63,12 +96,17 @@ def main(argv=None):
     parser.add_argument("--dry-run", action="store_true",
                         help="do not execute, simply print the command")
 
-    #parser.add_argument("--autoset-sliding", action="store_true",
-    #                    help="set tauc_max and uq based on driving stress and velocity at x = 0")
-    #parser.add_argument("--ref-file", 
-    #                    help="ref file to use e.g. to determine sliding params, by default same as input, but may be difference")
+    parser.add_argument("--background", action="store_true",
+                        help="run in the background, do not check result")
+
 
     args = parser.parse_args(argv)
+
+    # create subdirectory to the output with the run-number
+    if args.auto_subdir:
+        assert args.id is not None
+        runid = "{:0>5}".format(args.id)
+        args.out_dir = os.path.join(args.out_dir, runid)
 
     # create full command line
     cfg = json.load(open(args.config))
@@ -95,7 +133,7 @@ def main(argv=None):
             params[k] = v
 
     # make command line argument for glacier executable
-    cmd = [args.exe, "--in_file", args.input, "--out_dir",args.out_dir]
+    cmd = ["--in_file", args.input, "--out_dir",args.out_dir]
     for k in params:
         name, value = maybe_transform_param(k, params[k])
         cmd.append("--"+name)
@@ -105,11 +143,22 @@ def main(argv=None):
     if args.cmd:
         cmdstr = cmdstr + " " + args.cmd
 
-    print(cmdstr)
+    print(args.exe, cmdstr)
     
     if not args.dry_run:
-        os.system(cmdstr)
+        #ret = os.system(cmdstr)
+        if args.background:
+            run_background(args.exe, cmd_args=cmdstr, out_dir=args.out_dir)
 
+        else:
+            ret = run_foreground(args.exe, cmd_args=cmdstr)
+            # check return results
+            if ret != 0:
+                raise RuntimeError("Error when running the model")
+            if not os.path.exists("simu_ok"):
+                raise RuntimeError("simu_ok not written: error when running the model")
+
+            print("Simulation successful")
 
 if __name__ == "__main__":
     main()
