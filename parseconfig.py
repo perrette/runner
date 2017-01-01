@@ -25,7 +25,7 @@ def genparams_args(prior, out=None):
 
     cmd.append("--mode={}".format(prior["sampling"]))
     cmd.append("--size={}".format(prior["size"]))
-    if prior["seed"] > 0:
+    if prior["seed"] is not None:
         cmd.append("--seed={}".format(prior["seed"]))
 
     if out is not None:

@@ -41,6 +41,7 @@ priordir=$expdir/prior
 args="glaciers/$glacier.nc --config $config --experiment $exp --file $params --out-dir $priordir --auto-subdir"
 #cmd="SLURM_ARRAY_TASK_ID=0 ./job.sh $args"
 cmd="sbatch --array=0-$((N-1)) ./job.sh $args"
+rm -fr logs
 mkdir -p logs
 echo $cmd
 eval $cmd
