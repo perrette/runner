@@ -33,7 +33,7 @@ def autoset_params(netcdf):
     import netCDF4 as nc
     ds = nc.Dataset(netcdf)
 
-    tauc_max = driving_stress(ds["x"][:2], ds["surf"][:2], ds["H"][:2])[0]
+    tauc_max = driving_stress(ds["x"][:2], ds["surf"][:2], ds["H"][:2])[0]*1e-3
     assert tauc_max > 0, 'driving stress < 0, cant autoset sliding params, maybe smooth?'
     uq = ds["U"][0]*SEC_IN_YEAR
     h0 = ds["H"][0]
