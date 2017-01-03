@@ -69,22 +69,22 @@
 
             "constraints": [
                 {
-                    "name": "flux_gl",
+                    "name": "F?gl",
                     "std_as_fraction": 0.1,
                     "desc": "flux through grounding line [m^3/a]"
                 },
                 {
-                    "name": "thk_gl",
+                    "name": "H?gl",
                     "std_as_fraction": 0.1,
                     "desc": "thickness at the grounding line [m]"
                 },
                 {
-                    "name": "gl",
+                    "name": "x?gl",
                     "std": 1e3,
                     "desc": "grounding line position [m]"
                 },
                 {
-                    "name": "volume",
+                    "name": "V",
                     "std_as_fraction": 0.1,
                     "desc": "glacier volume [m^3]"
                 },

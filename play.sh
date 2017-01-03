@@ -2,46 +2,37 @@
 # do the work !
 
 # global variables (settings)
-ROOT=experiments
-GENPARAMS=scripts/genparams.py
-config=config.json
+ROOT=experiments_v3
 
 # experiment specific settings
 glacier=daugaard-jensen
 exp=steadystate
-
-# dependent variables
-expdir=$ROOT/$exp
-params=$expdir/prior.txt
 
 # functions
 # ---------
 
 trim () { while read -r line; do echo "$line"; done; }
 
+baseargs="--experiment $exp --expdir $ROOT/$exp"
 
 # generate parameter ensemble
-# ---------------------------
-if [ -f $params ] ; then
-    #echo "$params already exists. Delete? (y/n)"
-    echo "$params already exists. Re-use it."
-else
-    cmd="python $GENPARAMS $(python parseconfig.py genparams --experiment $exp --config $config) --out $params"
-    mkdir -p $expdir
-    echo $cmd
-    echo $cmd > $expdir/command-genparams.sh
-    eval $cmd
+# ===========================
+cmd="python play.py genparams $baseargs"
+echo $cmd
+eval $cmd
+
+if [ $? != 0 ]; then
+    exit 1
 fi
+
+# run default
+# ===========
+cmd="python play.py run $glacier $baseargs"
+echo $cmd
+eval $cmd
 
 # run ensemble
 # ============
-
-N=$(wc $params | trim | cut -d" " -f1)  # number of runs
-priordir=$expdir/prior
-args="glaciers/$glacier.nc --config $config --experiment $exp --file $params --out-dir $priordir --auto-subdir"
-#cmd="SLURM_ARRAY_TASK_ID=0 ./job.sh $args"
-cmd="sbatch --array=0-$((N-1)) ./job.sh $args"
-rm -fr logs
-mkdir -p logs
+cmd="python play.py runbatch $glacier $baseargs"
 echo $cmd
 eval $cmd
