@@ -5,6 +5,7 @@ from __future__ import print_function, absolute_import
 import numpy as np
 import json
 import os
+import sys
 from collections import OrderedDict as odict
 
 from modelrun import autoset_params, maybe_transform_param, run_background, run_foreground
@@ -48,7 +49,7 @@ class ExperimentConfig(object):
 
     def rundir(self, runid=None):
         if runid is not None:
-            return os.path.join(self.expdir, "{:0>5}".format(id))
+            return os.path.join(self.expdir, "{:0>5}".format(runid))
         else:
             return os.path.join(self.expdir, "default")
 
@@ -118,7 +119,7 @@ class ExperimentConfig(object):
         return pnames, pvalues
 
 
-    def glacierargs(self, glacier, runid=None, cmd_extra=""):
+    def glacierargs(self, glacier, runid=None, outdir=None, cmd_extra=""):
         """Return glacier executable and glacier arguments
         """
         # first create a dictionary of parameters
@@ -142,10 +143,11 @@ class ExperimentConfig(object):
             for k, v in zip(pnames, pvalues):
                 params[k] = v
 
-        out_dir = self.rundir(runid=runid)
+        if outdir is None:
+            outdir = self.rundir(runid=runid)
 
         # make command line argument for glacier executable
-        cmd = ["--in_file", netcdf, "--out_dir",out_dir]
+        cmd = ["--in_file", netcdf, "--out_dir",outdir]
         for k in params:
             name, value = maybe_transform_param(k, params[k])
             cmd.append("--"+name)
@@ -153,6 +155,24 @@ class ExperimentConfig(object):
 
         cmdstr = " ".join(cmd) + (" " + cmd_extra if cmd_extra else "")
         return glacierexe, cmdstr
+
+
+def parse_slurm_array_indices(a):
+    indices = []
+    for i in a.split(","):
+        if '-' in i:
+            if ':' in i:
+                i, step = i.split(':')
+                step = int(step)
+            else:
+                step = 1
+            start, stop = i.split('-')
+            start = int(start)
+            stop = int(stop) + 1  # last index is ignored in python
+            indices.extend(range(start, stop, step))
+        else:
+            indices.append(int(i))
+    return indices
 
 
 def main(argv=None):
@@ -191,6 +211,8 @@ def main(argv=None):
     # ensemble run
     subp = subparsers.add_parser("runbatch", parents=[parent, runpars], 
                                help="run ensemble")
+    subp.add_argument("--background", action="store_true", 
+                      help="run in background instead of submitting to slurm queue")
     subp.add_argument("--array",'-a', help="slurm sbatch --array")
     subp.add_argument("--job-script", default="job.sh", 
             help="job script to run the model with slurm --array (default=%(default)s)")
@@ -217,18 +239,21 @@ def main(argv=None):
         print(getattr(expcfg, args.field))
 
     elif args.cmd == "run":
-        exe, cmdstr = expcfg.glacierargs(args.glacier, runid=args.id, cmd_extra=args.args)
+
+        outdir = expcfg.rundir(args.id)
+        exe, cmdstr = expcfg.glacierargs(args.glacier, runid=args.id, cmd_extra=args.args, outdir=outdir)
 
         print(exe, cmdstr)
         
         if not args.dry_run:
-            if not os.path.exists(expcfg.rundir(args.id)):
-                os.makedirs(expcfg.rundir(args.id))
-            logfile = os.path.join(expcfg.rundir(args.id), "out.out")
-            #ret = os.system(cmdstr)
+
+            if not os.path.exists(outdir):
+                os.makedirs(outdir)
+
+            logfile = os.path.join(outdir, "glacier.log")
+
             if args.background:
-                run_background(exe, cmd_args=cmdstr, 
-                               logfile=logfile)
+                run_background(exe, cmd_args=cmdstr, logfile=logfile)
 
             else:
                 ret = run_foreground(exe, cmd_args=cmdstr, logfile=logfile)
@@ -241,21 +266,38 @@ def main(argv=None):
                 print("Simulation successful")
 
     elif args.cmd == "runbatch":
-        print("Run ensemble")
 
         runcmd = [args.glacier, "--file", expcfg.paramsfile]
         if args.args:
             runcmd.append(args.args)
 
+        # check out ensemble size
+        pnames, pmatrix = expcfg.getparams()
+        N = len(pmatrix)
+        assert N == expcfg.get_size(), "mistmatch between experiment specs and "+expcfg.paramsfile
+
         # batch command
         if args.array is None:
             # all params by default
-            pnames, pmatrix = expcfg.getparams()
-            N = len(pmatrix)
-            assert N == expcfg.get_size(), "mistmatch between experiment specs and "+expcfg.paramsfile
             args.array = "{}-{}".format(0, N-1) 
 
-        batchcmd = ["sbatch", "--array", args.array, "job.sh"] + arg.cmd
+        if args.background:
+            # local testing : do not use slurm
+            indices = parse_slurm_array_indices(args.array)
+            print("Run",len(indices),"out of",N,"simulations in the background")
+            print(indices)
+            print("EXIT TEST")
+            sys.exit(0)
+            for idx in indices:
+                #run_background(exe, cmd_args=cmdstr, logfile=logfile)
+                cmd = ["python", __file__, "run", "--id", str(idx), "--background"] + runcmd
+                cmdstr = " ".join(cmd)
+                os.system(cmdstr)
+            return 
+
+        # submit job to slurm (the default)
+        print("Submit job array batch to SLURM")
+        batchcmd = ["sbatch", "--array", args.array, "job.sh"] + runcmd
         cmd = " ".join(batchcmd)
 
         os.system("rm -fr logs; mkdir -p logs") # clean logs
