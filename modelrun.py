@@ -50,7 +50,7 @@ def run_background(executable, cmd_args=(), ini_dir='.', logfile='out.out'):
     print("...log file : %s" % (logfile))
     cmd = " ".join(cmd_args) if not isinstance(cmd_args, basestring) else cmd_args
     #print "Storing output in: %s" % (out_dir)
-    cmd = "'%s' %s > '%s' &" % (executable, cmd, logfile)
+    cmd = "'%s' %s > '%s' 2>&1 &" % (executable, cmd, logfile)
     if ini_dir != os.path.curdir:
         cmd = "cd '%s' && " % (ini_dir) + cmd  # go to initial directory prior to execution
 
@@ -68,14 +68,8 @@ def run_foreground(executable, cmd_args=(), ini_dir='.', logfile=None):
     if ini_dir != os.path.curdir:
         cmd = "cd '%s' && " % (ini_dir) + cmd
 
-    if logfile is None:
-        stdout = None
-    else:
-        # todo: add a log file
-        stdout = None
-        #stdout = file(logfile, 'w')
+    if logfile is not None:
+        cmd = cmd + " 2>&1 | tee "+logfile
 
-    code = subprocess.call(cmd, shell=True, stdout=stdout, stderr=subprocess.STDOUT)
-    #print(cmd)
-    #code = os.system (cmd)
+    code = os.system (cmd)
     return code
