@@ -286,10 +286,7 @@ def main(argv=None):
             indices = parse_slurm_array_indices(args.array)
             print("Run",len(indices),"out of",N,"simulations in the background")
             print(indices)
-            print("EXIT TEST")
-            sys.exit(0)
             for idx in indices:
-                #run_background(exe, cmd_args=cmdstr, logfile=logfile)
                 cmd = ["python", __file__, "run", "--id", str(idx), "--background"] + runcmd
                 cmdstr = " ".join(cmd)
                 os.system(cmdstr)
