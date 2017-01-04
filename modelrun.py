@@ -9,6 +9,7 @@ import os
 import json
 from collections import OrderedDict as odict
 import numpy as np
+import subprocess
 
 
 GLACIER = "glacier"
@@ -42,14 +43,14 @@ def autoset_params(netcdf):
     return tauc_max, uq, h0
 
 
-def run_background(executable, cmd_args=(), ini_dir='.', out_dir="."):
+def run_background(executable, cmd_args=(), ini_dir='.', logfile='out.out'):
     " execute in the background "
     print("Running job in background: %s" % (executable))
     print("...initial directory : %s" % (ini_dir))
-    print("...output directory : %s" % (out_dir))
+    print("...log file : %s" % (logfile))
     cmd = " ".join(cmd_args) if not isinstance(cmd_args, basestring) else cmd_args
     #print "Storing output in: %s" % (out_dir)
-    cmd = "'%s' %s > '%s' &" % (executable, cmd, os.path.join(out_dir,"out.out"))
+    cmd = "'%s' %s > '%s' &" % (executable, cmd, logfile)
     if ini_dir != os.path.curdir:
         cmd = "cd '%s' && " % (ini_dir) + cmd  # go to initial directory prior to execution
 
@@ -58,7 +59,7 @@ def run_background(executable, cmd_args=(), ini_dir='.', out_dir="."):
 
     return code
 
-def run_foreground(executable, cmd_args=(), ini_dir='.'):
+def run_foreground(executable, cmd_args=(), ini_dir='.', logfile=None):
     " execute in terminal, with blocking behaviour "
     cmd = " ".join(cmd_args) if not isinstance(cmd_args, basestring) else cmd_args
     cmd = "%s %s" % (executable, cmd)
@@ -67,6 +68,14 @@ def run_foreground(executable, cmd_args=(), ini_dir='.'):
     if ini_dir != os.path.curdir:
         cmd = "cd '%s' && " % (ini_dir) + cmd
 
+    if logfile is None:
+        stdout = None
+    else:
+        # todo: add a log file
+        stdout = None
+        #stdout = file(logfile, 'w')
+
+    code = subprocess.call(cmd, shell=True, stdout=stdout, stderr=subprocess.STDOUT)
     #print(cmd)
-    code = os.system (cmd)
+    #code = os.system (cmd)
     return code

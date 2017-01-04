@@ -222,12 +222,16 @@ def main(argv=None):
         print(exe, cmdstr)
         
         if not args.dry_run:
+            if not os.path.exists(expcfg.rundir(args.id)):
+                os.makedirs(expcfg.rundir(args.id))
+            logfile = os.path.join(expcfg.rundir(args.id), "out.out")
             #ret = os.system(cmdstr)
             if args.background:
-                run_background(exe, cmd_args=cmdstr, out_dir=args.out_dir)
+                run_background(exe, cmd_args=cmdstr, 
+                               logfile=logfile)
 
             else:
-                ret = run_foreground(exe, cmd_args=cmdstr)
+                ret = run_foreground(exe, cmd_args=cmdstr, logfile=logfile)
                 # check return results
                 if ret != 0:
                     raise RuntimeError("Error when running the model")
