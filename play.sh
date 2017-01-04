@@ -2,7 +2,7 @@
 # do the work !
 
 # global variables (settings)
-ROOT=experiments_v3
+ROOT=experiments_debug
 
 # experiment specific settings
 glacier=daugaard-jensen
@@ -33,6 +33,6 @@ eval $cmd
 
 # run ensemble
 # ============
-cmd="python play.py runbatch $glacier $baseargs"
+cmd="python play.py run $glacier $baseargs"
 echo $cmd
 eval $cmd

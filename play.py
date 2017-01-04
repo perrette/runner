@@ -1,9 +1,11 @@
+#!/usr/bin/env python2.7
 """Process configuration file
 """
 from __future__ import print_function, absolute_import
 import numpy as np
 import json
 import os
+from collections import OrderedDict as odict
 
 from modelrun import autoset_params, maybe_transform_param, run_background, run_foreground
 
@@ -40,6 +42,9 @@ class ExperimentConfig(object):
         if expdir is None:
             expdir = os.path.join(experimentsdir, self.name)
         self.expdir = expdir
+
+    def glaciernc(self, glacier, runid=None):
+        return os.path.join(glaciersdir, glacier+".nc")
 
     def rundir(self, runid=None):
         if runid is not None:
@@ -118,13 +123,14 @@ class ExperimentConfig(object):
         """
         # first create a dictionary of parameters
         params = odict()
+        netcdf = self.glaciernc(glacier, runid)
         
         # default arguments
         for k in sorted(self.default.keys()):
             params[k] = self.default[k]
 
         # data-dependent parameters
-        tauc_max, uq, h0 = autoset_params(glacier)
+        tauc_max, uq, h0 = autoset_params(netcdf)
         params["dynamics%tauc_max"] = tauc_max
         params["dynamics%Uq"] = uq
         params["dynamics%H0"] = h0
@@ -136,17 +142,17 @@ class ExperimentConfig(object):
             for k, v in zip(pnames, pvalues):
                 params[k] = v
 
-        out_dir = self.rundir(runid=args.id)
+        out_dir = self.rundir(runid=runid)
 
         # make command line argument for glacier executable
-        cmd = ["--in_file", glacier, "--out_dir",out_dir]
+        cmd = ["--in_file", netcdf, "--out_dir",out_dir]
         for k in params:
             name, value = maybe_transform_param(k, params[k])
             cmd.append("--"+name)
             cmd.append(str(value))
 
-        cmdstr = " ".join(cmd) + " " + cmd_extra
-        return glaciersexe, cmdstr
+        cmdstr = " ".join(cmd) + (" " + cmd_extra if cmd_extra else "")
+        return glacierexe, cmdstr
 
 
 def main(argv=None):
@@ -169,32 +175,31 @@ def main(argv=None):
                                help="get config field")
     subp.add_argument('field')
 
-
     # model run
-    subp = subparsers.add_parser("run", parents=[parent], 
+    runpars = argparse.ArgumentParser(add_help=False)
+    runpars.add_argument("glacier", help="glacier name")
+    runpars.add_argument("--args", help="pass on to glacier")
+
+    subp = subparsers.add_parser("run", parents=[parent, runpars], 
                                help="run ensemble")
-    subp.add_argument("glacier", help="glacier name")
     subp.add_argument("--id", help="run id")
-    subp.add_argument("--cmd", help="pass on to glacier")
     subp.add_argument("--dry-run", action="store_true",
                       help="do not execute, simply print the command")
     subp.add_argument("--background", action="store_true",
                         help="run in the background, do not check result")
 
     # ensemble run
-    subp = subparsers.add_parser("runbatch", parents=[parent], 
+    subp = subparsers.add_parser("runbatch", parents=[parent, runpars], 
                                help="run ensemble")
     subp.add_argument("--array",'-a', help="slurm sbatch --array")
     subp.add_argument("--job-script", default="job.sh", 
             help="job script to run the model with slurm --array (default=%(default)s)")
-    subp.add_argument("--cmd", help="pass on to glacier")
 
     # cost function
     subp = subparsers.add_parser("costfunction", parents=[parent], 
                                help="extract cost function")
 
     args = parser.parse_args(argv)
-
 
     cfg = GlobalConfig.read(args.config)
     expcfg = cfg.get_expconfig(args.experiment)
@@ -212,17 +217,17 @@ def main(argv=None):
         print(getattr(expcfg, args.field))
 
     elif args.cmd == "run":
-        exe, cmdstr = expcfg.glacierargs(args.glacier, runid=args.id, cmd_extra=args.cmd)
+        exe, cmdstr = expcfg.glacierargs(args.glacier, runid=args.id, cmd_extra=args.args)
 
-        print(args.exe, cmdstr)
+        print(exe, cmdstr)
         
         if not args.dry_run:
             #ret = os.system(cmdstr)
             if args.background:
-                run_background(args.exe, cmd_args=cmdstr, out_dir=args.out_dir)
+                run_background(exe, cmd_args=cmdstr, out_dir=args.out_dir)
 
             else:
-                ret = run_foreground(args.exe, cmd_args=cmdstr)
+                ret = run_foreground(exe, cmd_args=cmdstr)
                 # check return results
                 if ret != 0:
                     raise RuntimeError("Error when running the model")
@@ -234,8 +239,7 @@ def main(argv=None):
     elif args.cmd == "runbatch":
         print("Run ensemble")
 
-        netcdf = os.path.join(glaciersdir, args.glacier+'.nc')
-        runcmd = [netcdf, "--file", expcfg.paramsfile]
+        runcmd = [args.glacier, "--file", expcfg.paramsfile]
         if args.args:
             runcmd.append(args.args)
 
