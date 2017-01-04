@@ -175,6 +175,26 @@ def parse_slurm_array_indices(a):
     return indices
 
 
+def make_jobfile_slurm(command, queue, jobname, account, output, error):
+    return """#!/bin/bash
+
+#SBATCH --qos={queue}
+#SBATCH --job-name={jobname}
+#SBATCH --account={account}
+#SBATCH --output={output}
+#SBATCH --error={error}
+
+echo
+echo SLURM JOB
+echo ---------
+echo "SLURM_JOBID $SLURM_JOBID"
+echo "SLURM_ARRAY_JOB_ID $SLURM_ARRAY_JOB_ID"
+echo "SLURM_ARRAY_TASK_ID $SLURM_ARRAY_TASK_ID"
+cmd="{command}"
+echo $cmd
+eval $cmd""".format(**locals())
+
+
 def main(argv=None):
     import argparse
 
@@ -202,7 +222,7 @@ def main(argv=None):
 
     subp = subparsers.add_parser("run", parents=[parent, runpars], 
                                help="run ensemble")
-    subp.add_argument("--id", help="run id")
+    subp.add_argument("--id", type=int, help="run id")
     subp.add_argument("--dry-run", action="store_true",
                       help="do not execute, simply print the command")
     subp.add_argument("--background", action="store_true",
@@ -267,10 +287,6 @@ def main(argv=None):
 
     elif args.cmd == "runbatch":
 
-        runcmd = [args.glacier, "--file", expcfg.paramsfile]
-        if args.args:
-            runcmd.append(args.args)
-
         # check out ensemble size
         pnames, pmatrix = expcfg.getparams()
         N = len(pmatrix)
@@ -281,25 +297,47 @@ def main(argv=None):
             # all params by default
             args.array = "{}-{}".format(0, N-1) 
 
+        cmd = ["python", __file__, "run", args.glacier, 
+                "--experiment", args.experiment, 
+                "--expdir", expcfg.expdir,
+                "--id", "{id}"]
+        if args.args:
+            cmd.append(args.args)
+        cmdstr = " ".join(cmd)
+
         if args.background:
             # local testing : do not use slurm
             indices = parse_slurm_array_indices(args.array)
             print("Run",len(indices),"out of",N,"simulations in the background")
             print(indices)
             for idx in indices:
-                cmd = ["python", __file__, "run", "--id", str(idx), "--background"] + runcmd
-                cmdstr = " ".join(cmd)
-                os.system(cmdstr)
+                os.system(cmdstr.format(id=idx)+' --background')
             return 
 
         # submit job to slurm (the default)
         print("Submit job array batch to SLURM")
-        batchcmd = ["sbatch", "--array", args.array, "job.sh"] + runcmd
+        jobfile = os.path.join(expcfg.expdir, "batch.sh")
+        logsdir = os.path.join(expcfg.expdir, "logs")
+        #os.system("rm -fr logs; mkdir -p logs") # clean logs
+        if not os.path.exists(logsdir):
+            os.makedirs(logsdir)
+
+        jobtxt = make_jobfile_slurm(cmdstr.format(id="$SLURM_ARRAY_TASK_ID"), 
+                queue="short", 
+                jobname=__file__, 
+                account="megarun",
+                output=os.path.join(logsdir, "log-%A-%a.out"),
+                error=os.path.join(logsdir, "log-%A-%a.err"),
+                )
+        
+        with open(jobfile, "w") as f:
+            f.write(jobtxt)
+
+        batchcmd = ["sbatch", "--array", args.array, jobfile]
         cmd = " ".join(batchcmd)
 
-        os.system("rm -fr logs; mkdir -p logs") # clean logs
         os.system("echo "+cmd)
-        os.system("echo "+cmd+" >> "+os.path.join(expcfg.expdir, "bacth.cmd"))
+        os.system("echo "+cmd+" >> "+os.path.join(expcfg.expdir, "batch.submit"))
         os.system("eval "+cmd)
 
     else:
