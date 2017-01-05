@@ -97,7 +97,7 @@ class ExperimentConfig(object):
         cmd = ["--params"]
         for p in prior["params"]:
             lo, up = p["range"]
-            cmd.append("{}=uniform?{},{}".format(p["name"],lo, up))
+            cmd.append("{}=uniform?{},{}".format(p["name"],lo, up-lo))
 
         cmd.append("--mode={}".format(prior["sampling"]))
         cmd.append("--size={}".format(self.get_size()))
