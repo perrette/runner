@@ -1,7 +1,7 @@
 {
     "experiments": [ 
         {
-            "name": "steadystate",
+            "name": "steadystate-100",
             "desc": "steady-state ensemble experiment",
 
             "default": {

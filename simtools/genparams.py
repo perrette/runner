@@ -5,7 +5,6 @@ from __future__ import print_function
 import argparse, os
 from argparse import RawDescriptionHelpFormatter
 from itertools import product
-#import numpy as np
 
 # parse parameters from command-line
 # ==================================

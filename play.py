@@ -8,7 +8,8 @@ import os
 import sys
 from collections import OrderedDict as odict
 
-from modelrun import autoset_params, maybe_transform_param, run_background, run_foreground
+from simtools.modelrun import autoset_params, maybe_transform_param, run_background, run_foreground
+from simtools.modelstate import read_model
 
 # directory structure
 glacierexe = "glacier"
@@ -104,7 +105,7 @@ class ExperimentConfig(object):
         if (os.path.dirname(self.paramsfile) == self.expdir 
                 and not os.path.exists(self.expdir)):
             os.makedirs(self.expdir) # make experiment directory is not present
-        cmd = "python scripts/genparams.py "+args
+        cmd = "python -m simtools.genparams "+args
         print(cmd)
         os.system(cmd)
         os.system("echo "+ cmd + " > "+log)
@@ -339,6 +340,10 @@ def main(argv=None):
         os.system("echo "+cmd)
         os.system("echo "+cmd+" >> "+os.path.join(expcfg.expdir, "batch.submit"))
         os.system("eval "+cmd)
+
+
+    elif args.cmd == "costfunction":
+        pass
 
     else:
         raise NotImplementedError("subcommand not yet implemented: "+args.cmd)

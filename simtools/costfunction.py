@@ -2,63 +2,18 @@
 """Compute cost-function for a model output
 """
 from __future__ import print_function, division
-import argparse
-from argparse import RawDescriptionHelpFormatter
 import os, sys, datetime, warnings
-
-#from genparams import str_pmatrix
 
 from itertools import product
 from collections import OrderedDict as odict
 
-import dimarray as da  # to write to netCDF
-import netCDF4 as nc
 import numpy as np
 import scipy.stats
 from scipy.stats import norm, lognorm, uniform, multivariate_normal
+import netCDF4 as nc
+import dimarray as da  # to write to netCDF
 
-
-def str_pmatrix(pnames, pmatrix, max_rows=10, include_index=True, index=None):
-    """Pretty-print parameters matrix like in pandas, but using only basic python functions
-    """
-    # determine columns width
-    col_width_default = 6
-    col_fmt = []
-    col_width = []
-    for p in pnames:
-        w = max(col_width_default, len(p))
-        col_width.append( w )
-        col_fmt.append( "{:>"+str(w)+"}" )
-
-    # also add index !
-    if include_index:
-        idx_w = len(str(len(pmatrix)-1)) # width of last line index
-        idx_fmt = "{:<"+str(idx_w)+"}" # aligned left
-        col_fmt.insert(0, idx_fmt)
-        pnames = [""]+list(pnames)
-        col_width = [idx_w] + col_width
-
-    line_fmt = " ".join(col_fmt)
-
-    header = line_fmt.format(*pnames)
-
-    # format all lines
-    lines = []
-    for i, pset in enumerate(pmatrix):
-        if include_index:
-            ix = i if index is None else index[i]
-            pset = [ix] + list(pset)
-        lines.append(line_fmt.format(*pset))
-
-    n = len(lines)
-    # full print
-    if n <= max_rows:
-        return "\n".join([header]+lines)
-
-    # partial print
-    else:
-        sep = line_fmt.format(*['.'*min(3,w) for w in col_width])  # separator '...'
-        return "\n".join([header]+lines[:max_rows//2]+[sep]+lines[-max_rows//2:])
+from genparams import str_pmatrix
 
 
 def parse_scipydist(string):
@@ -322,7 +277,8 @@ def nans(shp):
 
 
 def main():
-
+    import argparse
+    from argparse import RawDescriptionHelpFormatter
     parser = argparse.ArgumentParser(description=__doc__, 
                                      formatter_class=RawDescriptionHelpFormatter, 
                                      epilog='Example: python costfunction.py outdir -c name=H?c type=norm?500,100 -c name=U?0:200:1 type=rms sd=20% file=glacier.nc valid=pos > weights.txt'
