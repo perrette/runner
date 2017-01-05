@@ -283,6 +283,7 @@ def main(argv=None):
                         help="experiment name") # (default=%(default)s)")
     parent.add_argument("--expdir", 
                         help="experiment directory") # (default=%(default)s)")
+    parent.add_argument("--glacier", default="daugaard-jensen", help="glacier name")
     parent.add_argument("--size", type=int,
                         help="ensemble size (if different from config.json)")
 
@@ -294,7 +295,6 @@ def main(argv=None):
 
     # model run
     runpars = argparse.ArgumentParser(add_help=False)
-    runpars.add_argument("glacier", help="glacier name")
     runpars.add_argument("--args", help="pass on to glacier")
 
     subp = subparsers.add_parser("run", parents=[parent, runpars], 
@@ -317,12 +317,10 @@ def main(argv=None):
     # loglikelihood
     subp = subparsers.add_parser("loglik", parents=[parent], 
                                help="return log-likelihood for one run")
-    subp.add_argument("glacier", help="glacier name")
     subp.add_argument("--id", type=int, help='specify only on run')
 
     subp = subparsers.add_parser("loglikbatch", parents=[parent], 
                                help="return ensemble loglikelihood")
-    subp.add_argument("glacier", help="glacier name")
 
     args = parser.parse_args(argv)
 
@@ -378,7 +376,7 @@ def main(argv=None):
             # all params by default
             args.array = "{}-{}".format(0, N-1) 
 
-        cmd = ["python", __file__, "run", args.glacier, 
+        cmd = ["python", __file__, "run", "--glacier", args.glacier, 
                 "--experiment", args.experiment, 
                 "--expdir", expcfg.expdir,
                 "--id", "{id}"]
