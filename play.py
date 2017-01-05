@@ -8,14 +8,25 @@ import os
 import sys
 from collections import OrderedDict as odict
 
-from simtools.modelrun import autoset_params, maybe_transform_param, run_background, run_foreground
-from simtools.modelstate import read_model
+from glaciermodel import autoset_params, maybe_transform_param, read_model
+from simtools.modelrun import run_background, run_foreground
+
+from simtools.costfunction import Normal, RMS
+from glaciermodel import read_model
+import netCDF4 as nc
 
 # directory structure
 glacierexe = "glacier"
 glaciersdir = "glaciers"
 experimentsdir = "experiments"
 configfile = "config.json"
+
+
+def nans(N):
+    a = np.empty(N)
+    a.fill(np.nan)
+    return a
+
 
 class GlobalConfig(object):
     def __init__(self, data):
@@ -26,7 +37,7 @@ class GlobalConfig(object):
         import json
         return cls(json.load(open(file)))
 
-    def get_expconfig(self, name):
+    def get_expconfig(self, name, glacier, size=None, expdir=None):
         """Return ExperimentConfig class
         """
         expnames = [exp["name"] for exp in self.data["experiments"]]
@@ -35,18 +46,20 @@ class GlobalConfig(object):
         except:
             print("available experiments: ", expnames)
             raise
-        return ExperimentConfig(self.data["experiments"][i])
+        return ExperimentConfig(self.data["experiments"][i], glacier, size, expdir)
 
 
 class ExperimentConfig(object):
-    def __init__(self, data, expdir=None):
+    def __init__(self, data, glacier, size=None, expdir=None):
+        self.glacier = glacier
         self.data = data
+        self.size = size or data["prior"]["size"]
         if expdir is None:
-            expdir = os.path.join(experimentsdir, self.name)
+            expdir = os.path.join(experimentsdir, self.glacier, self.name, str(self.size))
         self.expdir = expdir
 
-    def glaciernc(self, glacier, runid=None):
-        return os.path.join(glaciersdir, glacier+".nc")
+    def glaciernc(self, runid=None):
+        return os.path.join(glaciersdir, self.glacier+".nc")
 
     def rundir(self, runid=None):
         if runid is not None:
@@ -75,7 +88,7 @@ class ExperimentConfig(object):
         return self.data["default"]
 
     def get_size(self):
-        return self.prior["size"]
+        return self.size
 
     def genparams_args(self, out=None):
         """Generate command-line arguments for genparams script from json dict
@@ -120,12 +133,12 @@ class ExperimentConfig(object):
         return pnames, pvalues
 
 
-    def glacierargs(self, glacier, runid=None, outdir=None, cmd_extra=""):
+    def glacierargs(self, runid=None, outdir=None, cmd_extra=""):
         """Return glacier executable and glacier arguments
         """
         # first create a dictionary of parameters
         params = odict()
-        netcdf = self.glaciernc(glacier, runid)
+        netcdf = self.glaciernc(runid)
         
         # default arguments
         for k in sorted(self.default.keys()):
@@ -156,6 +169,24 @@ class ExperimentConfig(object):
 
         cmdstr = " ".join(cmd) + (" " + cmd_extra if cmd_extra else "")
         return glacierexe, cmdstr
+
+
+    def get_constraints(self):
+        """Return a list of Constraints
+        """
+        ref = self.glaciernc() # reference file
+        constraints = []
+        for c in self.constraints:
+            obs = read_model(ref, c["name"])
+            assert np.isscalar(obs)
+            if 'std_as_fraction' in c:
+                std = obs*c['std_as_fraction']
+            else:
+                std = c['std']
+            constraints.append(
+                Normal(c["name"], obs, std, desc=c["desc"])
+            )
+        return constraints
 
 
 def parse_slurm_array_indices(a):
@@ -196,6 +227,49 @@ echo $cmd
 eval $cmd""".format(**locals())
 
 
+class Analysis(object):
+    """Compute log-likelood
+    """
+    def __init__(self, cfg):
+        self.cfg = cfg
+        self.constraints = cfg.get_constraints()
+        self.names = [c["name"] for c in cfg.constraints]
+
+    @staticmethod
+    def _loglik(ds, name, c, runid=None):
+        """Return log-likelihood for one constraint
+        """
+        state = read_model(ds, name)
+        loglik = c.logpdf(state)
+        return loglik
+
+    def loglik(self, runid=None, verbose=False):
+        """Return log-likelihood given all constraints
+        """
+        outdir = self.cfg.rundir(runid)
+        if not os.path.exists(os.path.join(outdir, 'simu_ok')):
+            if verbose: print("simulation failed:", runid)
+            return -np.inf
+
+        loglik = 0
+        with nc.Dataset(os.path.join(outdir,'restart.nc')) as ds:
+            for name, c in zip(self.names, self.constraints):
+                loglik += self._loglik(ds, name, c, runid)
+        return loglik
+
+    def loglik_ensemble(self, indices=None):
+        if indices is None:
+            N = self.cfg.get_size()
+            indices = np.arange(N)
+
+        loglik = np.empty(indices.size)
+        loglik.fill(-np.inf)
+
+        for i in indices:
+            loglik[i] = self.loglik(i)
+        return loglik
+
+
 def main(argv=None):
     import argparse
 
@@ -205,10 +279,12 @@ def main(argv=None):
     parent = argparse.ArgumentParser(add_help=False)
     parent.add_argument("--config", default=configfile, 
                         help="experiment config (default=%(default)s)")
-    parent.add_argument("--experiment", required=True, #default="steadystate", 
+    parent.add_argument("--experiment", default="steadystate", #default="steadystate", 
                         help="experiment name") # (default=%(default)s)")
     parent.add_argument("--expdir", 
                         help="experiment directory") # (default=%(default)s)")
+    parent.add_argument("--size", type=int,
+                        help="ensemble size (if different from config.json)")
 
     subparsers.add_parser('genparams', parents=[parent], 
                                help="generate ensemble")
@@ -238,16 +314,20 @@ def main(argv=None):
     subp.add_argument("--job-script", default="job.sh", 
             help="job script to run the model with slurm --array (default=%(default)s)")
 
-    # cost function
-    subp = subparsers.add_parser("costfunction", parents=[parent], 
-                               help="extract cost function")
+    # loglikelihood
+    subp = subparsers.add_parser("loglik", parents=[parent], 
+                               help="return log-likelihood for one run")
+    subp.add_argument("glacier", help="glacier name")
+    subp.add_argument("--id", type=int, help='specify only on run')
+
+    subp = subparsers.add_parser("loglikbatch", parents=[parent], 
+                               help="return ensemble loglikelihood")
+    subp.add_argument("glacier", help="glacier name")
 
     args = parser.parse_args(argv)
 
     cfg = GlobalConfig.read(args.config)
-    expcfg = cfg.get_expconfig(args.experiment)
-    if args.expdir:
-        expcfg.expdir = args.expdir
+    expcfg = cfg.get_expconfig(args.experiment, args.glacier, args.size, args.expdir)
 
     if args.cmd == "genparams":
         # generate parameters if not present
@@ -262,7 +342,7 @@ def main(argv=None):
     elif args.cmd == "run":
 
         outdir = expcfg.rundir(args.id)
-        exe, cmdstr = expcfg.glacierargs(args.glacier, runid=args.id, cmd_extra=args.args, outdir=outdir)
+        exe, cmdstr = expcfg.glacierargs(runid=args.id, cmd_extra=args.args, outdir=outdir)
 
         print(exe, cmdstr)
         
@@ -342,8 +422,23 @@ def main(argv=None):
         os.system("eval "+cmd)
 
 
-    elif args.cmd == "costfunction":
-        pass
+    elif args.cmd == "loglik":
+        # for checking: one simulation
+        print("loglik of simu:", expcfg.rundir(args.id))
+        ana = Analysis(expcfg)
+        loglik = ana.loglik(args.id)
+        print(loglik)
+        sys.exit(0)
+
+
+    elif args.cmd == "loglikbatch":
+        # full ensemble + write to file
+        print("loglik of ensemble:", expcfg.expdir)
+        ana = Analysis(expcfg)
+        loglik = ana.loglik_ensemble()
+        loglikfile = os.path.join(expcfg.expdir, "loglik.txt")
+        print("write loglik to",loglikfile)
+        np.savetxt(loglikfile, loglik)
 
     else:
         raise NotImplementedError("subcommand not yet implemented: "+args.cmd)

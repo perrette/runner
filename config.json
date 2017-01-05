@@ -1,7 +1,7 @@
 {
     "experiments": [ 
         {
-            "name": "steadystate-100",
+            "name": "steadystate",
             "desc": "steady-state ensemble experiment",
 
             "default": {
@@ -30,7 +30,7 @@
             },
 
             "prior": {
-                "size" : 100,
+                "size" : 1000,
                 "sampling" : "lhs",
                 "seed" : 0,
                 "params": [
