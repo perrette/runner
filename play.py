@@ -10,6 +10,7 @@ from collections import OrderedDict as odict
 
 from glaciermodel import glacierargs, read_model
 from simtools.modelrun import run_background, run_foreground
+from simtools.resample import read_params
 
 from simtools.costfunction import Normal, RMS
 import netCDF4 as nc
@@ -33,7 +34,7 @@ class GlobalConfig(object):
         import json
         return cls(json.load(open(file)))
 
-    def get_expconfig(self, name, glacier, size=None, expdir=None):
+    def get_expconfig(self, name, glacier, expdir=None):
         """Return ExperimentConfig class
         """
         expnames = [exp["name"] for exp in self.data["experiments"]]
@@ -42,16 +43,15 @@ class GlobalConfig(object):
         except:
             print("available experiments: ", expnames)
             raise
-        return ExperimentConfig(self.data["experiments"][i], glacier, size, expdir)
+        return ExperimentConfig(self.data["experiments"][i], glacier, expdir)
 
 
 class ExperimentConfig(object):
-    def __init__(self, data, glacier, size=None, expdir=None):
+    def __init__(self, data, glacier, expdir=None):
         self.glacier = glacier
         self.data = data
-        self.size = size or data["prior"]["size"]
         if expdir is None:
-            expdir = os.path.join(experimentsdir, self.glacier, self.name, str(self.size))
+            expdir = os.path.join(experimentsdir, self.glacier, self.name)
         self.expdir = expdir
 
     def glaciernc(self, runid=None):
@@ -86,9 +86,11 @@ class ExperimentConfig(object):
         return self.data["default"]
 
     def get_size(self):
-        return self.size
+        pnames, pmatrix = read_params(self.paramsfile)
+        size = len(pmatrix)
+        return size
 
-    def genparams_args(self, out=None):
+    def genparams_args(self, out=None, size=None):
         """Generate command-line arguments for genparams script from json dict
         """
         prior = self.prior
@@ -98,7 +100,7 @@ class ExperimentConfig(object):
             cmd.append("{}=uniform?{},{}".format(p["name"],lo, up-lo))
 
         cmd.append("--mode={}".format(prior["sampling"]))
-        cmd.append("--size={}".format(self.get_size()))
+        cmd.append("--size={}".format(size or self.prior["size"]))
         if prior["seed"] is not None:
             cmd.append("--seed={}".format(prior["seed"]))
 
@@ -107,12 +109,12 @@ class ExperimentConfig(object):
         return " ".join(cmd)
 
     
-    def genparams(self, log=None):
+    def genparams(self, log=None, size=None):
         """Return prior parameters
         """
         if log is None:
             log = os.path.join(self.expdir, "params.cmd")
-        args = self.genparams_args(self.paramsfile)
+        args = self.genparams_args(self.paramsfile, size=size)
         if (os.path.dirname(self.paramsfile) == self.expdir 
                 and not os.path.exists(self.expdir)):
             os.makedirs(self.expdir) # make experiment directory is not present
@@ -273,13 +275,13 @@ def main(argv=None):
                         help="experiment name") # (default=%(default)s)")
     parent.add_argument("--expdir", help="specifiy experiment directory")
     parent.add_argument("--glacier", default="daugaard-jensen", help="glacier name")
-    parent.add_argument("--size", type=int,
-                        help="ensemble size (if different from config.json)")
 
     subparsers.add_parser('genparams', parents=[parent], 
                                help="generate ensemble")
     subp = subparsers.add_parser('get', parents=[parent], 
                                help="get config field")
+    subp.add_argument("--size", type=int,
+                        help="ensemble size (if different from config.json)")
     subp.add_argument('field')
 
     # model run
@@ -314,12 +316,12 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     cfg = GlobalConfig.read(args.config)
-    expcfg = cfg.get_expconfig(args.experiment, args.glacier, args.size, args.expdir)
+    expcfg = cfg.get_expconfig(args.experiment, args.glacier, args.expdir)
 
     if args.cmd == "genparams":
         # generate parameters if not present
         if not os.path.exists(expcfg.paramsfile):
-            expcfg.genparams()
+            expcfg.genparams(size=args.size)
         else:
             print(expcfg.paramsfile, "already exists, do nothing")
 
@@ -351,7 +353,6 @@ def main(argv=None):
         # check out ensemble size
         pnames, pmatrix = expcfg.getparams()
         N = len(pmatrix)
-        assert N == expcfg.get_size(), "mistmatch between experiment specs and "+expcfg.paramsfile
 
         # batch command
         if args.array is None:
