@@ -1,16 +1,14 @@
 #!/bin/bash
 # do the work !
 
-# global variables (settings)
-ROOT=experiments_6
-
 # experiment specific settings
 glacier=daugaard-jensen
 exp=steadystate
+size=100
 
 # functions
 # ---------
-baseargs="--experiment $exp --expdir $ROOT/$exp"
+baseargs="--glacier $glacier --experiment $exp --size $size"
 
 # generate parameter ensemble
 # ===========================
@@ -24,12 +22,12 @@ fi
 
 # run default
 # ===========
-cmd="python play.py run $glacier $baseargs --background"
+cmd="python play.py run $baseargs --background"
 echo $cmd
 eval $cmd
 
 # run ensemble
 # ============
-cmd="python play.py runbatch $glacier $baseargs"
+cmd="python play.py runbatch $baseargs"
 echo $cmd
 eval $cmd

@@ -8,19 +8,15 @@ import os
 import sys
 from collections import OrderedDict as odict
 
-from glaciermodel import autoset_params, maybe_transform_param, read_model
+from glaciermodel import glacierargs, read_model
 from simtools.modelrun import run_background, run_foreground
 
 from simtools.costfunction import Normal, RMS
-from glaciermodel import read_model
 import netCDF4 as nc
 
-# directory structure
-glacierexe = "glacier"
+# default directory structure
 glaciersdir = "glaciers"
 experimentsdir = "experiments"
-configfile = "config.json"
-
 
 def nans(N):
     a = np.empty(N)
@@ -33,7 +29,7 @@ class GlobalConfig(object):
         self.data = data
 
     @classmethod
-    def read(cls, file=configfile):
+    def read(cls, file):
         import json
         return cls(json.load(open(file)))
 
@@ -63,7 +59,9 @@ class ExperimentConfig(object):
 
     def rundir(self, runid=None):
         if runid is not None:
-            return os.path.join(self.expdir, "{:0>5}".format(runid))
+            runidstr = "{:0>4}".format(runid)
+            rundirs = [runidstr[:-2], runidstr[-2:]] # split it (no more than 100)
+            return os.path.join(self.expdir, *rundirs)
         else:
             return os.path.join(self.expdir, "default")
 
@@ -136,19 +134,10 @@ class ExperimentConfig(object):
     def glacierargs(self, runid=None, outdir=None, cmd_extra=""):
         """Return glacier executable and glacier arguments
         """
-        # first create a dictionary of parameters
-        params = odict()
         netcdf = self.glaciernc(runid)
-        
-        # default arguments
-        for k in sorted(self.default.keys()):
-            params[k] = self.default[k]
 
-        # data-dependent parameters
-        tauc_max, uq, h0 = autoset_params(netcdf)
-        params["dynamics%tauc_max"] = tauc_max
-        params["dynamics%Uq"] = uq
-        params["dynamics%H0"] = h0
+        # create a dictionary of parameters
+        params = self.default.copy()
 
         # update arguments from file
         if runid is not None:
@@ -160,14 +149,14 @@ class ExperimentConfig(object):
         if outdir is None:
             outdir = self.rundir(runid=runid)
 
-        # make command line argument for glacier executable
-        cmd = ["--in_file", netcdf, "--out_dir",outdir]
-        for k in params:
-            name, value = maybe_transform_param(k, params[k])
-            cmd.append("--"+name)
-            cmd.append(str(value))
+        if cmd_extra:
+            args = cmd_extra.split()
+        else:
+            args = []
 
-        cmdstr = " ".join(cmd) + (" " + cmd_extra if cmd_extra else "")
+        cmd = glacierargs(netcdf, outdir, *args, **params)
+        glacierexe = cmd[0]
+        cmdstr = " ".join(cmd[1:])
         return glacierexe, cmdstr
 
 
@@ -277,12 +266,12 @@ def main(argv=None):
     subparsers = parser.add_subparsers(dest='cmd')
 
     parent = argparse.ArgumentParser(add_help=False)
-    parent.add_argument("--config", default=configfile, 
+    grp = parent.add_argument_group("root directory structure")
+    parent.add_argument("--config", default="config.json", 
                         help="experiment config (default=%(default)s)")
     parent.add_argument("--experiment", default="steadystate", #default="steadystate", 
                         help="experiment name") # (default=%(default)s)")
-    parent.add_argument("--expdir", 
-                        help="experiment directory") # (default=%(default)s)")
+    parent.add_argument("--expdir", help="specifiy experiment directory")
     parent.add_argument("--glacier", default="daugaard-jensen", help="glacier name")
     parent.add_argument("--size", type=int,
                         help="ensemble size (if different from config.json)")
@@ -356,13 +345,6 @@ def main(argv=None):
 
             else:
                 ret = run_foreground(exe, cmd_args=cmdstr, logfile=logfile)
-                # check return results
-                if ret != 0:
-                    raise RuntimeError("Error when running the model")
-                if not os.path.exists("simu_ok"):
-                    raise RuntimeError("simu_ok not written: error when running the model")
-
-                print("Simulation successful")
 
     elif args.cmd == "runbatch":
 

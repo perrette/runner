@@ -4,6 +4,7 @@ import os, sys
 import json, warnings
 import netCDF4 as nc
 import numpy as np
+from collections import OrderedDict as odict
 
 GLACIER = "glacier"
 SEC_IN_YEAR = 3600*24*365.25
@@ -31,6 +32,40 @@ def autoset_params(netcdf):
 
     ds.close()
     return tauc_max, uq, h0
+
+
+def glacierargs(netcdf, outdir, *args, **kwargs):
+    """Return glacier command (to be executed from the shell)
+
+    Parameters
+    ----------
+    netcdf: input glacier netcdf
+    outdir: output directory
+    *args: variable list of parameters
+    **kwargs: keyword parameters
+
+    Returns
+    -------
+    cmd : list of parameters starting with executable (to obtain a string: " ".join(cmd))
+    """
+    # data-dependent parameters
+    params = odict()
+    tauc_max, uq, h0 = autoset_params(netcdf)
+    params["dynamics%tauc_max"] = tauc_max
+    params["dynamics%Uq"] = uq
+    params["dynamics%H0"] = h0
+    for k in sorted(kwargs.keys()):
+        params[k] = kwargs[k]
+
+    # make command line argument for glacier executable
+    cmd = ["--in_file", netcdf, "--out_dir", outdir] + [str(a) for a in args]
+    for k in params:
+        name, value = maybe_transform_param(k, params[k])
+        cmd.append("--"+name)
+        cmd.append(str(value))
+
+    #cmdstr = " ".join(cmd) + (" " + cmd_extra if cmd_extra else "")
+    return [GLACIER] + cmd
 
 
 # analyze output, define custom variables
