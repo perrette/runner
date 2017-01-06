@@ -290,7 +290,7 @@ def main():
     parser.add_argument('-w','--weights-file', required=True)
     parser.add_argument('--log', action='store_true', help='weights are provided as log-likelihood?')
 
-    parser.add_argument('--resampling', choices=['residual', 'multinomial'], default=SAMPLING_METHOD, help='resampling method')
+    parser.add_argument('--resampling', choices=['residual', 'multinomial'], default=SAMPLING_METHOD, help='resampling method (default: %(default)s)')
     parser.add_argument('--include-index', action='store_true', help='include index in the output matrix')
     parser.add_argument('-N', '--size', help="New sample size (default: same size as before)", type=int)
     parser.add_argument('--seed', type=int, help="random seed, for reproducible results (default to None)")

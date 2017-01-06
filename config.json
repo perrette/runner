@@ -5,8 +5,6 @@
             "desc": "steady-state ensemble experiment",
 
             "default": {
-                "geometry%mode":"from_file",
-
                 "upstream_U" : "dUdx",
                 "dUdx0": 0,
                 "upstream_H": "H",

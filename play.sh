@@ -10,9 +10,6 @@ exp=steadystate
 
 # functions
 # ---------
-
-trim () { while read -r line; do echo "$line"; done; }
-
 baseargs="--experiment $exp --expdir $ROOT/$exp"
 
 # generate parameter ensemble
