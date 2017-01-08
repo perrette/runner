@@ -166,6 +166,87 @@ class ExperimentConfig(object):
         return Analysis(self, constraintscfg, obsnc)
 
 
+    def run(self, runid=None, args=None, dry_run=None, background=None):
+
+        outdir = self.rundir(runid)
+        exe, cmdstr = self.glacierargs(runid=runid, cmd_extra=args, outdir=outdir)
+        print(exe, cmdstr)
+        
+        if not dry_run:
+
+            if not os.path.exists(outdir):
+                os.makedirs(outdir)
+
+            logfile = os.path.join(outdir, "glacier.log")
+
+            if args.background:
+                run_background(exe, cmd_args=cmdstr, logfile=logfile)
+
+            else:
+                ret = run_foreground(exe, cmd_args=cmdstr, logfile=logfile)
+
+
+    def runbatch(self, array=None, background=None, args=None):
+        """ Run ensemble
+        """
+        # check out ensemble size
+        pnames, pmatrix = self.getparams()
+        N = len(pmatrix)
+
+        # batch command
+        if array is None:
+            # all params by default
+            array = "{}-{}".format(0, N-1) 
+
+        cmd = ["python", __file__, "run", "--glacier", self.glacier, 
+                "--experiment", self.name, 
+                "--expdir", self.expdir,
+                "--id", "{id}"]
+
+        if args:
+            cmd.append(args)
+        cmdstr = " ".join(cmd)
+
+        if background:
+            # local testing : do not use slurm
+            indices = parse_slurm_array_indices(array)
+            print("Run",len(indices),"out of",N,"simulations in the background")
+            print(indices)
+            for idx in indices:
+                os.system(cmdstr.format(id=idx)+' --background')
+            return 
+
+        # submit job to slurm (the default)
+        print("Submit job array batch to SLURM")
+        jobfile = os.path.join(self.expdir, "batch.sh")
+        logsdir = os.path.join(self.expdir, "logs")
+        #os.system("rm -fr logs; mkdir -p logs") # clean logs
+        if not os.path.exists(logsdir):
+            os.makedirs(logsdir)
+
+        jobtxt = make_jobfile_slurm(cmdstr.format(id="$SLURM_ARRAY_TASK_ID"), 
+                queue="short", 
+                jobname=__file__, 
+                account="megarun",
+                output=os.path.join(logsdir, "log-%A-%a.out"),
+                error=os.path.join(logsdir, "log-%A-%a.err"),
+                )
+        
+        with open(jobfile, "w") as f:
+            f.write(jobtxt)
+
+        batchcmd = ["sbatch", "--array", array, jobfile]
+        cmd = " ".join(batchcmd)
+
+        os.system("echo "+cmd)
+        os.system("echo "+cmd+" >> "+os.path.join(self.expdir, "batch.submit"))
+        os.system("eval "+cmd)
+
+
+    def runiis(self):
+        raise NotImplementedError("to be implemented!")
+
+
 class Analysis(object):
     """Compute log-likelood
     """
@@ -406,6 +487,15 @@ def main(argv=None):
     subp.add_argument('--anadir', help='directory to write loglik.txt and state.txt, if different from expdir')
     subp.add_argument('--constraints', type=decode_json, help='json file to read the constraints from, if different from config.json')
 
+
+    # perform IIS optimization
+    subp = subparsers.add_parser("runiis", parents=[parent], 
+                               help="run a number of iterations following IIS methodology")
+    #subp.add_argument("-n", "--size", type=int,
+    #                  help="sample size, if different from original experiment")
+    #subp.add_argument("--oldexpdir", 
+    #                  help="old experiment directory, from which to start from if no params.txt is present")
+
     args = parser.parse_args(argv)
 
     cfg = GlobalConfig.read(args.config)
@@ -432,79 +522,10 @@ def main(argv=None):
         print(getattr(expcfg, args.field))
 
     elif args.cmd == "run":
-
-        outdir = expcfg.rundir(args.id)
-        exe, cmdstr = expcfg.glacierargs(runid=args.id, cmd_extra=args.args, outdir=outdir)
-
-        print(exe, cmdstr)
-        
-        if not args.dry_run:
-
-            if not os.path.exists(outdir):
-                os.makedirs(outdir)
-
-            logfile = os.path.join(outdir, "glacier.log")
-
-            if args.background:
-                run_background(exe, cmd_args=cmdstr, logfile=logfile)
-
-            else:
-                ret = run_foreground(exe, cmd_args=cmdstr, logfile=logfile)
+        expcfg.run(args.id, args.args, args.dry_run, args.background)
 
     elif args.cmd == "runbatch":
-
-        # check out ensemble size
-        pnames, pmatrix = expcfg.getparams()
-        N = len(pmatrix)
-
-        # batch command
-        if args.array is None:
-            # all params by default
-            args.array = "{}-{}".format(0, N-1) 
-
-        cmd = ["python", __file__, "run", "--glacier", args.glacier, 
-                "--experiment", args.experiment, 
-                "--expdir", expcfg.expdir,
-                "--id", "{id}"]
-        if args.args:
-            cmd.append(args.args)
-        cmdstr = " ".join(cmd)
-
-        if args.background:
-            # local testing : do not use slurm
-            indices = parse_slurm_array_indices(args.array)
-            print("Run",len(indices),"out of",N,"simulations in the background")
-            print(indices)
-            for idx in indices:
-                os.system(cmdstr.format(id=idx)+' --background')
-            return 
-
-        # submit job to slurm (the default)
-        print("Submit job array batch to SLURM")
-        jobfile = os.path.join(expcfg.expdir, "batch.sh")
-        logsdir = os.path.join(expcfg.expdir, "logs")
-        #os.system("rm -fr logs; mkdir -p logs") # clean logs
-        if not os.path.exists(logsdir):
-            os.makedirs(logsdir)
-
-        jobtxt = make_jobfile_slurm(cmdstr.format(id="$SLURM_ARRAY_TASK_ID"), 
-                queue="short", 
-                jobname=__file__, 
-                account="megarun",
-                output=os.path.join(logsdir, "log-%A-%a.out"),
-                error=os.path.join(logsdir, "log-%A-%a.err"),
-                )
-        
-        with open(jobfile, "w") as f:
-            f.write(jobtxt)
-
-        batchcmd = ["sbatch", "--array", args.array, jobfile]
-        cmd = " ".join(batchcmd)
-
-        os.system("echo "+cmd)
-        os.system("echo "+cmd+" >> "+os.path.join(expcfg.expdir, "batch.submit"))
-        os.system("eval "+cmd)
-
+        expcfg.runbatch(args.array, args.background, args.args)
 
     elif args.cmd == "loglik":
         # for checking: one simulation
@@ -519,6 +540,10 @@ def main(argv=None):
         # loglikelihood
         ana = expcfg.get_analysis(constraintscfg=args.constraints)
         ana.write_analysis(args.anadir)
+
+
+    elif args.cmd == "runiis":
+        expcfg.runiis()
 
     else:
         raise NotImplementedError("subcommand not yet implemented: "+args.cmd)
