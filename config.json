@@ -69,7 +69,7 @@
                 {
                     "name": "F?gl",
                     "std_as_fraction": 0.1,
-                    "desc": "flux through grounding line [m^3/a]"
+                    "desc": "flux through grounding line [10^9 m^3/a]"
                 },
                 {
                     "name": "H?gl",
@@ -84,7 +84,7 @@
                 {
                     "name": "V",
                     "std_as_fraction": 0.1,
-                    "desc": "glacier volume [m^3]"
+                    "desc": "glacier volume [10^9 m^3]"
                 },
                 {
                     "name": "smb_mean",

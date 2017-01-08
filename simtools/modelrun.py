@@ -47,3 +47,43 @@ def run_foreground(executable, cmd_args=(), ini_dir='.', logfile=None):
 
     code = os.system (cmd)
     return code
+
+
+def parse_slurm_array_indices(a):
+    indices = []
+    for i in a.split(","):
+        if '-' in i:
+            if ':' in i:
+                i, step = i.split(':')
+                step = int(step)
+            else:
+                step = 1
+            start, stop = i.split('-')
+            start = int(start)
+            stop = int(stop) + 1  # last index is ignored in python
+            indices.extend(range(start, stop, step))
+        else:
+            indices.append(int(i))
+    return indices
+
+
+def make_jobfile_slurm(command, queue, jobname, account, output, error):
+    return """#!/bin/bash
+
+#SBATCH --qos={queue}
+#SBATCH --job-name={jobname}
+#SBATCH --account={account}
+#SBATCH --output={output}
+#SBATCH --error={error}
+
+echo
+echo SLURM JOB
+echo ---------
+echo "SLURM_JOBID $SLURM_JOBID"
+echo "SLURM_ARRAY_JOB_ID $SLURM_ARRAY_JOB_ID"
+echo "SLURM_ARRAY_TASK_ID $SLURM_ARRAY_TASK_ID"
+cmd="{command}"
+echo $cmd
+eval $cmd""".format(**locals())
+
+

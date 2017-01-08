@@ -9,7 +9,8 @@ import sys
 from collections import OrderedDict as odict
 
 from glaciermodel import glacierargs, read_model
-from simtools.modelrun import run_background, run_foreground
+from simtools.modelrun import (run_background, run_foreground, 
+                               make_jobfile_slurm, parse_slurm_array_indices)
 from simtools.resample import read_params
 
 from simtools.costfunction import Normal, RMS
@@ -161,14 +162,29 @@ class ExperimentConfig(object):
         cmdstr = " ".join(cmd[1:])
         return glacierexe, cmdstr
 
+    def get_analysis(self, constraintscfg=None, obsnc=None):
+        return Analysis(self, constraintscfg, obsnc)
 
-    def get_constraints(self):
-        """Return a list of Constraints
+
+class Analysis(object):
+    """Compute log-likelood
+    """
+    def __init__(self, cfg, constraintscfg=None, obsnc=None):
+        """Initialize from config, optionally using different constraints
         """
-        ref = self.glaciernc() # reference file
+        self.cfg = cfg   # experiment config
+        self.obsnc = obsnc or cfg.glaciernc()
+        constraintscfg = constraintscfg or cfg.constraints
+        self.constraints = self._get_constraints(constraintscfg, self.obsnc)
+        self.names = [c["name"] for c in constraintscfg]
+
+    @staticmethod
+    def _get_constraints(constraintscfg, obsnc):
+        """Return a list of Constraints based on config
+        """
         constraints = []
-        for c in self.constraints:
-            obs = read_model(ref, c["name"])
+        for c in constraintscfg:
+            obs = read_model(obsnc, c["name"])
             assert np.isscalar(obs)
             if 'std_as_fraction' in c:
                 std = obs*c['std_as_fraction']
@@ -179,53 +195,6 @@ class ExperimentConfig(object):
             )
         return constraints
 
-
-def parse_slurm_array_indices(a):
-    indices = []
-    for i in a.split(","):
-        if '-' in i:
-            if ':' in i:
-                i, step = i.split(':')
-                step = int(step)
-            else:
-                step = 1
-            start, stop = i.split('-')
-            start = int(start)
-            stop = int(stop) + 1  # last index is ignored in python
-            indices.extend(range(start, stop, step))
-        else:
-            indices.append(int(i))
-    return indices
-
-
-def make_jobfile_slurm(command, queue, jobname, account, output, error):
-    return """#!/bin/bash
-
-#SBATCH --qos={queue}
-#SBATCH --job-name={jobname}
-#SBATCH --account={account}
-#SBATCH --output={output}
-#SBATCH --error={error}
-
-echo
-echo SLURM JOB
-echo ---------
-echo "SLURM_JOBID $SLURM_JOBID"
-echo "SLURM_ARRAY_JOB_ID $SLURM_ARRAY_JOB_ID"
-echo "SLURM_ARRAY_TASK_ID $SLURM_ARRAY_TASK_ID"
-cmd="{command}"
-echo $cmd
-eval $cmd""".format(**locals())
-
-
-class Analysis(object):
-    """Compute log-likelood
-    """
-    def __init__(self, cfg):
-        self.cfg = cfg
-        self.constraints = cfg.get_constraints()
-        self.names = [c["name"] for c in cfg.constraints]
-
     @staticmethod
     def _loglik(ds, name, c, runid=None):
         """Return log-likelihood for one constraint
@@ -234,16 +203,18 @@ class Analysis(object):
         loglik = c.logpdf(state)
         return loglik
 
-    def loglik(self, runid=None, verbose=False):
+    def loglik(self, runid=None, netcdf=None, verbose=False):
         """Return log-likelihood given all constraints
         """
-        outdir = self.cfg.rundir(runid)
-        if not os.path.exists(os.path.join(outdir, 'simu_ok')):
-            if verbose: print("simulation failed:", runid)
-            return -np.inf
+        if netcdf is None:
+            outdir = self.cfg.rundir(runid)
+            if not os.path.exists(os.path.join(outdir, 'simu_ok')):
+                if verbose: print("simulation failed:", runid)
+                return -np.inf
+            netcdf = os.path.join(outdir,'restart.nc')
 
-        loglik = 0
-        with nc.Dataset(os.path.join(outdir,'restart.nc')) as ds:
+        with nc.Dataset(netcdf) as ds:
+            loglik = 0
             for name, c in zip(self.names, self.constraints):
                 loglik += self._loglik(ds, name, c, runid)
         return loglik
@@ -259,6 +230,112 @@ class Analysis(object):
         for i in indices:
             loglik[i] = self.loglik(i)
         return loglik
+
+    def state(self, runid=None, netcdf=None):
+        """Return model state as a list of states
+        """
+        if not netcdf:
+            outdir = self.cfg.rundir(runid)
+            if not os.path.exists(os.path.join(outdir, 'simu_ok')):
+                raise ValueError("Simulation failed: "+str(runid) 
+                                 if runid is not None else os.path.join(outdir))
+
+            netcdf = os.path.join(outdir,'restart.nc')
+
+        with nc.Dataset(netcdf) as ds:
+            state = []
+            for name in self.names:
+                state.append( read_model(ds, name) )
+        return state
+
+    def state_ensemble(self, indices=None):
+        """Return a diagnostic matrix of ensemble state, scalar variables only
+        """
+        if indices is None:
+            N = self.cfg.get_size()
+            indices = np.arange(N)
+
+        state = np.empty((indices.size, len(self.constraints)))
+        state.fill(np.nan)
+
+        for i in indices:
+            try:
+                statevars = self.state(i)
+            except:
+                continue
+            for j, stat in enumerate(statevars):
+                if np.ndim(stat) == 0:   # scalar only
+                    state[i, j] = stat
+        return state
+
+
+    def write_analysis(self, anadir=None):
+        """Perform analysis, given constraints
+
+        + loglik.txt
+        + state.txt
+        """
+        print("loglik of ensemble:", self.cfg.expdir)
+        if anadir is not None:
+            print("analysis written to",anadir)
+        anadir = anadir or self.cfg.expdir
+        if not os.path.exists(anadir):
+            os.makedirs(anadir)
+        loglik = self.loglik_ensemble()
+        loglikfile = os.path.join(anadir, "loglik.txt")
+        print("write loglik to",loglikfile)
+        np.savetxt(loglikfile, loglik)
+
+        # constraints file
+        constraintsfile = os.path.join(anadir, "constraints.json")
+        print("copy constraints cfg to",constraintsfile)
+        with open(constraintsfile, "w") as f:
+            json.dump(self.cfg.data["constraints"], f, indent=2)
+
+        # state data
+        print("state of ensemble:", anadir)
+        # ensemble state
+        header = ", ".join(self.names)
+        state = self.state_ensemble()
+        footer = "      "+", ".join(self.names)
+        fmt = "{:.2f}"
+        if os.path.exists(self.obsnc):
+            stateobs = [v if np.ndim(v) == 0 else np.nan 
+                        for v in self.state(netcdf=self.obsnc)]
+            footer += "\nobs: "+", ".join(fmt.format(v) for v in stateobs)
+        else:
+            print("warning: obs file", self.obs, "not found")
+        try:
+            statedef = [v if np.ndim(v) == 0 else np.nan for v in self.state()]
+            footer += "\ndef: "+", ".join(fmt.format(v) for v in statedef)
+        except Exception as error:
+            print("warning: default run:", error.message)
+
+        # most likely
+        i = np.argmax(loglik)
+        footer += "\nbest: "+", ".join([fmt.format(v) for v in state[i]])
+        state2 = state[np.any(~np.isnan(state), axis=1)] # no nans
+        footer += "\n -- "
+        footer += "\nmean: "+", ".join([fmt.format(v) for v in np.nanmean(state,axis=0)])
+        footer += "\nstd: "+", ".join([fmt.format(v) for v in np.nanstd(state,axis=0)])
+        footer += "\n -- "
+        footer += "\nmin: "+", ".join([fmt.format(v) for v in np.nanmin(state,axis=0)])
+        footer += "\np05: "+", ".join([fmt.format(v) for v in np.percentile(state2,5,axis=0)])
+        footer += "\nmed: "+", ".join([fmt.format(v) for v in np.median(state2,axis=0)])
+        footer += "\np95: "+", ".join([fmt.format(v) for v in np.percentile(state2,95,axis=0)])
+        footer += "\nmax: "+", ".join([fmt.format(v) for v in np.nanmax(state,axis=0)])
+        footer += "\n -- "
+
+        statefile = os.path.join(anadir, "state.txt")
+        print("write state to",statefile)
+        np.savetxt(statefile, state, header=header, footer=footer, fmt="%.2f")
+
+
+def decode_json(strarg):
+    "to use as type in argparser"
+    with open(strarg) as f:
+        data = json.load(f)
+    return data
 
 
 def main(argv=None):
@@ -276,12 +353,25 @@ def main(argv=None):
     parent.add_argument("--expdir", help="specifiy experiment directory")
     parent.add_argument("--glacier", default="daugaard-jensen", help="glacier name")
 
-    subparsers.add_parser('genparams', parents=[parent], 
+    # sample prior params
+    subp = subparsers.add_parser('genparams', parents=[parent], 
                                help="generate ensemble")
-    subp = subparsers.add_parser('get', parents=[parent], 
-                               help="get config field")
     subp.add_argument("--size", type=int,
                         help="ensemble size (if different from config.json)")
+
+    # resample params
+    subp = subparsers.add_parser('resample', parents=[parent], 
+                               help="generate ensemble")
+    subp.add_argument("--size", type=int,
+                        help="ensemble size (if different from previous)")
+    subp.add_argument("--epsilon", default=0.05, type=float, 
+            help="loglik weight + jitter")
+    subp.add_argument("--oldexpdir", required=True, 
+            help="old experiment directory")
+
+    # get expconfig fields
+    subp = subparsers.add_parser('get', parents=[parent], 
+                               help="get config field")
     subp.add_argument('field')
 
     # model run
@@ -305,13 +395,16 @@ def main(argv=None):
     subp.add_argument("--job-script", default="job.sh", 
             help="job script to run the model with slurm --array (default=%(default)s)")
 
-    # loglikelihood
+    # loglikelihood for one run
     subp = subparsers.add_parser("loglik", parents=[parent], 
                                help="return log-likelihood for one run")
     subp.add_argument("--id", type=int, help='specify only on run')
 
-    subp = subparsers.add_parser("loglikbatch", parents=[parent], 
-                               help="return ensemble loglikelihood")
+    # analysis for the full ensemble: state, loglik, etc...
+    subp = subparsers.add_parser("analysis", parents=[parent], 
+                               help="write state and log-likelihood for the ensemble")
+    subp.add_argument('--anadir', help='directory to write loglik.txt and state.txt, if different from expdir')
+    subp.add_argument('--constraints', type=decode_json, help='json file to read the constraints from, if different from config.json')
 
     args = parser.parse_args(argv)
 
@@ -324,6 +417,16 @@ def main(argv=None):
             expcfg.genparams(size=args.size)
         else:
             print(expcfg.paramsfile, "already exists, do nothing")
+
+    elif args.cmd == "resample":
+
+        if not os.path.exists(args.expdir):
+            os.makedirs(args.expdir)
+
+        cmd = "./scripts/resample -w {oldexpdir}/loglik.txt --log --epsilon {expsilon} --jitter -p {oldexpdir}/params.txt  > {expdir}/params.txt".format(oldexpdir=args.oldexpdir, expdir=args.expdir, expsilon=args.epsilon)
+        print(cmd)
+        os.system(cmd)
+
 
     elif args.cmd == "get":
         print(getattr(expcfg, args.field))
@@ -406,20 +509,16 @@ def main(argv=None):
     elif args.cmd == "loglik":
         # for checking: one simulation
         print("loglik of simu:", expcfg.rundir(args.id))
-        ana = Analysis(expcfg)
+        ana = expcfg.get_analysis()
         loglik = ana.loglik(args.id)
         print(loglik)
         sys.exit(0)
 
 
-    elif args.cmd == "loglikbatch":
-        # full ensemble + write to file
-        print("loglik of ensemble:", expcfg.expdir)
-        ana = Analysis(expcfg)
-        loglik = ana.loglik_ensemble()
-        loglikfile = os.path.join(expcfg.expdir, "loglik.txt")
-        print("write loglik to",loglikfile)
-        np.savetxt(loglikfile, loglik)
+    elif args.cmd == "analysis":
+        # loglikelihood
+        ana = expcfg.get_analysis(constraintscfg=args.constraints)
+        ana.write_analysis(args.anadir)
 
     else:
         raise NotImplementedError("subcommand not yet implemented: "+args.cmd)

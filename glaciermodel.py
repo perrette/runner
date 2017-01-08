@@ -172,7 +172,7 @@ def read_model(ds, name):
 
     elif v == 'V':
         dx = ds["x"][1] - ds["x"][0]
-        var = np.sum(ds['H'][idx]*ds['W'][idx]*dx)
+        var = np.sum(ds['H'][idx]*ds['W'][idx]*dx)*1e-9
 
     elif v == 'smb_mean':
         w = ds['W'][:gl]
