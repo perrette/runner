@@ -3,6 +3,7 @@
 """
 from __future__ import print_function
 import argparse, os
+import json
 from argparse import RawDescriptionHelpFormatter
 from itertools import product
 
@@ -44,9 +45,9 @@ def params_parser(string):
     """
     try:
         name, spec = string.split('=')
-        if '?' in spec:
-            params = parse_param_dist(spec)
-        elif ':' in spec:
+        #if '?' in spec:
+        #    params = parse_param_dist(spec)
+        if ':' in spec:
             params = parse_param_range(spec)
         else:
             params = parse_param_list(spec)
@@ -55,8 +56,7 @@ def params_parser(string):
         raise
     return name,params
 
-
-def str_pmatrix(pnames, pmatrix, max_rows=1e20, include_index=True, index=None):
+def str_pmatrix(pnames, pmatrix, max_rows=1e20, include_index=False, index=None):
     """Pretty-print parameters matrix like in pandas, but using only basic python functions
     """
     # determine columns width
@@ -99,78 +99,178 @@ def str_pmatrix(pnames, pmatrix, max_rows=1e20, include_index=True, index=None):
         return "\n".join([header]+lines[:max_rows//2]+[sep]+lines[-max_rows//2:])
 
 
+
+class PriorParam(object):
+    def __init__(self, name, dist):
+        self.name = name
+        self.dist = dist
+
+    @classmethod
+    def parse(cls, string):
+        name, spec = string.split("=")
+        dist = parse_param_dist(spec)
+        return cls(name, dist)
+
+    @classmethod
+    def fromconfig(cls, dat):
+        """initialize from prior.json config (dat is a dict)
+        """
+        from scipy.stats.distributions import uniform
+        name = dat["name"]
+        lo, hi = dat["range"]
+        return cls(name, uniform(lo, hi-lo))
+
+
+class PriorParams(object):
+    def __init__(self, params):
+        " list of PriorParam instances "
+        self.params = params
+
+    @classmethod
+    def read(cls, file):
+        """read from config file
+        """
+        dat = json.load(open(file))
+        return cls([PriorParam.fromconfig(p) for p in dat["params"]])
+
+    @property
+    def names(self):
+        return [p.name for p in self.params]
+
+    def update(self, params, append=True):
+        """Update existing prior parameter or append new ones.
+        """
+        for p in params:
+            found = False
+            for p0 in self.params:
+                if p0.name == p.name:
+                    p0.dist = p.dist
+                    found = True
+            if not found:
+                if not append:
+                    print("Existing parameters:", self.names)
+                    raise ValueError(p.name+" not found.")
+                self.params.append(p)
+
+    def sample(self, size, seed=None):
+        """Basic montecarlo sampling --> return XParams
+        """
+        import numpy as np
+        pmatrix = np.empty((size,len(self.names)))
+
+        for i, p in enumerate(self.params):
+            pmatrix[:,i] = p.dist.rvs(size=size, random_state=seed) # scipy distribution: sample !
+
+        return XParams(self.names, pmatrix)
+
+    def sample_lhs(self, size, seed=None, criterion=None, iterations=None):
+        """Latin hypercube sampling --> return Xparams
+        """
+        import numpy as np
+        from pyDOE import lhs
+
+        pmatrix = np.empty((size,len(self.names)))
+        np.random.seed(seed)
+        lhd = lhs(len(pnames), size, criterion, iterations) # sample x parameters, all in [0, 1]
+
+        for i, p in enumerate(self.params):
+            pmatrix[:,i] = p.dist.ppf(lhd[:,i]) # take the percentiles for the particular distribution
+
+        return XParams(self.names, pmatrix)
+
+
+class XParams(object):
+    """Experiment params
+    """
+    def __init__(self, names, matrix):
+        self.names = names
+        self.matrix = matrix
+
+    @classmethod 
+    def read(cls, pfile):
+        names, matrix = read_params(pfile)
+        return cls(names, matrix)
+
+    def write(self, pfile):
+        np.savetxt(pfile, str(self))
+
+    def __str__(self):
+        return str_pmatrix(self.names, self.matrix)
+
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
-            epilog='Examples: \n ./genparams.py -p a=0,2 b=0:3:1 c=4 \n ./genparams.py -p a=uniform?0,10 b=norm?0,2 --mode lhs -N 4',
+            epilog='Examples: \n ./genparams.py product -p a=0,2 b=0:3:1 c=4 \n ./genparams.py sample -p a=uniform?0,10 b=norm?0,2 --mode lhs --size 4',
             formatter_class=RawDescriptionHelpFormatter)
 
-    parser.add_argument('-p', '--params', default=[], type=params_parser, nargs='*', metavar="NAME=SPEC",
-            help="Modified parameters. SPEC is one of {list: VALUE[,VALUE...] OR range: START:STOP:STEP OR scipy dist NAME?LOC,SCALE e.g. norm?mean,sd or uniform?min,max}")
+    parent = argparse.ArgumentParser(add_help=False)
+    parent.add_argument('-o', '--out', help="Output parameter file")
 
-    parser.add_argument('--mode', choices=['factorial','montecarlo','lhs'], default='factorial', help="Sampling mode: factorial, Monte Carlo or Latin Hypercube Sampling")
-    parser.add_argument('--lhs-criterion', help="pyDOE lhs parameter")
-    parser.add_argument('--lhs-iterations', help="pyDOE lhs parameter")
-    parser.add_argument('-i','--from-file', help="look in file for any parameter provided as params, and use instead of command-line specification")
-    parser.add_argument('-N', '--size', help="Sample size (montecarlo or lhs modes)", default=100, type=int)
-    parser.add_argument('-o', '--out', help="Output parameter file")
-    parser.add_argument('--seed', type=int, help="random seed, for reproducible results (default to None)")
+    subparsers = parser.add_subparsers(dest="cmd")
+
+    subp = subparsers.add_parser("product", parents=[parent],
+                                 help="factorial combination of parameter values")
+    subp.add_argument('-p', '--params', default=[], type=params_parser, nargs='*', 
+                      metavar="NAME=SPEC", 
+                      help="SPEC is a comma-separated list: VALUE[,VALUE...] OR a range: START:STOP:STEP")
+    subp.add_argument('-i', '--params-file')
+
+    subp = subparsers.add_parser("sample", parents=[parent], help='montecarlo sampling')
+    subp.add_argument('-p', '--params', default=[], type=PriorParam.parse, nargs='*', 
+                      metavar="NAME=SPEC",
+            help="Modified parameters. SPEC is a scipy dist TYPE?LOC,SCALE, e.g. norm?mean,sd or uniform?min,max-min")
+    subp.add_argument('-i', '--params-file')
+
+    subp.add_argument('--mode', choices=['montecarlo','lhs'], 
+                      default='montecarlo', 
+                      help="Sampling mode: Monte Carlo or Latin Hypercube Sampling (default=%(default)s)")
+    subp.add_argument('--lhs-criterion', help="pyDOE lhs parameter")
+    subp.add_argument('--lhs-iterations', help="pyDOE lhs parameter")
+    #parser.add_argument('-i','--from-file', help="look in file for any parameter provided as params, and use instead of command-line specification")
+    subp.add_argument('-N', '--size',type=int, help="Sample size (montecarlo or lhs modes)")
+    subp.add_argument('--seed', type=int, 
+                      help="random seed, for reproducible results (default to None)")
 
     args = parser.parse_args(argv)
 
-    pnames = [nm for nm, vals in args.params]
 
     # Combine parameter values
     # ...factorial model: no numpy distribution allowed
-    if args.mode == 'factorial':
-        for nm, p in args.params:
-            if not isinstance(p, list):
-                raise ValueError('genparams.py: only list and ranges allowed in factorial mode. Got: '+repr(p))
-        pvalues = list(product(*[vals for nm, vals in args.params]))
+    if args.cmd == 'product':
+        pnames = [nm for nm, vals in args.params]
+        pmatrix = list(product(*[vals for nm, vals in args.params]))
+        xparams = XParams(pnames, pmatrix)
+        
 
     # ...monte carlo and lhs mode
-    elif args.mode == 'lhs':
+    elif args.cmd == 'sample':
 
-        import numpy as np
-        pvalues = np.empty((args.size,len(pnames)))
+        if args.params_file:
+            prior = PriorParams.read(args.params_file)
+            dat = json.load(open(args.params_file))
+            if args.size is None:
+                args.size = dat["size"]
+            if args.seed is None:
+                args.seed = dat["seed"]
+            prior.update(args.params)
+        else:
+            prior = PriorParams(args.params)
 
-        from pyDOE import lhs
-        np.random.seed(args.seed)
-        lhd = lhs(len(pnames), args.size, args.lhs_criterion, args.lhs_iterations) # sample x parameters, all in [0, 1]
+        assert args.size is not None, "need to provide --size for sampling"
 
-        for i, pp in enumerate(args.params):
-            nm, spec = pp
-            if isinstance(spec, list):
-                pvalues[:,i] = spec
-            else:
-                pvalues[:,i] = spec.ppf(lhd[:,i]) # take the percentiles for the particular distribution
+        if args.mode == "lhs":
+            xparams = prior.sample_lhs(args.size, seed=args.seed, 
+                                       criterion=args.lhs_criterion, 
+                                       iterations=args.lhs_iterations)
+        else:
+            xparams = prior.sample(args.size, seed=args.seed)
 
-    # ...montecarlo
-    else:
-        import numpy as np
-        pvalues = np.empty((args.size,len(pnames)))
-
-        for i, pp in enumerate(args.params):
-            nm, spec = pp
-            if isinstance(spec, list):
-                pvalues[:,i] = spec
-            else:
-                pvalues[:,i] = spec.rvs(size=args.size, random_state=args.seed) # scipy distribution: sample !
-
-    # in case a file is provided as input, just use values from files
-    if args.from_file:
-        pnames0 = open(args.from_file).readline().split()
-        pvalues0 = np.loadtxt(args.from_file, skiprows=1)
-        for i, nm in enumerate(pnames):
-            if nm in pnames0:
-                #print('Overwrite {} with values from {}'.format(nm, args.from_file))
-                pvalues[:,i] = pvalues0[:, pnames0.index(nm)]
-
-    params_str = str_pmatrix(pnames, pvalues, include_index=False)
     if args.out:
         with open(args.out,'w') as f:
-            f.write(params_str)
+            f.write(str(xparams))
     else:
-        print (params_str)
+        print (str(xparams))
 
 
 if __name__ == '__main__':
