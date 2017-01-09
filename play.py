@@ -4,13 +4,16 @@
 from __future__ import print_function, absolute_import
 import numpy as np
 import json
+import copy
 import os
 import sys
+import subprocess
 from collections import OrderedDict as odict
 
 from glaciermodel import glacierargs, read_model
 from simtools.modelrun import (run_background, run_foreground, 
-                               make_jobfile_slurm, parse_slurm_array_indices)
+                               make_jobfile_slurm, 
+                               parse_slurm_array_indices, wait_for_jobid)
 from simtools.resample import read_params
 
 from simtools.costfunction import Normal, RMS
@@ -179,14 +182,14 @@ class ExperimentConfig(object):
 
             logfile = os.path.join(outdir, "glacier.log")
 
-            if args.background:
+            if background:
                 run_background(exe, cmd_args=cmdstr, logfile=logfile)
 
             else:
                 ret = run_foreground(exe, cmd_args=cmdstr, logfile=logfile)
 
 
-    def runbatch(self, array=None, background=None, args=None):
+    def runbatch(self, array=None, background=None, args=None, wait=False, walltime="0:2:0"):
         """ Run ensemble
         """
         # check out ensemble size
@@ -208,6 +211,8 @@ class ExperimentConfig(object):
         cmdstr = " ".join(cmd)
 
         if background:
+            if wait:
+                raise NotImplementedError("cannot wait in background mode")
             # local testing : do not use slurm
             indices = parse_slurm_array_indices(array)
             print("Run",len(indices),"out of",N,"simulations in the background")
@@ -230,6 +235,7 @@ class ExperimentConfig(object):
                 account="megarun",
                 output=os.path.join(logsdir, "log-%A-%a.out"),
                 error=os.path.join(logsdir, "log-%A-%a.err"),
+                time=walltime,
                 )
         
         with open(jobfile, "w") as f:
@@ -240,12 +246,13 @@ class ExperimentConfig(object):
 
         os.system("echo "+cmd)
         os.system("echo "+cmd+" >> "+os.path.join(self.expdir, "batch.submit"))
-        os.system("eval "+cmd)
+        output = subprocess.check_output("eval "+cmd, shell=True)
+        arrayjobid = output.split()[-1]
 
+        if wait:
+            wait_for_jobid(arrayjobid)
 
-    def runiis(self):
-        raise NotImplementedError("to be implemented!")
-
+        return arrayjobid
 
 class Analysis(object):
     """Compute log-likelood
@@ -349,6 +356,9 @@ class Analysis(object):
                     state[i, j] = stat
         return state
 
+    def getloglikfile(self, anadir=None):
+        anadir = anadir or self.cfg.expdir
+        return os.path.join(anadir, "loglik.txt")
 
     def write_analysis(self, anadir=None):
         """Perform analysis, given constraints
@@ -363,7 +373,7 @@ class Analysis(object):
         if not os.path.exists(anadir):
             os.makedirs(anadir)
         loglik = self.loglik_ensemble()
-        loglikfile = os.path.join(anadir, "loglik.txt")
+        loglikfile = self.getloglikfile(anadir)
         print("write loglik to",loglikfile)
         np.savetxt(loglikfile, loglik)
 
@@ -417,6 +427,73 @@ def decode_json(strarg):
     with open(strarg) as f:
         data = json.load(f)
     return data
+
+
+def resample_exp_params(oldexpdir, newexpdir, epsilon):
+    """Resample parameters from oldexpdir to newexpdir
+    """
+    if not os.path.exists(newexpdir):
+        os.makedirs(newexpdir)
+
+    cmd = "./scripts/resample -w {oldexpdir}/loglik.txt --log --epsilon {expsilon} --jitter -p {oldexpdir}/params.txt  > {expdir}/params.txt".format(oldexpdir=oldexpdir, expdir=newexpdir, expsilon=epsilon)
+    print(cmd)
+    assert os.system(cmd) == 0, "failed to resample parameters"
+
+
+class IISExp(object):
+    """Handle IIS experiment
+    """
+    def __init__(self, basecfg, iter=0, epsilon=0.05):
+        self.basecfg = basecfg
+        self.iter = iter
+        self.epsilon = epsilon
+
+
+    def goto_last_iter(self):
+        while os.path.exists(self.getcfg().paramsfile):
+            self.iter += 1
+
+    def getcfg(self, iter=None):
+        if iter is None:
+            iter = self.iter
+        if iter == 0:
+            return self.basecfg
+        cfg = copy.copy(self.basecfg)
+        #cfg.expdir = os.path.join(self.iisdir, "iis.{:0>2}".format(iter))
+        cfg.expdir = self.basecfg.expdir+'.'+str(iter)
+        return cfg
+
+    def runiis(self, niter, **kwargs):
+        """Iterative Importance Sampling (recursive)
+        """
+        if niter == 0:
+            print("******** runiis terminated")
+            return 
+
+        cfg = self.getcfg()
+        if not os.path.exists(cfg.paramsfile):
+            if self.iter == 0:
+                raise ValueError("No parameter file: "+cfg.paramsfile)
+            else:
+                oldcfg = self.getcfg(self.iter - 1)
+                try:
+                    print("*** resample")
+                    resample_exp_params(oldcfg.expdir, cfg.expdir, self.epsilon)
+                except Exception as error:
+                    print("Previous analysis not performed?")
+                    raise
+
+
+        print("******** runiis iter={}".format(self.iter))
+        print("*** runbatch")
+        cfg.runbatch(wait=True, **kwargs)
+        print("*** analysis")
+        cfg.get_analysis().write_analysis()
+
+        # increment iterations and recursive call
+        self.iter += 1
+        return self.runiis(niter-1, **kwargs)
+
 
 
 def main(argv=None):
@@ -489,8 +566,16 @@ def main(argv=None):
 
 
     # perform IIS optimization
-    subp = subparsers.add_parser("runiis", parents=[parent], 
+    subp = subparsers.add_parser("iis", parents=[parent], 
                                help="run a number of iterations following IIS methodology")
+    subp.add_argument("-n", "--niter", type=int, required=True, 
+                      help="number of iterations to perform")
+    subp.add_argument("--start", type=int, default=0,
+                      help="start from iteration (default=0), note: previous iter must have loglik.txt file")
+    subp.add_argument("--restart", action='store_true', 
+                      help="automatically find start iteration")
+    subp.add_argument("--epsilon", default=0.05, type=float, 
+            help="loglik weight + jitter")
     #subp.add_argument("-n", "--size", type=int,
     #                  help="sample size, if different from original experiment")
     #subp.add_argument("--oldexpdir", 
@@ -510,13 +595,7 @@ def main(argv=None):
 
     elif args.cmd == "resample":
 
-        if not os.path.exists(args.expdir):
-            os.makedirs(args.expdir)
-
-        cmd = "./scripts/resample -w {oldexpdir}/loglik.txt --log --epsilon {expsilon} --jitter -p {oldexpdir}/params.txt  > {expdir}/params.txt".format(oldexpdir=args.oldexpdir, expdir=args.expdir, expsilon=args.epsilon)
-        print(cmd)
-        os.system(cmd)
-
+        resample_exp_params(args.oldexpdir, args.expdir, args.epsilon)
 
     elif args.cmd == "get":
         print(getattr(expcfg, args.field))
@@ -542,8 +621,11 @@ def main(argv=None):
         ana.write_analysis(args.anadir)
 
 
-    elif args.cmd == "runiis":
-        expcfg.runiis()
+    elif args.cmd == "iis":
+        iis = IISExp(expcfg, iter=args.start, epsilon=args.epsilon)
+        if args.restart:
+            iis.goto_last_iter()
+        iis.runiis(args.niter)
 
     else:
         raise NotImplementedError("subcommand not yet implemented: "+args.cmd)

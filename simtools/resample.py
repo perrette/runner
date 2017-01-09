@@ -203,7 +203,7 @@ def residual_resampling(weights, size):
     """
     # copy particles
     counts_decimal = weights * size
-    counts_copy = np.floor(counts_decimal)
+    counts_copy = np.asarray(np.floor(counts_decimal), dtype=int)
     # sample randomly from residual weights
     weights_resid = counts_decimal - counts_copy
     weights_resid /= weights_resid.sum()

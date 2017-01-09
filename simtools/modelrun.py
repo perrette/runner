@@ -67,7 +67,7 @@ def parse_slurm_array_indices(a):
     return indices
 
 
-def make_jobfile_slurm(command, queue, jobname, account, output, error):
+def make_jobfile_slurm(command, queue, jobname, account, output, error, time):
     return """#!/bin/bash
 
 #SBATCH --qos={queue}
@@ -75,6 +75,7 @@ def make_jobfile_slurm(command, queue, jobname, account, output, error):
 #SBATCH --account={account}
 #SBATCH --output={output}
 #SBATCH --error={error}
+#SBATCH --time={time}
 
 echo
 echo SLURM JOB
@@ -87,3 +88,15 @@ echo $cmd
 eval $cmd""".format(**locals())
 
 
+def wait_for_jobid(jobid, freq=1):
+    """wait until job completion
+    """
+    import time
+    cmd="squeue --job {jobid} | grep -q {jobid}".format(jobid=jobid)
+    while True:
+        if os.system(cmd) == 0:
+            # job still in the queue, wait
+            time.sleep(freq)
+        else:
+            # not found return
+            return
