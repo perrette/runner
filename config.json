@@ -28,7 +28,7 @@
             },
 
             "prior": {
-                "size" : 1000,
+                "size" : 100,
                 "sampling" : "lhs",
                 "seed" : 0,
                 "params": [
@@ -90,6 +90,181 @@
                     "name": "smb_mean",
                     "std": 1,
                     "desc": "mean smb over glacer domain [m/a], to avoid unrealistically large relaxation"
+                }
+            ]
+        },
+        {
+            "name": "steadystate_relax100yr",
+            "desc": "steady-state ensemble experiment",
+
+            "default": {
+                "upstream_U" : "dUdx",
+                "dUdx0": 0,
+                "upstream_H": "H",
+
+                "fjordmelt_mode": "constant",
+
+                "dynamics%till_mode": "constant",
+
+                "smb_mode": "relax",
+                "smb_relax": 100,
+                "latflx_mode": "prescribed",
+
+                "calving%mode": "CD",
+                "calving%fwd" : 0,
+
+                "basalhydro_mode": "none",
+                "sealevel_pressure": true,
+
+                "control%years": 100,
+                "control%adaptive_dt": true
+            },
+
+            "prior": {
+                "size" : 100,
+                "sampling" : "lhs",
+                "seed" : 0,
+                "params": [
+                    {
+                        "name": "dynamics%E",
+                        "range": [1,10],
+                        "desc": "Enhancement factor"
+                    },
+                    { 
+                        "name": "dynamics%n",
+                        "range": [3, 3.5],
+                        "desc": "Glen's flow law exponent"
+                    },
+                    {
+                        "name": "q",
+                        "range": [0.05, 0.33],
+                        "desc": "sliding law exponent 1/m = q"
+                    },
+                    {
+                        "name": "plastic_phi",
+                        "range": [1, 40],
+                        "desc": "sliding law coefficient C = tan(phi)"
+                    },
+                    {
+                        "name": "wscale",
+                        "range": [1, 2],
+                        "desc": "scaling coef for width in the lateral stress"
+                    },
+                    {
+                        "name": "fjordmelt_cst",
+                        "range": [10, 1000],
+                        "desc": "submarine melt rate [m/a]"
+                    }
+                ]
+            },
+
+            "constraints": [
+                {
+                    "name": "F?gl",
+                    "std_as_fraction": 0.1,
+                    "desc": "flux through grounding line [10^9 m^3/a]"
+                },
+                {
+                    "name": "H?gl",
+                    "std_as_fraction": 0.1,
+                    "desc": "thickness at the grounding line [m]"
+                },
+                {
+                    "name": "x?gl",
+                    "std": 1e3,
+                    "desc": "grounding line position [m]"
+                },
+                {
+                    "name": "V",
+                    "std_as_fraction": 0.1,
+                    "desc": "glacier volume [10^9 m^3]"
+                }
+            ]
+        },
+        {
+            "name": "steadystate_relax100yr_looseflux",
+
+            "default": {
+                "upstream_U" : "dUdx",
+                "dUdx0": 0,
+                "upstream_H": "H",
+
+                "fjordmelt_mode": "constant",
+
+                "dynamics%till_mode": "constant",
+
+                "smb_mode": "relax",
+                "smb_relax": 100,
+                "latflx_mode": "prescribed",
+
+                "calving%mode": "CD",
+                "calving%fwd" : 0,
+
+                "basalhydro_mode": "none",
+                "sealevel_pressure": true,
+
+                "control%years": 100,
+                "control%adaptive_dt": true
+            },
+
+            "prior": {
+                "size" : 100,
+                "sampling" : "lhs",
+                "seed" : 0,
+                "params": [
+                    {
+                        "name": "dynamics%E",
+                        "range": [1,10],
+                        "desc": "Enhancement factor"
+                    },
+                    { 
+                        "name": "dynamics%n",
+                        "range": [3, 3.5],
+                        "desc": "Glen's flow law exponent"
+                    },
+                    {
+                        "name": "q",
+                        "range": [0.05, 0.33],
+                        "desc": "sliding law exponent 1/m = q"
+                    },
+                    {
+                        "name": "plastic_phi",
+                        "range": [1, 40],
+                        "desc": "sliding law coefficient C = tan(phi)"
+                    },
+                    {
+                        "name": "wscale",
+                        "range": [1, 2],
+                        "desc": "scaling coef for width in the lateral stress"
+                    },
+                    {
+                        "name": "fjordmelt_cst",
+                        "range": [10, 1000],
+                        "desc": "submarine melt rate [m/a]"
+                    }
+                ]
+            },
+
+            "constraints": [
+                {
+                    "name": "F?gl",
+                    "std_as_fraction": 0.2,
+                    "desc": "flux through grounding line [10^9 m^3/a]"
+                },
+                {
+                    "name": "H?gl",
+                    "std_as_fraction": 0.1,
+                    "desc": "thickness at the grounding line [m]"
+                },
+                {
+                    "name": "x?gl",
+                    "std": 1e3,
+                    "desc": "grounding line position [m]"
+                },
+                {
+                    "name": "V",
+                    "std_as_fraction": 0.1,
+                    "desc": "glacier volume [10^9 m^3]"
                 }
             ]
         }
