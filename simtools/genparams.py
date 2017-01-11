@@ -6,30 +6,22 @@ import argparse, os
 import json
 from argparse import RawDescriptionHelpFormatter
 from itertools import product
+import numpy as np
+from simtools.tools import DataFrame, parse_val
+from simtools.resample import Resampler
 
 # parse parameters from command-line
 # ==================================
-def _parse_val(s):
-    " string to int, float, str "
-    try:
-        val = int(s)
-    except:
-        try:
-            val = float(s)
-        except:
-            val = s
-    return val
-
 def parse_param_list(string):
     """Parse list of parameters VALUE[,VALUE,...]
     """
-    return [_parse_val(value) for value in string.split(',')]
+    return [parse_val(value) for value in string.split(',')]
 
 def parse_param_range(string):
     """Parse parameters START:STOP:STEP
     """
     import numpy as np
-    return np.arange(*[_parse_val(value) for value in string.split(':')]).tolist()
+    return np.arange(*[parse_val(value) for value in string.split(':')]).tolist()
 
 def parse_param_dist(string):
     """Parse parameters dist?loc,scale
@@ -37,7 +29,7 @@ def parse_param_dist(string):
     import scipy.stats.distributions as sd
     name,params = string.split('?')
     loc, scale = params.split(',')
-    return getattr(sd,name)(_parse_val(loc), _parse_val(scale))
+    return getattr(sd,name)(parse_val(loc), parse_val(scale))
 
 
 def params_parser(string):
@@ -56,49 +48,6 @@ def params_parser(string):
         raise
     return name,params
 
-def str_pmatrix(pnames, pmatrix, max_rows=1e20, include_index=False, index=None):
-    """Pretty-print parameters matrix like in pandas, but using only basic python functions
-    """
-    # determine columns width
-    col_width_default = 6
-    col_fmt = []
-    col_width = []
-    for p in pnames:
-        w = max(col_width_default, len(p))
-        col_width.append( w )
-        col_fmt.append( "{:>"+str(w)+"}" )
-
-    # also add index !
-    if include_index:
-        idx_w = len(str(len(pmatrix)-1)) # width of last line index
-        idx_fmt = "{:<"+str(idx_w)+"}" # aligned left
-        col_fmt.insert(0, idx_fmt)
-        pnames = [""]+list(pnames)
-        col_width = [idx_w] + col_width
-
-    line_fmt = " ".join(col_fmt)
-
-    header = line_fmt.format(*pnames)
-
-    # format all lines
-    lines = []
-    for i, pset in enumerate(pmatrix):
-        if include_index:
-            ix = i if index is None else index[i]
-            pset = [ix] + list(pset)
-        lines.append(line_fmt.format(*pset))
-
-    n = len(lines)
-    # full print
-    if n <= max_rows:
-        return "\n".join([header]+lines)
-
-    # partial print
-    else:
-        sep = line_fmt.format(*['.'*min(3,w) for w in col_width])  # separator '...'
-        return "\n".join([header]+lines[:max_rows//2]+[sep]+lines[-max_rows//2:])
-
-
 
 class PriorParam(object):
     def __init__(self, name, dist):
@@ -107,6 +56,7 @@ class PriorParam(object):
 
     @classmethod
     def parse(cls, string):
+        "NAME=SPEC"
         name, spec = string.split("=")
         dist = parse_param_dist(spec)
         return cls(name, dist)
@@ -152,54 +102,49 @@ class PriorParams(object):
                     raise ValueError(p.name+" not found.")
                 self.params.append(p)
 
-    def sample(self, size, seed=None):
+    def sample_montecarlo(self, size):
         """Basic montecarlo sampling --> return XParams
         """
         import numpy as np
         pmatrix = np.empty((size,len(self.names)))
 
         for i, p in enumerate(self.params):
-            pmatrix[:,i] = p.dist.rvs(size=size, random_state=seed) # scipy distribution: sample !
+            pmatrix[:,i] = p.dist.rvs(size=size) # scipy distribution: sample !
 
         return XParams(self.names, pmatrix)
 
-    def sample_lhs(self, size, seed=None, criterion=None, iterations=None):
+    def sample_lhs(self, size, criterion=None, iterations=None):
         """Latin hypercube sampling --> return Xparams
         """
         import numpy as np
         from pyDOE import lhs
 
         pmatrix = np.empty((size,len(self.names)))
-        np.random.seed(seed)
-        lhd = lhs(len(pnames), size, criterion, iterations) # sample x parameters, all in [0, 1]
+        lhd = lhs(len(self.names), size, criterion, iterations) # sample x parameters, all in [0, 1]
 
         for i, p in enumerate(self.params):
             pmatrix[:,i] = p.dist.ppf(lhd[:,i]) # take the percentiles for the particular distribution
 
-        return XParams(self.names, pmatrix)
+        return XParams(pmatrix, self.names)
+
+    def sample(self, size, seed=None, method="lhs", **kwargs):
+        np.random.seed(seed)
+        if method == "lhs":
+            return self.sample_lhs(size, **kwargs)
+        else:
+            return self.sample_montecarlo(size, **kwargs)
 
 
-class XParams(object):
+class XParams(DataFrame):
     """Experiment params
     """
-    def __init__(self, names, matrix):
-        self.names = names
-        self.matrix = matrix
-
-    @classmethod 
-    def read(cls, pfile):
-        names, matrix = read_params(pfile)
-        return cls(names, matrix)
-
-    def write(self, pfile):
-        np.savetxt(pfile, str(self))
-
-    def __str__(self):
-        return str_pmatrix(self.names, self.matrix)
+    def resample(self, weights, epsilon=None, **kwargs):
+        resampler = Resampler(weights)
+        vals = resampler.iis(self.values, epsilon, **kwargs)
+        return XParams(vals, self.names)
 
 
-
-def main(argv=None):
+def get_parser():
     parser = argparse.ArgumentParser(description=__doc__,
             epilog='Examples: \n ./genparams.py product -p a=0,2 b=0:3:1 c=4 \n ./genparams.py sample -p a=uniform?0,10 b=norm?0,2 --mode lhs --size 4',
             formatter_class=RawDescriptionHelpFormatter)
@@ -231,7 +176,11 @@ def main(argv=None):
     subp.add_argument('-N', '--size',type=int, help="Sample size (montecarlo or lhs modes)")
     subp.add_argument('--seed', type=int, 
                       help="random seed, for reproducible results (default to None)")
+    return parser
 
+def main(argv=None):
+
+    parser = get_parser()
     args = parser.parse_args(argv)
 
 
@@ -240,7 +189,7 @@ def main(argv=None):
     if args.cmd == 'product':
         pnames = [nm for nm, vals in args.params]
         pmatrix = list(product(*[vals for nm, vals in args.params]))
-        xparams = XParams(pnames, pmatrix)
+        xparams = XParams(pmatrx, pnames)
         
 
     # ...monte carlo and lhs mode
@@ -248,11 +197,6 @@ def main(argv=None):
 
         if args.params_file:
             prior = PriorParams.read(args.params_file)
-            dat = json.load(open(args.params_file))
-            if args.size is None:
-                args.size = dat["size"]
-            if args.seed is None:
-                args.seed = dat["seed"]
             prior.update(args.params)
         else:
             prior = PriorParams(args.params)

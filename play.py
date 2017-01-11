@@ -1,214 +1,138 @@
 #!/usr/bin/env python2.7
-"""Process configuration file
+"""Play around with glacier model
 """
 from __future__ import print_function, absolute_import
+import argparse
 import numpy as np
 import json
 import copy
+import shutil
 import os
 import sys
 import subprocess
 from collections import OrderedDict as odict
 
-from glaciermodel import glacierargs, read_model
-from simtools.modelrun import (run_background, run_foreground, 
-                               make_jobfile_slurm, 
-                               parse_slurm_array_indices, wait_for_jobid)
-from simtools.resample import read_params
-
-from simtools.costfunction import Normal, RMS
+from glaciermodel import GlacierModel
+from simtools.modelrun import run_command, parse_slurm_array_indices
+from simtools.genparams import PriorParam, PriorParams, XParams
+from simtools.costfunction import Likelihood, parse_constraint
+from simtools.tools import str_dataframe, parse_keyval
+from simtools.resample import Resampler
 import netCDF4 as nc
 
 # default directory structure
 glaciersdir = "glaciers"
+constraintsdir = "config.like"
+priorsdir = "config.prior"
+configsdir = "config.model"
 experimentsdir = "experiments"
 
-def nans(N):
-    a = np.empty(N)
-    a.fill(np.nan)
-    return a
-
-
-class GlobalConfig(object):
-    def __init__(self, data):
-        self.data = data
-
-    @classmethod
-    def read(cls, file):
-        import json
-        return cls(json.load(open(file)))
-
-    def get_expconfig(self, name, glacier, expdir=None):
-        """Return ExperimentConfig class
-        """
-        expnames = [exp["name"] for exp in self.data["experiments"]]
-        try:
-            i = expnames.index(name)
-        except:
-            print("available experiments: ", expnames)
-            raise
-        return ExperimentConfig(self.data["experiments"][i], glacier, expdir)
-
-
-class ExperimentConfig(object):
-    def __init__(self, data, glacier, expdir=None):
-        self.glacier = glacier
-        self.data = data
-        if expdir is None:
-            expdir = os.path.join(experimentsdir, self.glacier, self.name)
+class ExpDir(object):
+    """Experiment Directory Structure
+    """
+    def __init__(self, expdir):
         self.expdir = expdir
 
-    def glaciernc(self, runid=None):
-        return os.path.join(glaciersdir, self.glacier+".nc")
+    def path(self, *file):
+        return os.path.join(self.expdir, *file)
 
     def rundir(self, runid=None):
         if runid is not None:
             runidstr = "{:0>4}".format(runid)
             rundirs = [runidstr[:-2], runidstr[-2:]] # split it (no more than 100)
-            return os.path.join(self.expdir, *rundirs)
+            return self.path(*rundirs)
         else:
-            return os.path.join(self.expdir, "default")
+            return self.path("default")
 
-    @property 
-    def paramsfile(self):
-        return os.path.join(self.expdir, "params.txt")
-
-    @property 
-    def name(self):
-        return self.data["name"]
-
-    @property 
-    def constraints(self):
-        return self.data["constraints"]
-
-    @property 
-    def prior(self):
-        return self.data["prior"]
-
-    @property 
-    def default(self):
-        return self.data["default"]
-
-    def get_size(self):
-        pnames, pmatrix = read_params(self.paramsfile)
-        size = len(pmatrix)
-        return size
-
-    def genparams_args(self, out=None, size=None):
-        """Generate command-line arguments for genparams script from json dict
+    def top_rundirs(self, indices):
+        """top rundir directories for linking
         """
-        prior = self.prior
-        cmd = ["--params"]
-        for p in prior["params"]:
-            lo, up = p["range"]
-            cmd.append("{}=uniform?{},{}".format(p["name"],lo, up-lo))
+        tops = ["default"]
+        for i in indices:
+            top = self.rundir(i).split(os.path.sep)[0]
+            if top not in tops:
+                tops.append(top)
+        return tops
 
-        cmd.append("--mode={}".format(prior["sampling"]))
-        cmd.append("--size={}".format(size or self.prior["size"]))
-        if prior["seed"] is not None:
-            cmd.append("--seed={}".format(prior["seed"]))
+    def create_expdir(self, force=False):
+        if not os.path.exists(self.expdir):
+            print("create directory",self.expdir)
+            os.makedirs(self.expdir)
 
-        if out is not None:
-            cmd.append("--out="+out)
-        return " ".join(cmd)
+        elif not force:
+            print("error :: directory already exists: "+repr(self.expdir))
+            print("     set  '--force' option to bypass this check")
+            raise ValueError(self.expdir+" already exists")
 
-    
-    def genparams(self, log=None, size=None):
-        """Return prior parameters
+
+class XRun(ExpDir):
+
+    def __init__(self, model, params, expdir):
+        self.model = model
+        self.params = params  # XParams class
+        self.expdir = expdir
+ 
+    @classmethod
+    def read(cls, expdir):
+        """read from existing experiment
         """
-        if log is None:
-            log = os.path.join(self.expdir, "params.cmd")
-        args = self.genparams_args(self.paramsfile, size=size)
-        if (os.path.dirname(self.paramsfile) == self.expdir 
-                and not os.path.exists(self.expdir)):
-            os.makedirs(self.expdir) # make experiment directory is not present
-        cmd = "python -m simtools.genparams "+args
-        print(cmd)
-        os.system(cmd)
-        os.system("echo "+ cmd + " > "+log)
+        o = ExpDir(expdir) # dir structure
+        model = GlacierModel(json.load(open(o.path("model.json"))))
+        params = XParams.read(o.path("params.txt"))
+        return cls(model, params, expdir)
 
-
-    def getparams(self, pfile=None):
-        """Return experiment parameters (read from disk)
+    def setup(self, newdir=None, force=False):
+        """Setup experiment directory
         """
-        pfile = pfile or self.paramsfile
-        pnames = open(pfile).readline().split()
-        pvalues = np.loadtxt(pfile, skiprows=1)  
-        return pnames, pvalues
+        newdir = newdir or self.expdir
 
+        x = ExpDir(newdir)
+        x.create_expdir(force)
+        print("Setup experiment directory:", newdir)
+        # params txt
+        print("...write params")
+        self.params.write(x.path("params.txt"))
+        print("...write config")
+        with open(x.path("model.json"), 'w') as f:
+            json.dump(self.model.config, f, indent=2, sort_keys=True)
 
-    def glacierargs(self, runid=None, outdir=None, cmd_extra=""):
-        """Return glacier executable and glacier arguments
+    def link_results(self, newdir):
+        assert newdir != self.expdir, 'same directories !'
+        print("...link simulations results into",newdir)
+        topdirs = self.top_rundirs(xrange(self.params.size))
+        for top in topdirs:
+            os.system("cd "+newdir+" && ln -s "+os.path.abspath(top))
+
+    def command(self, runid=None):
+        """Return command line argument to run the model
         """
-        netcdf = self.glaciernc(runid)
+        params = self.params.pset_as_dict(runid)
+        rundir = self.rundir(runid=runid)
+        return self.model.command(rundir, params)
 
-        # create a dictionary of parameters
-        params = self.default.copy()
+    def run(self, runid=None, **kwargs):
+        cmd = self.command(runid)
+        rundir = self.rundir(runid)
+        return run_command(cmd, rundir, **kwargs)
 
-        # update arguments from file
-        if runid is not None:
-            pnames, pmatrix = self.getparams()
-            pvalues = pmatrix[runid]
-            for k, v in zip(pnames, pvalues):
-                params[k] = v
-
-        if outdir is None:
-            outdir = self.rundir(runid=runid)
-
-        if cmd_extra:
-            args = cmd_extra.split()
-        else:
-            args = []
-
-        cmd = glacierargs(netcdf, outdir, *args, **params)
-        glacierexe = cmd[0]
-        cmdstr = " ".join(cmd[1:])
-        return glacierexe, cmdstr
-
-    def get_analysis(self, constraintscfg=None, obsnc=None):
-        return Analysis(self, constraintscfg, obsnc)
-
-
-    def run(self, runid=None, args=None, dry_run=None, background=None):
-
-        outdir = self.rundir(runid)
-        exe, cmdstr = self.glacierargs(runid=runid, cmd_extra=args, outdir=outdir)
-        print(exe, cmdstr)
-        
-        if not dry_run:
-
-            if not os.path.exists(outdir):
-                os.makedirs(outdir)
-
-            logfile = os.path.join(outdir, "glacier.log")
-
-            if background:
-                run_background(exe, cmd_args=cmdstr, logfile=logfile)
-
-            else:
-                ret = run_foreground(exe, cmd_args=cmdstr, logfile=logfile)
-
-
-    def runbatch(self, array=None, background=None, args=None, wait=False, walltime="0:2:0"):
+    def runbatch(self, array=None, background=False, submit=True, wait=False, **kwargs):
         """ Run ensemble
         """
-        # check out ensemble size
-        pnames, pmatrix = self.getparams()
-        N = len(pmatrix)
+        N = self.params.size
 
         # batch command
         if array is None:
             # all params by default
             array = "{}-{}".format(0, N-1) 
 
-        cmd = ["python", __file__, "run", "--glacier", self.glacier, 
-                "--experiment", self.name, 
-                "--expdir", self.expdir,
-                "--id", "{id}"]
+        # write config to expdirectory
+        self.setup(force=True)  # things are up to date
 
-        if args:
-            cmd.append(args)
-        cmdstr = " ".join(cmd)
+        cmd = ["python", __file__, "run", self.expdir]
+
+        #if args:
+        #    cmd.append(args)
+        #cmdstr = " ".join(cmd)
 
         if background:
             if wait:
@@ -218,208 +142,210 @@ class ExperimentConfig(object):
             print("Run",len(indices),"out of",N,"simulations in the background")
             print(indices)
             for idx in indices:
-                os.system(cmdstr.format(id=idx)+' --background')
+                runcmd = cmd + ['--id',str(idx),'--background']
+                os.system(" ".join(runcmd))
             return 
 
         # submit job to slurm (the default)
         print("Submit job array batch to SLURM")
         jobfile = os.path.join(self.expdir, "batch.sh")
         logsdir = os.path.join(self.expdir, "logs")
+
+        runcmd = cmd + ['--id','$SLURM_ARRAY_TASK_ID']
+
         #os.system("rm -fr logs; mkdir -p logs") # clean logs
         if not os.path.exists(logsdir):
             os.makedirs(logsdir)
 
-        jobtxt = make_jobfile_slurm(cmdstr.format(id="$SLURM_ARRAY_TASK_ID"), 
-                queue="short", 
-                jobname=__file__, 
-                account="megarun",
+        return run_command(runcmd, self.expdir, submit=True, wait=wait,
+                           array=array, jobfile=jobfile,
                 output=os.path.join(logsdir, "log-%A-%a.out"),
-                error=os.path.join(logsdir, "log-%A-%a.err"),
-                time=walltime,
-                )
-        
-        with open(jobfile, "w") as f:
-            f.write(jobtxt)
+                error=os.path.join(logsdir, "log-%A-%a.err"), **kwargs)
 
-        batchcmd = ["sbatch", "--array", array, jobfile]
-        cmd = " ".join(batchcmd)
 
-        os.system("echo "+cmd)
-        os.system("echo "+cmd+" >> "+os.path.join(self.expdir, "batch.submit"))
-        output = subprocess.check_output("eval "+cmd, shell=True)
-        arrayjobid = output.split()[-1]
-
-        if wait:
-            wait_for_jobid(arrayjobid)
-
-        return arrayjobid
-
-class Analysis(object):
-    """Compute log-likelood
-    """
-    def __init__(self, cfg, constraintscfg=None, obsnc=None):
-        """Initialize from config, optionally using different constraints
+    # analyze ensemble
+    # ----------------
+    def get(self, name, runid=None):
+        """Get variable 
         """
-        self.cfg = cfg   # experiment config
-        self.obsnc = obsnc or cfg.glaciernc()
-        constraintscfg = constraintscfg or cfg.constraints
-        self.constraints = self._get_constraints(constraintscfg, self.obsnc)
-        self.names = [c["name"] for c in constraintscfg]
+        rundir = self.rundir(runid)
+        return self.model.get(rundir, name)
 
-    @staticmethod
-    def _get_constraints(constraintscfg, obsnc):
-        """Return a list of Constraints based on config
+
+    def get_all(self, name):
+        """Return variable for all realizations
         """
-        constraints = []
-        for c in constraintscfg:
-            obs = read_model(obsnc, c["name"])
-            assert np.isscalar(obs)
-            if 'std_as_fraction' in c:
-                std = obs*c['std_as_fraction']
-            else:
-                std = c['std']
-            constraints.append(
-                Normal(c["name"], obs, std, desc=c["desc"])
-            )
-        return constraints
+        dim = size(self.get(name, 0)) # check size of first variable
+        var = np.empty((self.params.size, dim))
+        var.fill(np.nan)
+        for i in xrange(self.params.size):
+            var[i] = self.get(name, i)
+        return var.squeeze(1)
 
-    @staticmethod
-    def _loglik(ds, name, c, runid=None):
-        """Return log-likelihood for one constraint
+
+    def loglik(self, constraints, runid=None):
+        """Log-like for one realization
         """
-        state = read_model(ds, name)
-        loglik = c.logpdf(state)
-        return loglik
+        return sum([c.logpdf( self.get(c.name, runid)) for c in constraints])
 
-    def loglik(self, runid=None, netcdf=None, verbose=False):
-        """Return log-likelihood given all constraints
+
+    def loglik_all(self, constraints):
+        """Log-likelihood for all realizations
         """
-        if netcdf is None:
-            outdir = self.cfg.rundir(runid)
-            if not os.path.exists(os.path.join(outdir, 'simu_ok')):
-                if verbose: print("simulation failed:", runid)
-                return -np.inf
-            netcdf = os.path.join(outdir,'restart.nc')
-
-        with nc.Dataset(netcdf) as ds:
-            loglik = 0
-            for name, c in zip(self.names, self.constraints):
-                loglik += self._loglik(ds, name, c, runid)
-        return loglik
-
-    def loglik_ensemble(self, indices=None):
-        if indices is None:
-            N = self.cfg.get_size()
-            indices = np.arange(N)
-
-        loglik = np.empty(indices.size)
-        loglik.fill(-np.inf)
-
-        for i in indices:
-            loglik[i] = self.loglik(i)
-        return loglik
-
-    def state(self, runid=None, netcdf=None):
-        """Return model state as a list of states
-        """
-        if not netcdf:
-            outdir = self.cfg.rundir(runid)
-            if not os.path.exists(os.path.join(outdir, 'simu_ok')):
-                raise ValueError("Simulation failed: "+str(runid) 
-                                 if runid is not None else os.path.join(outdir))
-
-            netcdf = os.path.join(outdir,'restart.nc')
-
-        with nc.Dataset(netcdf) as ds:
-            state = []
-            for name in self.names:
-                state.append( read_model(ds, name) )
-        return state
-
-    def state_ensemble(self, indices=None):
-        """Return a diagnostic matrix of ensemble state, scalar variables only
-        """
-        if indices is None:
-            N = self.cfg.get_size()
-            indices = np.arange(N)
-
-        state = np.empty((indices.size, len(self.constraints)))
-        state.fill(np.nan)
-
-        for i in indices:
+        var = np.empty(self.params.size)
+        for i in xrange(self.params.size):
             try:
-                statevars = self.state(i)
+                var[i] = self.loglik(constraints, i)
             except:
-                continue
-            for j, stat in enumerate(statevars):
-                if np.ndim(stat) == 0:   # scalar only
-                    state[i, j] = stat
-        return state
+                var[i] = -np.inf
+        return var
 
-    def getloglikfile(self, anadir=None):
-        anadir = anadir or self.cfg.expdir
-        return os.path.join(anadir, "loglik.txt")
+    
+    def analyze(self, constraints, fill_array=np.nan):
+        """Analyze experiment directory and return a Results objet
 
-    def write_analysis(self, anadir=None):
-        """Perform analysis, given constraints
-
-        + loglik.txt
-        + state.txt
+        Parameters
+        ----------
+        constraints : list of constraints
+        fill_array : float or callable
+            value to use instead of (skipped) array constraints (nan by default)
         """
-        print("loglik of ensemble:", self.cfg.expdir)
-        if anadir is not None:
-            print("analysis written to",anadir)
-        anadir = anadir or self.cfg.expdir
-        if not os.path.exists(anadir):
-            os.makedirs(anadir)
-        loglik = self.loglik_ensemble()
-        loglikfile = self.getloglikfile(anadir)
-        print("write loglik to",loglikfile)
-        np.savetxt(loglikfile, loglik)
+        N = self.params.size
+        state2 = np.empty((N, len(constraints)))
+        state2.fill(np.nan)
+        loglik2 = np.empty((N, len(constraints)))
+        loglik2.fill(-np.inf)
 
-        # constraints file
-        constraintsfile = os.path.join(anadir, "constraints.json")
-        print("copy constraints cfg to",constraintsfile)
-        with open(constraintsfile, "w") as f:
-            json.dump(self.cfg.data["constraints"], f, indent=2)
+        def reduce_array(s):
+            return fill_array(s) if callable(fill_array) else fill_array
 
-        # state data
-        print("state of ensemble:", anadir)
-        # ensemble state
-        header = ", ".join(self.names)
-        state = self.state_ensemble()
-        footer = "      "+", ".join(self.names)
-        fmt = "{:.2f}"
-        if os.path.exists(self.obsnc):
-            stateobs = [v if np.ndim(v) == 0 else np.nan 
-                        for v in self.state(netcdf=self.obsnc)]
-            footer += "\nobs: "+", ".join(fmt.format(v) for v in stateobs)
-        else:
-            print("warning: obs file", self.obs, "not found")
-        try:
-            statedef = [v if np.ndim(v) == 0 else np.nan for v in self.state()]
-            footer += "\ndef: "+", ".join(fmt.format(v) for v in statedef)
-        except Exception as error:
-            print("warning: default run:", error.message)
+        failed = 0
 
-        # most likely
-        i = np.argmax(loglik)
-        footer += "\nbest: "+", ".join([fmt.format(v) for v in state[i]])
-        state2 = state[np.any(~np.isnan(state), axis=1)] # no nans
-        footer += "\n -- "
-        footer += "\nmean: "+", ".join([fmt.format(v) for v in np.nanmean(state,axis=0)])
-        footer += "\nstd: "+", ".join([fmt.format(v) for v in np.nanstd(state,axis=0)])
-        footer += "\n -- "
-        footer += "\nmin: "+", ".join([fmt.format(v) for v in np.nanmin(state,axis=0)])
-        footer += "\np05: "+", ".join([fmt.format(v) for v in np.percentile(state2,5,axis=0)])
-        footer += "\nmed: "+", ".join([fmt.format(v) for v in np.median(state2,axis=0)])
-        footer += "\np95: "+", ".join([fmt.format(v) for v in np.percentile(state2,95,axis=0)])
-        footer += "\nmax: "+", ".join([fmt.format(v) for v in np.nanmax(state,axis=0)])
-        footer += "\n -- "
+        for i in xrange(N):
+            try:
+                state = [self.get(c.name, i) for c in constraints]
+            except Exception as error:
+                failed += 1
+                continue
 
-        statefile = os.path.join(anadir, "state.txt")
-        print("write state to",statefile)
-        np.savetxt(statefile, state, header=header, footer=footer, fmt="%.2f")
+            # diagnostic per constraint
+            for j, s in enumerate(state):
+                loglik2[i, j] = constraints[j].logpdf(s)
+                state2[i, j] = s if np.size(s) == 1 else reduce_array(s)
+
+        print("warning :: {} out of {} simulations failed".format(failed, N))
+
+        return Results(constraints, state2, loglik2=loglik2, params=self.params)
+
+
+class Results(object):
+    def __init__(self, constraints=None, state=None, 
+                 loglik=None, loglik2=None, params=None, default=None):
+
+        if loglik is None and loglik2 is not None:
+            loglik = loglik2.sum(axis=1)
+        self.loglik = loglik
+        self.constraints = constraints   # so that names is defined
+
+        self.state = state
+        self.loglik2 = loglik2
+        self.params = params
+        self.default = default
+
+        # weights
+        self.loglik = loglik
+        self.valid = np.isfinite(self.loglik)
+
+    def weights(self):
+        w = np.exp(self.loglik)
+        return w / w.sum()
+
+    @classmethod
+    def read(cls, direc):
+        x = ExpDir(direc)
+        loglik = np.loadtxt(x.path("loglik.txt"))
+        return cls(loglik=loglik)
+
+
+    def write(self, direc):
+        """write result stats and loglik to folder
+        """
+        print("write analysis results to",direc)
+        x = ExpDir(direc)
+        np.savetxt(x.path("loglik.txt"), self.loglik)
+
+        if self.state is not None:
+            with open(x.path("state.txt"), "w") as f:
+                f.write(self.format(self.state))
+            with open(x.path("stats.txt"), "w") as f:
+                f.write(self.stats())
+
+        if self.loglik2 is not None:
+            with open(x.path("loglik.all.txt"), "w") as f:
+                f.write(self.format(self.loglik2))
+
+
+    @property
+    def obs(self):
+        return [c.mean for c in self.constraints]
+
+    @property
+    def names(self):
+        return [c.name for c in self.constraints]
+
+    def best(self):
+        return self.state[np.argmax(self.loglik)]
+
+    def mean(self):
+        return self.state[self.valid].mean(axis=0)
+
+    def std(self):
+        return self.state[self.valid].std(axis=0)
+
+    def min(self):
+        return self.state[self.valid].min(axis=0)
+
+    def max(self):
+        return self.state[self.valid].max(axis=0)
+
+    def pct(self, p):
+        return np.percentile(self.state[self.valid], p, axis=0)
+
+
+    def stats(self, fmt="{:.2f}", sep=" "):
+        """return statistics
+        """
+        #def stra(a):
+        #    return sep.join([fmt.format(k) for k in a]) if a is not None else "--"
+
+        res = [
+            ("obs", self.obs),
+            ("best", self.best()),
+            ("default", self.default),
+            ("mean", self.mean()),
+            ("std", self.std()),
+            ("min", self.min()),
+            ("p05", self.pct(5)),
+            ("med", self.pct(50)),
+            ("p95", self.pct(95)),
+            ("max", self.max()),
+        ]
+
+        index = [nm for nm,arr in res if arr is not None]
+        values = [arr for nm,arr in res if arr is not None]
+
+        import pandas as pd
+        df = pd.DataFrame(np.array(values), columns=self.names, index=index)
+
+        return str(df) #"\n".join(lines)
+
+    def df(self, array):
+        " transform array to dataframe "
+        import pandas as pd
+        return pd.DataFrame(array, columns=self.names)
+
+    def format(self, array):
+        return str(self.df(array))
 
 
 def decode_json(strarg):
@@ -429,203 +355,317 @@ def decode_json(strarg):
     return data
 
 
-def resample_exp_params(oldexpdir, newexpdir, epsilon):
-    """Resample parameters from oldexpdir to newexpdir
-    """
-    if not os.path.exists(newexpdir):
-        os.makedirs(newexpdir)
-
-    cmd = "./scripts/resample -w {oldexpdir}/loglik.txt --log --epsilon {expsilon} --jitter -p {oldexpdir}/params.txt  > {expdir}/params.txt".format(oldexpdir=oldexpdir, expdir=newexpdir, expsilon=epsilon)
-    print(cmd)
-    assert os.system(cmd) == 0, "failed to resample parameters"
-
-
 class IISExp(object):
     """Handle IIS experiment
     """
-    def __init__(self, basecfg, iter=0, epsilon=0.05):
-        self.basecfg = basecfg
+    def __init__(self, initdir, constraints, iter=0, epsilon=0.05, resampling='residual'):
+        self.initdir = initdir
+        self.constraints = constraints
         self.iter = iter
         self.epsilon = epsilon
-
+        self.resampling = resampling
 
     def goto_last_iter(self):
-        while os.path.exists(self.getcfg().paramsfile):
+        while self.is_analyzed():
             self.iter += 1
 
-    def getcfg(self, iter=None):
-        if iter is None:
-            iter = self.iter
-        if iter == 0:
-            return self.basecfg
-        cfg = copy.copy(self.basecfg)
-        #cfg.expdir = os.path.join(self.iisdir, "iis.{:0>2}".format(iter))
-        cfg.expdir = self.basecfg.expdir+'.'+str(iter)
-        return cfg
+    def expdir(self, iter=None):
+        iter = self.iter if iter is None else iter
+        return self.initdir + ('.'+str(iter)) if iter > 0 else ""
 
-    def runiis(self, niter, **kwargs):
-        """Iterative Importance Sampling (recursive)
-        """
-        if niter == 0:
-            print("******** runiis terminated")
-            return 
+    def path(self, file, iter=None):
+        return ExpDir(self.expdir(iter)).path(file)
 
-        cfg = self.getcfg()
-        if not os.path.exists(cfg.paramsfile):
-            if self.iter == 0:
-                raise ValueError("No parameter file: "+cfg.paramsfile)
-            else:
-                oldcfg = self.getcfg(self.iter - 1)
-                try:
-                    print("*** resample")
-                    resample_exp_params(oldcfg.expdir, cfg.expdir, self.epsilon)
-                except Exception as error:
-                    print("Previous analysis not performed?")
-                    raise
+    def xrun(self, iter=None):
+        return XRun.read(self.expdir(iter))
 
+    def is_analyzed(self, iter=None):
+        return os.path.exists(self.path("loglik.txt", iter))
+
+    def resample(self, iter):
+        xrun = self.xrun(iter)
+        w = np.exp(np.loadtxt(xrun.path("loglik.txt")))
+        pp = xrun.params.resample(w, self.epsilon, 
+                                      resampling=self.resampling)
+        #pp.write(self.expdir(iter+1).path("params.txt"))  # write to current direc
+        xrun.params = pp
+        xrun.expdir = self.expdir(iter+1)
+        return xrun
+
+    def step(self, **kwargs):
 
         print("******** runiis iter={}".format(self.iter))
+        assert not self.is_analyzed(), 'already analyzed'
+
+        if self.iter == 0:
+            print("*** first iteration")
+            xrun = self.xun()
+        else:
+            print("*** resample")
+            xrun = self.resample(self.iter-1)
+
         print("*** runbatch")
-        cfg.runbatch(wait=True, **kwargs)
+        xrun.runbatch(wait=True, **kwargs)
         print("*** analysis")
-        cfg.get_analysis().write_analysis()
+        xrun.analyze(self.constraints).write(xrun.expdir)
 
         # increment iterations and recursive call
         self.iter += 1
-        return self.runiis(niter-1, **kwargs)
 
+    def runiis(self, maxiter, **kwargs):
+        """Iterative Importance Sampling (recursive)
+        """
+        while self.iter < maxiter:
+            self.step(**kwargs)
+
+        print("******** runiis terminated")
+
+
+class XParser(object):
+    """Helper class to build ArgumentParser with subcommand and keep clean
+    """
+    def __init__(self, *args, **kwargs):
+        self.parser = argparse.ArgumentParser(*args, **kwargs)
+        self.subparsers = self.parser.add_subparsers(dest='cmd')
+
+    def add_setup(self):
+        "setup new experiment"
+        p = self.subparsers.add_parser('setup', help=self.add_setup.__doc__)
+
+        p.add_argument('expdir', help='experiment directory')
+        p.add_argument('--origin', '-o',
+                       help='experiment directory to copy or update from')
+        p.add_argument('--link-results', 
+                       help='if --origin, also link results')
+
+        p.add_argument('-f', '--force', action='store_true',
+                       help='ignore any pre-existing directory')
+
+        grp = p.add_argument_group('model config')
+        grp.add_argument("-x", "--config-file", 
+                           help="model experiment config")
+        grp.add_argument("--config", default=[], type=parse_keyval, nargs='*', metavar="NAME=VALUE",
+                           help="model parameter to update config file")
+        grp.add_argument('-g', "--glacier", 
+                           help="glacier netcdf file from observations")
+
+        # which parameters?
+        grp = p.add_argument_group('parameters')
+        grp.add_argument("-p", "--params", help='params file to reuse or resample from')
+        x = grp.add_mutually_exclusive_group()
+        x.add_argument("--resample", action="store_true",
+                         help='resample new params based on log-likelihood, need --params and --loglik')
+        x.add_argument("--sample", action="store_true",
+                         help='sample new params from prior')
+
+        grp.add_argument("-N", "--size", type=int, help="ensemble size")
+        grp.add_argument("--seed", type=int, help="random state")
+
+        grp.add_argument("--prior-file", 
+                           help="prior config file, required if --sample")
+        grp.add_argument("--prior-params", nargs='*', default=[], type=PriorParam.parse,
+                           help="command-line prior params, to update config file")
+        grp.add_argument("--loglik", 
+                           help="log-likelihood file, required if --resample")
+        grp.add_argument("--epsilon", default=None, type=float, 
+                         help="resample: loglik weight + jitter")
+        grp.add_argument("--resampling-method", default="residual", 
+                         help="resample: loglik weight + jitter")
+        grp.add_argument("--sampling-method", default="lhs", 
+                         choices=["lhs", "montecarlo"], help="sample: lhe")
+
+        return p
+
+    def add_run(self):
+        "run model"
+        p = self.subparsers.add_parser('run', help=self.add_run.__doc__)
+        p.add_argument("expdir", help="experiment directory (need to setup first)")
+
+        p.add_argument("--id", type=int, help="run id")
+        p.add_argument("--dry-run", action="store_true",
+                       help="do not execute, simply print the command")
+        p.add_argument("--background", action="store_true",
+                       help="run in the background, do not check result")
+        return p
+
+    def add_slurm_group(self, root):
+        slurm = root.add_argument_group("slurm")
+        slurm.add_argument("--qos", default="short", help="queue (default=%(default)s)")
+        slurm.add_argument("--job-name", default=__file__, help="default=%(default)s")
+        slurm.add_argument("--account", default="megarun", help="default=%(default)s")
+        slurm.add_argument("--time", default="2", help="wall time m or d-h:m:s (default=%(default)s)")
+
+    def add_runbatch(self):
+        "run ensemble"
+        p = self.subparsers.add_parser("runbatch", 
+                                   help=self.add_runbatch.__doc__)
+        p.add_argument("expdir", help="experiment directory (need to setup first)")
+
+        #p.add_argument("--args", help="pass on to glacier")
+        p.add_argument("--background", action="store_true", 
+                          help="run in background instead of submitting to slurm queue")
+        p.add_argument("--array",'-a', help="slurm sbatch --array")
+        p.add_argument("--wait", action="store_true")
+        self.add_slurm_group(p)
+        return p
+
+    def add_loglik(self):
+        p =  self.subparsers.add_parser("loglik", 
+                               help="return log-likelihood for one run")
+        p.add_argument("expdir", help="experiment directory (need to setup first)")
+        p.add_argument("--id", type=int, help='specify only on run')
+        p.add_argument("-l", "--constraints-file", 
+                       help="constraints to compute likelihood")
+        return p
+
+    def add_constraints_group(self, subp):
+        grp = subp.add_argument_group("obs constraints")
+        grp.add_argument("--obs-file", help="obs constraints config file")
+        grp.add_argument("--obs", nargs='*', default=[], help="list of obs constraints")
+
+    def add_analysis(self):
+        """analysis for the full ensemble: state, loglik, etc...
+        """
+        subp = self.subparsers.add_parser("analysis", help=self.add_analysis.__doc__)
+        subp.add_argument("expdir", help="experiment directory (need to setup first)")
+        self.add_constraints_group(subp)
+        subp.add_argument('-f', '--force', action='store_true',
+                       help='force analysis even if loglik.txt already present')
+        return subp
+
+    def add_iis(self):
+        """run a number of iterations following IIS methodology
+        """
+        # perform IIS optimization
+        subp = self.subparsers.add_parser("iis", parents=[parent], 
+                                   help=self.add_iis.__doc__)
+        subp.add_argument("expdir", help="experiment directory (need to setup first)")
+        self.add_constraints_group(subp)
+        subp.add_argument("-n", "--maxiter", type=int, required=True, 
+                          help="max number of iterations to reach")
+        subp.add_argument("--start", type=int, default=0,
+                          help="start from iteration (default=0), note: previous iter must have loglik.txt file")
+        subp.add_argument("--restart", action='store_true', 
+                          help="automatically find start iteration")
+        subp.add_argument("--epsilon", default=None, type=float, 
+                help="loglik weight + jitter")
+        return subp
+
+    def parse_args(self, *args, **kwargs):
+        return self.parser.parse_args(*args, **kwargs)
+
+
+def get_constraints(args, getobs):
+    like = Likelihood.read(args.obs_file, getobs)
+    constraints = [parse_constraint(cstring, getobs=getobs) 
+                   for cstring in args.obs]
+    like.update(constraints)
+    return like.constraints
 
 
 def main(argv=None):
-    import argparse
 
-    parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers(dest='cmd')
-
-    parent = argparse.ArgumentParser(add_help=False)
-    grp = parent.add_argument_group("root directory structure")
-    parent.add_argument("--config", default="config.json", 
-                        help="experiment config (default=%(default)s)")
-    parent.add_argument("--experiment", default="steadystate", #default="steadystate", 
-                        help="experiment name") # (default=%(default)s)")
-    parent.add_argument("--expdir", help="specifiy experiment directory")
-    parent.add_argument("--glacier", default="daugaard-jensen", help="glacier name")
-
-    # sample prior params
-    subp = subparsers.add_parser('genparams', parents=[parent], 
-                               help="generate ensemble")
-    subp.add_argument("--size", type=int,
-                        help="ensemble size (if different from config.json)")
-
-    # resample params
-    subp = subparsers.add_parser('resample', parents=[parent], 
-                               help="generate ensemble")
-    subp.add_argument("--size", type=int,
-                        help="ensemble size (if different from previous)")
-    subp.add_argument("--epsilon", default=0.05, type=float, 
-            help="loglik weight + jitter")
-    subp.add_argument("--oldexpdir", required=True, 
-            help="old experiment directory")
-
-    # get expconfig fields
-    subp = subparsers.add_parser('get', parents=[parent], 
-                               help="get config field")
-    subp.add_argument('field')
-
-    # model run
-    runpars = argparse.ArgumentParser(add_help=False)
-    runpars.add_argument("--args", help="pass on to glacier")
-
-    subp = subparsers.add_parser("run", parents=[parent, runpars], 
-                               help="run ensemble")
-    subp.add_argument("--id", type=int, help="run id")
-    subp.add_argument("--dry-run", action="store_true",
-                      help="do not execute, simply print the command")
-    subp.add_argument("--background", action="store_true",
-                        help="run in the background, do not check result")
-
-    # ensemble run
-    subp = subparsers.add_parser("runbatch", parents=[parent, runpars], 
-                               help="run ensemble")
-    subp.add_argument("--background", action="store_true", 
-                      help="run in background instead of submitting to slurm queue")
-    subp.add_argument("--array",'-a', help="slurm sbatch --array")
-    subp.add_argument("--job-script", default="job.sh", 
-            help="job script to run the model with slurm --array (default=%(default)s)")
-
-    # loglikelihood for one run
-    subp = subparsers.add_parser("loglik", parents=[parent], 
-                               help="return log-likelihood for one run")
-    subp.add_argument("--id", type=int, help='specify only on run')
-
-    # analysis for the full ensemble: state, loglik, etc...
-    subp = subparsers.add_parser("analysis", parents=[parent], 
-                               help="write state and log-likelihood for the ensemble")
-    subp.add_argument('--anadir', help='directory to write loglik.txt and state.txt, if different from expdir')
-    subp.add_argument('--constraints', type=decode_json, help='json file to read the constraints from, if different from config.json')
-
-
-    # perform IIS optimization
-    subp = subparsers.add_parser("iis", parents=[parent], 
-                               help="run a number of iterations following IIS methodology")
-    subp.add_argument("-n", "--niter", type=int, required=True, 
-                      help="number of iterations to perform")
-    subp.add_argument("--start", type=int, default=0,
-                      help="start from iteration (default=0), note: previous iter must have loglik.txt file")
-    subp.add_argument("--restart", action='store_true', 
-                      help="automatically find start iteration")
-    subp.add_argument("--epsilon", default=0.05, type=float, 
-            help="loglik weight + jitter")
-    #subp.add_argument("-n", "--size", type=int,
-    #                  help="sample size, if different from original experiment")
-    #subp.add_argument("--oldexpdir", 
-    #                  help="old experiment directory, from which to start from if no params.txt is present")
+    parser = XParser(description=__doc__)
+    parser.add_setup()
+    parser.add_run()
+    parser.add_runbatch()
+    #parser.add_loglik()
+    parser.add_analysis()
+    #parser.add_iis()
 
     args = parser.parse_args(argv)
 
-    cfg = GlobalConfig.read(args.config)
-    expcfg = cfg.get_expconfig(args.experiment, args.glacier, args.expdir)
+    if args.cmd == "setup":
+        x = ExpDir(args.expdir)
+        x.create_expdir(args.force)  # for resampling
 
-    if args.cmd == "genparams":
-        # generate parameters if not present
-        if not os.path.exists(expcfg.paramsfile):
-            expcfg.genparams(size=args.size)
+        # define default files from origin directory
+        if args.origin:
+            o = XRun.read(args.origin)
+            if not args.config_file and os.path.exists(o.path("model.json")): 
+                args.config_file = o.path("model.json")
+            if not args.params and os.path.exists(o.path("params.txt")): 
+                args.params = o.path("params.txt")
+            # indicate origin directory
+            with open(x.path("origin"), 'w') as f:
+                f.write(args.origin)
+
+            if args.link_results:
+                o.link_results(args.expdir)
+
+        # glacier model
+        if args.config_file:
+            config = json.load(open(args.config_file))
         else:
-            print(expcfg.paramsfile, "already exists, do nothing")
+            config = {}
+        if args.glacier:
+            config["in_file"] = args.glacier  # temporary fix
+        model = GlacierModel(config)
+        model.update(dict(args.config))
 
-    elif args.cmd == "resample":
+        # parameters
+        if args.sample:
+            # sample from prior parameters
+            assert args.size is not None, "need to provide --size for sampling"
+            prior = PriorParams.read(args.prior_file)
+            prior.update(args.prior_params)
+            params = prior.sample(args.size, seed=args.seed, method=args.sampling_method)
 
-        resample_exp_params(args.oldexpdir, args.expdir, args.epsilon)
+        elif args.resample:
+            assert args.origin is not None, 'need to pass --origin when --resample'
+            # sample from prior parameters
+            print("Resample",args.params,"with",args.origin,"loglik into",args.expdir)
+            prev = XParams.read(args.params)
+            res = Results.read(args.origin)
+            params = prev.resample(np.exp(res.loglik), args.epsilon, 
+                                  size=args.size, seed=args.seed,
+                                  method=args.resampling_method)
+        else:
+            # simply read !
+            params = XParams.read(args.params)
 
-    elif args.cmd == "get":
-        print(getattr(expcfg, args.field))
+        xrun = XRun(model, params, args.expdir)
+        xrun.setup(force=True)  # already created anyway
 
     elif args.cmd == "run":
-        expcfg.run(args.id, args.args, args.dry_run, args.background)
+
+        xrun = XRun.read(args.expdir)
+        xrun.run(runid=args.id, dry_run=args.dry_run, background=args.background)
 
     elif args.cmd == "runbatch":
-        expcfg.runbatch(args.array, args.background, args.args)
 
-    elif args.cmd == "loglik":
-        # for checking: one simulation
-        print("loglik of simu:", expcfg.rundir(args.id))
-        ana = expcfg.get_analysis()
-        loglik = ana.loglik(args.id)
-        print(loglik)
-        sys.exit(0)
+        xrun = XRun.read(args.expdir)
+        xrun.runbatch(array=args.array, background=args.background, 
+                      qos=args.qos, job_name=args.job_name, account=args.account, time=args.time, wait=args.wait)
 
 
     elif args.cmd == "analysis":
-        # loglikelihood
-        ana = expcfg.get_analysis(constraintscfg=args.constraints)
-        ana.write_analysis(args.anadir)
+
+        # model config & params already present
+        print("analysis of experiment", args.expdir)
+        xrun = XRun.read(args.expdir)
+
+        if os.path.exists(xrun.path("loglik.txt")) and not args.force:
+            raise ValueError("analysis already performed, use --force to overwrite")
+
+        # define constraints
+        constraints = get_constraints(args, xrun.model.getobs)
+
+        # analyze
+        results = xrun.analyze(constraints)
+        results.write(args.expdir)
 
 
     elif args.cmd == "iis":
-        iis = IISExp(expcfg, iter=args.start, epsilon=args.epsilon)
+
+        constraints = get_constraints(args, xrun.model.getobs)
+
+        iis = IISExp(args.expdir, constraints, iter=args.start, epsilon=args.epsilon, 
+                     resampling=args.resampling_method)
+
         if args.restart:
             iis.goto_last_iter()
-        iis.runiis(args.niter)
+        iis.runiis(args.maxiter)
 
     else:
         raise NotImplementedError("subcommand not yet implemented: "+args.cmd)

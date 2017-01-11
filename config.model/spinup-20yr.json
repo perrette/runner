@@ -1,0 +1,22 @@
+{
+    "upstream_U" : "dUdx",
+    "dUdx0": 0,
+    "upstream_H": "H",
+
+    "fjordmelt_mode": "constant",
+
+    "dynamics%till_mode": "constant",
+
+    "smb_mode": "relax",
+    "latflx_mode": "prescribed",
+
+    "calving%mode": "CD",
+    "calving%fwd" : 0,
+
+    "basalhydro_mode": "none",
+    "sealevel_pressure": true,
+
+    "smb_relax": 20,
+    "control%years": 20,
+    "control%adaptive_dt": true
+}

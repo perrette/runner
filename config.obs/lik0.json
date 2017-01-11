@@ -1,0 +1,29 @@
+{
+    "constraints": [
+        {
+            "name": "F?gl",
+            "pct_error": 10,
+            "desc": "flux through grounding line [10^9 m^3/a]"
+        },
+        {
+            "name": "H?gl",
+            "pct_error": 10,
+            "desc": "thickness at the grounding line [m]"
+        },
+        {
+            "name": "x?gl",
+            "error": 1e3,
+            "desc": "grounding line position [m]"
+        },
+        {
+            "name": "V",
+            "pct_error": 10,
+            "desc": "glacier volume [10^9 m^3]"
+        },
+        {
+            "name": "smb_mean",
+            "error": 1,
+            "desc": "mean smb over glacer domain [m/a], to avoid unrealistically large relaxation"
+        }
+    ]
+}

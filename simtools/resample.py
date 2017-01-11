@@ -24,6 +24,7 @@ import logging
 import argparse
 from argparse import RawDescriptionHelpFormatter
 import numpy as np
+from simtools.tools import DataFrame
 
 
 SAMPLING_METHOD = "residual"
@@ -34,53 +35,13 @@ DEFAULT_SIZE = 500
 DEFAULT_ALPHA_TARGET = 0.95
 
 
-def str_pmatrix(pnames, pmatrix, max_rows=10, include_index=True, index=None):
-    """Pretty-print parameters matrix like in pandas, but using only basic python functions
-    """
-    # determine columns width
-    col_width_default = 6
-    col_fmt = []
-    col_width = []
-    for p in pnames:
-        w = max(col_width_default, len(p))
-        col_width.append( w )
-        col_fmt.append( "{:>"+str(w)+"}" )
 
-    # also add index !
-    if include_index:
-        idx_w = len(str(len(pmatrix)-1)) # width of last line index
-        idx_fmt = "{:<"+str(idx_w)+"}" # aligned left
-        col_fmt.insert(0, idx_fmt)
-        pnames = [""]+list(pnames)
-        col_width = [idx_w] + col_width
-
-    line_fmt = " ".join(col_fmt)
-
-    header = line_fmt.format(*pnames)
-
-    # format all lines
-    lines = []
-    for i, pset in enumerate(pmatrix):
-        if include_index:
-            ix = i if index is None else index[i]
-            pset = [ix] + list(pset)
-        lines.append(line_fmt.format(*pset))
-
-    n = len(lines)
-    # full print
-    if n <= max_rows:
-        return "\n".join([header]+lines)
-
-    # partial print
-    else:
-        sep = line_fmt.format(*['.'*min(3,w) for w in col_width])  # separator '...'
-        return "\n".join([header]+lines[:max_rows//2]+[sep]+lines[-max_rows//2:])
-
-def _get_Neff(weights):
+def _get_Neff(weights, normalize=True):
     """ Return an estimate of the effective ensemble size
     """
-    weightssum = np.sum(weights)
-    weights = weights/weightssum
+    if normalize:
+        weightssum = np.sum(weights)
+        weights = weights/weightssum
     Neff = 1./np.sum(weights**2)
     return Neff
 
@@ -221,8 +182,8 @@ def sample_with_bounds_check(params, covjitter, bounds):
     ----------
     params : 1-D numpy array (p)
     covjitter : covariance matrix p * p
-    bounds : 2*p array (2 x p)
-        parameter bounds: array([min1,min2,min3,...],[max1,max2,max3,...])
+    bounds : p*2 array (p x 2)
+        parameter bounds: array([(min, max), (min, max), ...])
 
     Returns
     -------
@@ -235,8 +196,10 @@ def sample_with_bounds_check(params, covjitter, bounds):
     maxtries = 100
     while True:
         tries += 1
+        if seed is not None:
+            np.random.seed(seed+tries) 
         newparams = np.random.multivariate_normal(params, covjitter)
-        params_within_bounds = not np.any((newparams < bounds[0]) | (newparams > bounds[1]), axis=0)
+        params_within_bounds = not np.any((newparams < bounds[:,0]) | (newparams > bounds[:,1]), axis=0)
         if params_within_bounds:
             logging.debug("Required {} time(s) sampling jitter to match bounds".format(tries, i))
             break
@@ -247,146 +210,139 @@ def sample_with_bounds_check(params, covjitter, bounds):
     return newparams
 
 
-def add_jitter(params, epsilon, bounds=None):
+def add_jitter(params, epsilon, bounds=None, seed=None):
     """ Add noise with variance equal to epsilon times ensemble variance
 
     params : size x p
     epsilon : float
-    bounds : 2 x p, optinal
+    bounds : p x 2, optional
     """
     size = params.shape[0]
     covjitter = np.cov(params.T)*epsilon
     if covjitter.ndim == 0: 
         covjitter = covjitter.reshape([1,1]) # make it 2-D
+
+    if seed is not None:
+        np.random.seed(seed)  # NOTE: only apply to first sampling (bounds=None)
     jitter = np.random.multivariate_normal(np.zeros(params.shape[1]), covjitter, size)
     newparams = params + jitter
 
     # Check that params remain within physically-motivated "hard" bounds:
     if bounds is not None:
-        bad = np.any((newparams < bounds[0][np.newaxis, :]) | (newparams > bounds[1][np.newaxis, :]), axis=0)
+        bad = np.any((newparams < bounds[:,0][np.newaxis, :]) | (newparams > bounds[:,1][np.newaxis, :]), axis=0)
         ibad = np.where(bad)[0]
         if ibad.size > 0:
             logging.warning("{} particles are out-of-bound after jittering: resample within bounds".format(len(ibad)))
             # newparams[ibad] = resampled_params[ibad]
             for i in ibad:
-                newparams[i] = sample_with_bounds_check(params[i], covjitter, bounds)
+                newparams[i] = sample_with_bounds_check(params[i], covjitter, bounds, seed=seed)
 
     return newparams
 
 
-def bounds_parser(params_bounds):
-    mi, ma = params_bounds[i].split(',')
-    return float(mi), float(ma)
+class Resampler(object):
+    """Resampler class : wrap it all
+    """
+    def __init__(self, weights, normalize=True):
+        if normalize:
+            weights = weights / weights.sum()
+        self.weights = weights
 
-def read_params(pfile):
-    pnames = open(pfile).readline().split()
-    pvalues = np.loadtxt(pfile, skiprows=1)  
-    return pnames, pvalues
+    def sample_residual(self, size):
+        return residual_resampling(self.weights, size)
+
+    def sample_multinomal(self, size):
+        return multinomial_resampling(self.weights, size)
+
+    def sample(self, size, seed=None, method='residual'):
+        """wrapper resampler method 
+        """
+        np.random.seed(seed) # random state
+        if method == 'residual':
+            ids = self.sample_residual(size)
+        elif method == 'residual':
+            ids = self.sample_multinomal(size)
+        elif method in ("stratified", "deterministic"):
+            raise NotImplementedError(method) # todo
+        else:
+            raise NotImplementedError(method)
+        return np.sort(ids)  # sort indices (has no effect on the results)
+
+    def neff(self):
+        " effective ensemble size "
+        return _get_Neff(self.weights, normalize=False)
+
+    def size(self):
+        return len(self.weights)
+
+    def scaled(self, epsilon):
+        """New resampler with scaled weights
+        """
+        return Resampler(self.weights**epsilon)
+
+    def autoepsilon(self, neff_bounds=NEFF_BOUNDS, epsilon=EPSILON):
+        """return epsilon to get effective ensemble size within bounds
+        """
+        return adaptive_posterior_exponent(self.weights, epsilon, neff_bounds)
+
+    def iis(self, params, epsilon=None, size=None, bounds=None, seed=None, neff_bounds=NEFF_BOUNDS, **kwargs):
+        """Iterative importance (re)sampling with scaled weights and jittering
+
+        params : size x p
+        epsilon : float
+            weights <- weights ** epsilon
+            see Resampler.autoepsilon
+        bounds : p x 2, optional
+            parameter bounds, force resampling if outside
+        """
+        if epsilon is None:
+            epsilon = self.autoepsilon(neff_bounds)
+        size = size or len(params)
+        ids = self.scaled(epsilon).sample(size, seed=seed, **kwargs)
+        return add_jitter(params[ids], epsilon, seed=seed, bounds=bounds)
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
 	    formatter_class=RawDescriptionHelpFormatter)
 
-    parser.add_argument('-w','--weights-file', required=True)
-    parser.add_argument('--log', action='store_true', help='weights are provided as log-likelihood?')
+    parser.add_argument('-p', '--params-file', help='parameter file of the ensemble')
+    group = parser.add_argument_group('weights')
+    group.add_argument('-w','--weights-file', required=True)
+    group.add_argument('--log', action='store_true', help='weights are provided as log-likelihood?')
 
-    parser.add_argument('--resampling', choices=['residual', 'multinomial'], default=SAMPLING_METHOD, help='resampling method (default: %(default)s)')
-    parser.add_argument('--include-index', action='store_true', help='include index in the output matrix')
+    group = parser.add_argument_group('iis')
+    group.add_argument('--epsilon', type=float, help='Exponent to flatten the weights, default from autoepsilon')
+    group.add_argument('--neff-bounds', nargs=2, default=NEFF_BOUNDS, type=int, help='effective ensemble size, to determine epsilon in "auto" mode')
+
     parser.add_argument('-N', '--size', help="New sample size (default: same size as before)", type=int)
     parser.add_argument('--seed', type=int, help="random seed, for reproducible results (default to None)")
 
-    grp = parser.add_mutually_exclusive_group(required=True)
-    grp.add_argument('-p', '--params-file', help='parameter file of the ensemble')
-    grp.add_argument('--index-only', action='store_true', help='only output the resampled index')
-    grp.add_argument('--neff-only', action='store_true', help='only output effective ensemble size, given epsilon')
-    grp.add_argument('--auto-epsilon-only', action='store_true', help='only output auto-epsilon')
-    
-    group = parser.add_argument_group('weights scaling')
-    grp = group.add_mutually_exclusive_group()
-    grp.add_argument('--epsilon', type=float, help='Exponent to flatten the weights.')
-    grp.add_argument('--auto-epsilon', action='store_true', help='automatically determine epsilon')
-    group.add_argument('--neff-bounds', nargs=2, default=NEFF_BOUNDS, type=int, help='effective ensemble size, to determine epsilon in "auto" mode')
-    #parser.add_argument('--jitter', action='store_true', help='if True, add jitter to the ensemble after resampling, as epsilon times covariance')
+    parser.add_argument('--method', choices=['residual', 'multinomial'], default=SAMPLING_METHOD, help='resampling method (default: %(default)s)')
 
-    group = parser.add_argument_group('add noise')
-    group.add_argument('--jitter', action='store_true', help='Add noise to the ensemble after resampling, with a fraction of the covariance (see --jitter-eps)')
-    group.add_argument('--jitter-eps', type=float, help='if --jitter, fraction of original (flattened) covariance matrix. Default to epslion.')
-    group.add_argument('--params-bounds', nargs='*', type=bounds_parser, help='list of min,max <= len(params)')
-    parser.add_argument('--iis', action='store_true', help='Shortcut for --auto-epsilon and --jitter')
+    parser.add_argument('--neff-only', action='store_true', help='effective ensemble size')
 
-    #parser.add_argument('-o', '--out', help="Output parameter file")
 
     args = parser.parse_args()
 
+    # load weights 
+    # ------------
     weights = np.loadtxt(args.weights_file)
-
     if args.log:
         weights = np.exp(weights)
-
-    if args.iis:
-        if not args.epsilon:
-            args.auto_epsilon = True
-        args.jitter = True
-
-    if args.auto_epsilon_only:
-        args.auto_epsilon = True
-
-    if args.auto_epsilon:
-        args.epsilon = adaptive_posterior_exponent(weights, neff_bounds=args.neff_bounds)
-
-    if args.auto_epsilon_only:
-        print(args.epsilon)
-        return
-
-    if args.epsilon:
-        weights = weights**args.epsilon
+    resampler = Resampler(weights)
 
     if args.neff_only:
-        print( _get_Neff(weights) )
+        print(resampler.neff())
         return
-
-    size = args.size or weights.size
-
-    weights /= weights.sum() # normalize weights
-
-    # Resample the model versions according to their weight
-    # -----------------------------------------------------
-    np.random.seed(args.seed)
-    if args.resampling == "multinomial":
-        ids = multinomial_resampling(weights, size)
-    elif args.resampling == "residual":
-        ids = residual_resampling(weights, size)
-    elif args.resampling in ("stratified", "deterministic"):
-        raise NotImplementedError(args.resampling)
-    else:
-        raise ValueError("Unknown resampling method: "+args.resampling)
-    ids = np.sort(ids)  # sort indices (has no effect on the results)
-
-
-    if args.index_only:
-        print(ids)
-        return
-
 
     # Resample parameters
     # -------------------
-    pnames, params = read_params(args.params_file)
-    newparams = params[ids]
+    pp = DataFrame.read(args.params_file)
+    pp.values = resampler.iis(pp.values, args.epsilon, args.size, seed=args.seed, 
+                        resampling=args.method)
 
-    # add jitter
-    if args.jitter:
-        eps = args.jitter_eps or args.epsilon
-        assert eps, 'if need provide jitter-eps or epsilon'
-
-        if args.params_bounds:
-            missing = params.shape[1]*len(args.params_bounds)  # only first values provided?
-            args.params_bounds = args.params_bounds + [(-np.inf, np.inf)]*missing
-
-        np.random.seed(args.seed)  # NOTE: only apply to first sampling (bounds=None)
-        newparams = add_jitter(newparams, eps, bounds=args.params_bounds)
-
-    txt = str_pmatrix(pnames, newparams, index=ids, include_index=args.include_index, max_rows=np.inf)
-    print(txt)
+    print(str(pp))
 
 if __name__ == '__main__':
     main()

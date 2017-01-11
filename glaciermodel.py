@@ -5,6 +5,7 @@ import json, warnings
 import netCDF4 as nc
 import numpy as np
 from collections import OrderedDict as odict
+#from simtools.modelrun import Model
 
 GLACIER = "glacier"
 SEC_IN_YEAR = 3600*24*365.25
@@ -68,6 +69,7 @@ def glacierargs(netcdf, outdir, *args, **kwargs):
     return [GLACIER] + cmd
 
 
+
 # analyze output, define custom variables
 # ---------------------------------------
 def _get_gl(H, zb, rho_sw=1028, rho_i = 917):
@@ -95,7 +97,7 @@ def _get_terminus(ds):
     return gl, c
 
 
-def parse_indices(spec, literal_indices=['gl','c']):
+def _parse_indices(spec, literal_indices=['gl','c']):
 
     idx = spec.split(',')
     n = len(idx)
@@ -139,8 +141,6 @@ def _check_literal_indices(indices, **kwargs):
 
 def read_model(ds, name):
 
-    SEC_IN_YEAR = 3600*24*365  # conversion years <--> second
-
     if isinstance(ds, basestring):
         restart = ds
         if not os.path.exists(restart):
@@ -158,7 +158,7 @@ def read_model(ds, name):
 
     if '?' in v:
         v, spec = v.split('?')
-        idx = parse_indices(spec)
+        idx = _parse_indices(spec)
     else:
         idx = slice(c)
 
@@ -194,9 +194,49 @@ def read_model(ds, name):
     return var
 
 
-# define constraints
+# Glacier Model Class : package everything
+# ========================================
+class GlacierModel(object):
+    """Glacier model.
+    """
+    def __init__(self, config=None):
+        """Initialize model
 
-def nans(shp):
-    a = np.empty(shp)
-    a.fill(np.nan)
-    return a
+        Parameters
+        ----------
+        config : dict, optional
+            base model configuration
+        """
+        self.config = config or {} # dict
+        if "in_file" not in self.config:
+            self.config["in_file"] = "glaciers/daugaard-jensen.nc"  # default glacier
+
+    def update(self, params):
+        self.config.update(params)
+
+    def command(self, rundir, params=None):
+        """Return command (list-form) to run model
+        """
+        pars = self.config.copy()
+        if params is not None:
+            pars.update(params)
+        return glacierargs(self.config["in_file"], rundir, **pars)
+
+    # to derive constraints
+    def get(self, rundir, name):
+        """Get one model state variable
+        """
+        if not os.path.exists(os.path.join(rundir, 'simu_ok')):
+            raise ValueError("simulation failed")
+        outfile = os.path.join(rundir, "restart.nc")
+        return read_model(outfile, name)
+
+    def getobs(self, name):
+        """Get observations (given the constraints)
+        """
+        if "ref_file" in self.config:
+            obsfile = self.config["ref_file"]
+        else:
+            obsfile = self.config["in_file"]
+        return read_model(obsfile, name)
+
