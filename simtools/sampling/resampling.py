@@ -21,13 +21,10 @@ in NSSPW - Nonlinear Statistical Signal Processing Workshop 2006,
 """
 from __future__ import division, print_function
 import logging
-import argparse
-from argparse import RawDescriptionHelpFormatter
 import numpy as np
-from simtools.tools import DataFrame
 
 
-SAMPLING_METHOD = "residual"
+RESAMPLING_METHOD = "residual"
 EPSILON = 0.05  # start value for adaptive_posterior_exponent (kept if NEFF in NEFF_BOUNDS)
 EPSILON_BOUNDS = (1e-3, 0.1)  # has priority over NEFF_BOUNDS
 NEFF_BOUNDS = (0.5, 0.9)
@@ -254,7 +251,7 @@ class Resampler(object):
     def sample_multinomal(self, size):
         return multinomial_resampling(self.weights, size)
 
-    def sample(self, size, seed=None, method='residual'):
+    def sample(self, size, seed=None, method=RESAMPLING_METHOD):
         """wrapper resampler method 
         """
         np.random.seed(seed) # random state
@@ -301,49 +298,4 @@ class Resampler(object):
         ids = self.scaled(epsilon).sample(size, seed=seed, **kwargs)
         return add_jitter(params[ids], epsilon, seed=seed, bounds=bounds)
 
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__,
-	    formatter_class=RawDescriptionHelpFormatter)
-
-    parser.add_argument('-p', '--params-file', help='parameter file of the ensemble')
-    group = parser.add_argument_group('weights')
-    group.add_argument('-w','--weights-file', required=True)
-    group.add_argument('--log', action='store_true', help='weights are provided as log-likelihood?')
-
-    group = parser.add_argument_group('iis')
-    group.add_argument('--epsilon', type=float, help='Exponent to flatten the weights, default from autoepsilon')
-    group.add_argument('--neff-bounds', nargs=2, default=NEFF_BOUNDS, type=int, help='effective ensemble size, to determine epsilon in "auto" mode')
-
-    parser.add_argument('-N', '--size', help="New sample size (default: same size as before)", type=int)
-    parser.add_argument('--seed', type=int, help="random seed, for reproducible results (default to None)")
-
-    parser.add_argument('--method', choices=['residual', 'multinomial'], default=SAMPLING_METHOD, help='resampling method (default: %(default)s)')
-
-    parser.add_argument('--neff-only', action='store_true', help='effective ensemble size')
-
-
-    args = parser.parse_args()
-
-    # load weights 
-    # ------------
-    weights = np.loadtxt(args.weights_file)
-    if args.log:
-        weights = np.exp(weights)
-    resampler = Resampler(weights)
-
-    if args.neff_only:
-        print(resampler.neff())
-        return
-
-    # Resample parameters
-    # -------------------
-    pp = DataFrame.read(args.params_file)
-    pp.values = resampler.iis(pp.values, args.epsilon, args.size, seed=args.seed, 
-                        resampling=args.method)
-
-    print(str(pp))
-
-if __name__ == '__main__':
-    main()
 

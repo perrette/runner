@@ -8,6 +8,7 @@ import json
 import numpy as np
 import scipy.stats
 from scipy.stats import norm, lognorm, uniform, multivariate_normal
+from simtools.xrun import XRun, XDir
 
 
 def parse_scipy(spec):
@@ -190,6 +191,120 @@ class Likelihood(Constraint):
 
     def logpdf(self, state):
         return sum([c.logpdf(s) for c, s in zip(self.constraints, state)])
+
+
+class Results(object):
+    """Contains model result for further analysis with constraints
+    """
+    def __init__(self, constraints=None, state=None, 
+                 loglik=None, loglik2=None, params=None, default=None):
+
+        if loglik is None and loglik2 is not None:
+            loglik = loglik2.sum(axis=1)
+        self.loglik = loglik
+        self.constraints = constraints   # so that names is defined
+
+        self.state = state
+        self.loglik2 = loglik2
+        self.params = params
+        self.default = default
+
+        # weights
+        self.loglik = loglik
+        self.valid = np.isfinite(self.loglik)
+
+    def weights(self):
+        w = np.exp(self.loglik)
+        return w / w.sum()
+
+    @classmethod
+    def read(cls, direc):
+        x = XDir(direc)
+        loglik = np.loadtxt(x.path("loglik.txt"))
+        return cls(loglik=loglik)
+
+
+    def write(self, direc):
+        """write result stats and loglik to folder
+        """
+        print("write analysis results to",direc)
+        x = XDir(direc)
+        np.savetxt(x.path("loglik.txt"), self.loglik)
+
+        if self.state is not None:
+            with open(x.path("state.txt"), "w") as f:
+                f.write(self.format(self.state))
+            with open(x.path("stats.txt"), "w") as f:
+                f.write(self.stats())
+
+        if self.loglik2 is not None:
+            with open(x.path("loglik.all.txt"), "w") as f:
+                f.write(self.format(self.loglik2))
+
+
+    @property
+    def obs(self):
+        return [c.mean for c in self.constraints]
+
+    @property
+    def names(self):
+        return [c.name for c in self.constraints]
+
+    def best(self):
+        return self.state[np.argmax(self.loglik)]
+
+    def mean(self):
+        return self.state[self.valid].mean(axis=0)
+
+    def std(self):
+        return self.state[self.valid].std(axis=0)
+
+    def min(self):
+        return self.state[self.valid].min(axis=0)
+
+    def max(self):
+        return self.state[self.valid].max(axis=0)
+
+    def pct(self, p):
+        return np.percentile(self.state[self.valid], p, axis=0)
+
+
+    def stats(self, fmt="{:.2f}", sep=" "):
+        """return statistics
+        """
+        #def stra(a):
+        #    return sep.join([fmt.format(k) for k in a]) if a is not None else "--"
+
+        res = [
+            ("obs", self.obs),
+            ("best", self.best()),
+            ("default", self.default),
+            ("mean", self.mean()),
+            ("std", self.std()),
+            ("min", self.min()),
+            ("p05", self.pct(5)),
+            ("med", self.pct(50)),
+            ("p95", self.pct(95)),
+            ("max", self.max()),
+        ]
+
+        index = [nm for nm,arr in res if arr is not None]
+        values = [arr for nm,arr in res if arr is not None]
+
+        import pandas as pd
+        df = pd.DataFrame(np.array(values), columns=self.names, index=index)
+
+        return str(df) #"\n".join(lines)
+
+    def df(self, array):
+        " transform array to dataframe "
+        import pandas as pd
+        return pd.DataFrame(array, columns=self.names)
+
+    def format(self, array):
+        return str(self.df(array))
+
+
 
 
 #def get_ensemble_size(outdir):

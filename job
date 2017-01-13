@@ -1,0 +1,223 @@
+#!/usr/bin/env python2.7
+"""Play around with glacier model
+"""
+from __future__ import print_function, absolute_import
+import argparse
+import numpy as np
+import json
+import copy
+import shutil
+import os
+import sys
+import subprocess
+from collections import OrderedDict as odict
+
+#from glaciermodel import GlacierModel
+from simtools.modelrun import run_command, parse_slurm_array_indices
+from simtools.params import XParams, PriorParam, PriorParams
+from simtools.analysis import Likelihood, parse_constraint, Results
+from simtools.tools import parse_keyval
+from simtools.iis import IISExp
+from simtools.xrun import XRun
+
+
+class XParser(object):
+    """Helper class to build ArgumentParser with subcommand and keep clean
+    """
+    def __init__(self, *args, **kwargs):
+        self.parser = argparse.ArgumentParser(*args, **kwargs)
+        self.subparsers = self.parser.add_subparsers(dest='cmd')
+
+    def add_setup(self):
+        "setup new experiment"
+        p = self.subparsers.add_parser('setup', help=self.add_setup.__doc__)
+
+        p.add_argument('expdir', help='experiment directory')
+        p.add_argument('--origin', '-o',
+                       help='experiment directory to copy or update from')
+        p.add_argument('--link-results', 
+                       help='if --origin, also link results')
+
+        p.add_argument('-f', '--force', action='store_true',
+                       help='ignore any pre-existing directory')
+
+        grp = p.add_argument_group('model config')
+        grp.add_argument("-x", "--config-file", 
+                           help="model experiment config")
+        grp.add_argument("--config", default=[], type=parse_keyval, nargs='*', metavar="NAME=VALUE",
+                           help="model parameter to update config file")
+        grp.add_argument('-g', "--glacier", 
+                           help="glacier netcdf file from observations")
+
+        # which parameters?
+        grp = p.add_argument_group('parameters')
+        grp.add_argument("-p", "--params", help='params file to reuse or resample from')
+        x = grp.add_mutually_exclusive_group()
+        x.add_argument("--resample", action="store_true",
+                         help='resample new params based on log-likelihood, need --params and --loglik')
+        x.add_argument("--sample", action="store_true",
+                         help='sample new params from prior')
+
+        grp.add_argument("-N", "--size", type=int, help="ensemble size")
+        grp.add_argument("--seed", type=int, help="random state")
+
+        grp.add_argument("--prior-file", 
+                           help="prior config file, required if --sample")
+        grp.add_argument("--prior-params", nargs='*', default=[], type=PriorParam.parse,
+                           help="command-line prior params, to update config file")
+        grp.add_argument("--loglik", 
+                           help="log-likelihood file, required if --resample")
+        grp.add_argument("--epsilon", default=None, type=float, 
+                         help="resample: loglik weight + jitter")
+        grp.add_argument("--resampling-method", default="residual", 
+                         help="resample: loglik weight + jitter")
+        grp.add_argument("--sampling-method", default="lhs", 
+                         choices=["lhs", "montecarlo"], help="sample: lhe")
+
+        return p
+
+    def add_run(self):
+        "run model"
+        p = self.subparsers.add_parser('run', help=self.add_run.__doc__)
+        p.add_argument("expdir", help="experiment directory (need to setup first)")
+
+        p.add_argument("--id", type=int, help="run id")
+        p.add_argument("--dry-run", action="store_true",
+                       help="do not execute, simply print the command")
+        p.add_argument("--background", action="store_true",
+                       help="run in the background, do not check result")
+        return p
+
+    def add_slurm_group(self, root):
+        slurm = root.add_argument_group("slurm")
+        slurm.add_argument("--qos", default="short", help="queue (default=%(default)s)")
+        slurm.add_argument("--job-name", default=__file__, help="default=%(default)s")
+        slurm.add_argument("--account", default="megarun", help="default=%(default)s")
+        slurm.add_argument("--time", default="2", help="wall time m or d-h:m:s (default=%(default)s)")
+
+    def add_runbatch(self):
+        "run ensemble"
+        p = self.subparsers.add_parser("runbatch", 
+                                   help=self.add_runbatch.__doc__)
+        p.add_argument("expdir", help="experiment directory (need to setup first)")
+
+        #p.add_argument("--args", help="pass on to glacier")
+        p.add_argument("--background", action="store_true", 
+                          help="run in background instead of submitting to slurm queue")
+        p.add_argument("--array",'-a', help="slurm sbatch --array")
+        p.add_argument("--wait", action="store_true")
+        self.add_slurm_group(p)
+        return p
+
+    def add_loglik(self):
+        p =  self.subparsers.add_parser("loglik", 
+                               help="return log-likelihood for one run")
+        p.add_argument("expdir", help="experiment directory (need to setup first)")
+        p.add_argument("--id", type=int, help='specify only on run')
+        p.add_argument("-l", "--constraints-file", 
+                       help="constraints to compute likelihood")
+        return p
+
+    def add_constraints_group(self, subp):
+        grp = subp.add_argument_group("obs constraints")
+        grp.add_argument("--obs-file", help="obs constraints config file")
+        grp.add_argument("--obs", nargs='*', default=[], help="list of obs constraints")
+
+    def add_analysis(self):
+        """analysis for the full ensemble: state, loglik, etc...
+        """
+        subp = self.subparsers.add_parser("analysis", help=self.add_analysis.__doc__)
+        subp.add_argument("expdir", help="experiment directory (need to setup first)")
+        self.add_constraints_group(subp)
+        subp.add_argument('-f', '--force', action='store_true',
+                       help='force analysis even if loglik.txt already present')
+        return subp
+
+    def add_iis(self):
+        """run a number of iterations following IIS methodology
+        """
+        # perform IIS optimization
+        subp = self.subparsers.add_parser("iis", parents=[parent], 
+                                   help=self.add_iis.__doc__)
+        subp.add_argument("expdir", help="experiment directory (need to setup first)")
+        self.add_constraints_group(subp)
+        subp.add_argument("-n", "--maxiter", type=int, required=True, 
+                          help="max number of iterations to reach")
+        subp.add_argument("--start", type=int, default=0,
+                          help="start from iteration (default=0), note: previous iter must have loglik.txt file")
+        subp.add_argument("--restart", action='store_true', 
+                          help="automatically find start iteration")
+        subp.add_argument("--epsilon", default=None, type=float, 
+                help="loglik weight + jitter")
+        return subp
+
+    def parse_args(self, *args, **kwargs):
+        return self.parser.parse_args(*args, **kwargs)
+
+
+def get_constraints(args, getobs):
+    like = Likelihood.read(args.obs_file, getobs)
+    constraints = [parse_constraint(cstring, getobs=getobs) 
+                   for cstring in args.obs]
+    like.update(constraints)
+    return like.constraints
+
+
+def main(argv=None):
+
+    parser = XParser(description=__doc__)
+    parser.add_setup()
+    parser.add_run()
+    parser.add_runbatch()
+    #parser.add_loglik()
+    parser.add_analysis()
+    #parser.add_iis()
+
+    args = parser.parse_args(argv)
+
+    if args.cmd == "run":
+
+        xrun = XRun.read(args.expdir)
+        xrun.run(runid=args.id, dry_run=args.dry_run, background=args.background)
+
+    elif args.cmd == "runbatch":
+
+        xrun = XRun.read(args.expdir)
+        xrun.runbatch(array=args.array, background=args.background, 
+                      qos=args.qos, job_name=args.job_name, account=args.account, time=args.time, wait=args.wait)
+
+
+    elif args.cmd == "analysis":
+
+        # model config & params already present
+        print("analysis of experiment", args.expdir)
+        xrun = XRun.read(args.expdir)
+
+        if os.path.exists(xrun.path("loglik.txt")) and not args.force:
+            raise ValueError("analysis already performed, use --force to overwrite")
+
+        # define constraints
+        constraints = get_constraints(args, xrun.model.getobs)
+
+        # analyze
+        results = xrun.analyze(constraints)
+        results.write(args.expdir)
+
+
+    elif args.cmd == "iis":
+
+        constraints = get_constraints(args, xrun.model.getobs)
+
+        iis = IISExp(args.expdir, constraints, iter=args.start, epsilon=args.epsilon, 
+                     resampling=args.resampling_method)
+
+        if args.restart:
+            iis.goto_last_iter()
+        iis.runiis(args.maxiter)
+
+    else:
+        raise NotImplementedError("subcommand not yet implemented: "+args.cmd)
+
+
+if __name__ == '__main__':
+    main()

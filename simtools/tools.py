@@ -77,11 +77,9 @@ def read_df(pfile):
 class DataFrame(object):
     """DataFrame with names and matrix : Parameters, State variable etc
     """
-    def __init__(self, values, names, default=None):
+    def __init__(self, values, names):
         self.values = values
         self.names = names
-        self.default = default
-        str(self)
 
 
     def df(self):
@@ -97,26 +95,6 @@ class DataFrame(object):
     def write(self, pfile):
         with open(pfile, "w") as f:
             f.write(str(self))
-
-    def pset_as_array(self, i=None):
-        if i is None:
-            pvalues = self.default
-        else:
-            pvalues = self.values[i]
-        return pvalues
-
-    def pset_as_dict(self, i=None):
-        """return parameter set as a dictionary
-        """
-        pvalues = self.pset_as_array(i)
-
-        if pvalues is None:
-            return {}  # case were default parameters are not provided
-
-        params = {}
-        for k, v in zip(self.names, pvalues):
-            params[k] = v
-        return params
 
     # make it like a pandas DataFrame
     def __getitem__(self, k):
