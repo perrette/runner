@@ -41,7 +41,7 @@ class JobScript(object):
     def submit(self, jobfile, **kwargs):
         opt = self.opt.copy()
         opt.update(kwargs)
-        return subprocess.Popen([jobfile], **opt)
+        return subprocess.Popen(["bash", jobfile], **opt)
 
 
 class Slurm(JobScript):
@@ -100,14 +100,24 @@ class SlurmProcess(object):
 
 
 
-def submit_job(commands, jobfile=None, manager=None, **kwargs):
+def submit_job(commands, manager=None, jobfile=None, 
+               output=None, error=None, **kwargs):
     """Write a series of command to file and execute them
 
     commands : [str]
         list of (string) commands to be written to a file
-
+    manager : str, optional
+        job manager ("slurm" or None) so far
+    jobfile : job script to be written
+    output, error : log files (str)
+    **kwargs : other, manager-specific arguments
     """
     if manager is None:
+        # make it behave more like SLURM
+        if "output" in kwargs:
+            kwargs["stdout"] = kwargs.pop("output")
+        if "error" in kwargs:
+            kwargs["stderr"] = kwargs.pop("error")
         job = JobScript(commands, **kwargs)
 
     elif manager == "slurm":
