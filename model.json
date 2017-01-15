@@ -1,0 +1,12 @@
+{
+    "executable": "job",
+    "args": ["example", "{rundir}", "{runid}"],
+    "params":{
+       "write": "params.json",
+       "args": ["--{name}", "{value}"],
+       "default": null,
+       "file":{
+           "type": "jsondict",
+           "settings": null
+       }
+}

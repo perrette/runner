@@ -3,11 +3,11 @@
 Originally adapted from 
 https://github.com/leifdenby/namelist_python
 """
-from __future__ import print_function
+from __future__ import print_function, absolute_import
 from collections import OrderedDict as odict
 import re
 from itertools import groupby
-from simtools.model import Param, ParamsFile
+from simtools.model.params import Param, ParamsFile, register_filetype
 
 NAME_FORMAT = "{group}.{short}"
 
@@ -36,6 +36,7 @@ class Namelist(ParamsFile):
         default_params = parse_nml(open(file).read())
         return cls(default_params)
 
+register_filetype("namelist", Namelist)
 
 
 def parse_nml(string, ignore_comments=False):

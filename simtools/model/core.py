@@ -1,125 +1,13 @@
-"""Model definition, mostly Param I/O
-"""
 from __future__ import print_function, absolute_import
+import difflib
+import subprocess
 import os
 import json
-import difflib
-from simtools.addons import filetypes, register_filetype
-import subprocess
-from .submit import submit_job
 
-#PARAMS_ARG = ["--{name}", "{value}"] # for command line
-PARAMS_ARG = None # for command line
-PARAMS_FILE_TYPE = "jsondict" # {"jsondict", "jsonlist", "template", "generic", "nml"}
-PARAMS_FILE_GENERIC = "{name}={value}"
+from simtools.submit import submit_job
+from simtools.model.params import Param, ParamsFile
 
-
-# Parameters I/O to communicate with model
-# ========================================
-class Param(object):
-    """default parameter --> useful to specify custom I/O formats
-    """
-    def __init__(self, name, default=None, help=None, value=None, **kwargs):
-        """
-        name : parameter name
-        default : default value, optional
-        help : help (e.g. to provide for argparse), optional
-        **kwargs : any other attribute required for custom file formats
-        """
-        self.name = name
-        self.default = default
-        self.value = value if value is not None or default
-        self.help = help
-        self.__dict__.update(kwargs)
-
-    def __repr__(self):
-        return "Param(name={name},default={default},value={value})".format(**self.__dict__)
-
-    def __str__(self):
-        return "{name}={value} [{default}]".format(**self.__dict__)
-
-
-class ParamsFile(object):
-    def dumps(self, params):
-        raise NotImplementedError()
-
-    def loads(self, string):
-        raise NotImplementedError()
-
-    def dump(self, params, f):
-        f.write(self.dumps(params))
-
-    def load(self, f):
-        return self.loads(f.read())
-
-
-class JsonList(ParamsFile):
-    """json file format
-    """
-    def __init__(self, indent=2, **kwargs):
-        kwargs["indent"] = indent
-        self.kwargs = kwargs
-
-    def dumps(self, params):
-        return json.dumps([p.__dict__ for p in params], **kwargs)
-
-    def loads(self, string):
-        return [Param(**p) for p in json.loads(string)]
-
-
-class JsonDict(ParamsFile):
-    """json file format
-    """
-    def __init__(self, indent=2, sort_keys=True, **kwargs):
-        kwargs["indent"] = indent
-        kwargs["sort_keys"] = sort_keys
-        self.kwargs = kwargs
-
-    def dumps(self, params):
-        return json.dumps({p.name:p.value for p in params}, **kwargs)
-
-    def loads(self, string):
-        kwargs = json.loads(string)
-        return [Param(name=k, value=kwargs[k]) for k in sorted(kwargs.keys())]
-
-
-class GenericFile(ParamsFile):
-    """Generic class to write to a parameter file
-    """
-    def __init__(self,  line_fmt=PARAMS_FILE_GENERIC):
-        """
-        line_fmt : str, optional
-            param format for each line, with placeholders {name} and {value}.
-            By default "{name}={value}".
-        """
-        self.line_fmt = line_fmt
-
-    def dumps(self, params):
-        """return the file as a string
-        """
-        lines = [ self.line_fmt.format(**p.__dict__) for p in params ]
-        return "\n".join(lines)
-
-
-class TemplateFile(ParamsFile):
-    """Custom file format based on a full file template
-    """
-    def __init__(self, string):
-        assert string, "must provide template string"
-        self.string = string
-
-    def dumps(self, params):
-        return self.string.format(**{p.name:p.value for p in params})
-
-    @classmethod
-    def read(cls, file):
-        return cls(open(file).read())
-
-
-register_filetype("jsonlist", JsonList)
-register_filetype("jsondict", JsonDist)
-register_filetype("generic", GenericFile)
-register_filetype("template", TemplateFile.read)
+PARAMS_ARG = "--{name} {value}" # by default 
 
 
 # Model instance
@@ -170,34 +58,27 @@ class Model(object):
             dat = json.load(f)
         if root:
             dat = dat[root]
-        return cls.fromdict(dat)
+        return cls.fromconfig(dat)
+
 
     @classmethod
-    def fromdict(cls, dat):
-        """Initialize from dictionary config
+    def fromconfig(cls, dat):
+        """Initialize Model from dictionary config
         """
         dat = dat.copy()
 
         pdef = dat.pop("params", {})
 
-        type_name = pdef.pop("filetype", PARAMS_FILE_TYPE)
-        type_def = pdef.pop("filetype_def", {}) # key-word arguments
         write = pdef.pop("write", None)
         args = pdef.pop("args", PARAMS_ARG)
-        default = pdef.pop('default', None)
+        default = pdef.pop("default", None)
+        filetypedat = pdef.pop("file", None)
+        filetype = ParamsFile.fromconfig(filetypedat)
 
-        # param file def?
-        if type_name in filetypes:
-            cls = filetypes[type_name]
-            filetype = cls(**type_def)
-
-        else:
-            print("Available filetypes:",filetypes.keys())
-            raise ValueError("Unknown file type: "+repr(type_name))
 
         # read default params
         if isinstance(default, basestring):
-            params = filetype.load(open(default)))
+            params = filetype.load(open(default))
 
         elif isinstance(default, dict):
             params = [Param(k, default[k]) for k in default]

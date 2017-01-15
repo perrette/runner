@@ -9,11 +9,15 @@ import os
 import sys
 import subprocess
 
-from simtools.model import Model
+from simtools.model import Param, Model
 from simtools.submit import submit_job
-from simtools.params import XParams
+from simtools.xparams import XParams
 
 DIGIT = 4  # number of digits for output folders
+
+
+# Ensemble Xperiment
+# ==================
 
 def parse_slurm_array_indices(a):
     indices = []
