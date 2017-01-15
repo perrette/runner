@@ -5,57 +5,52 @@ import argparse
 import numpy as np
 import json
 import copy
-import shutil
 import os
 import sys
 import subprocess
-from collections import OrderedDict as odict
 
-from simtools.modelrun import run_command, parse_slurm_array_indices
+from simtools.model import Model
+from simtools.submit import submit_job
 from simtools.params import XParams
+
+DIGIT = 4  # number of digits for output folders
+
+def parse_slurm_array_indices(a):
+    indices = []
+    for i in a.split(","):
+        if '-' in i:
+            if ':' in i:
+                i, step = i.split(':')
+                step = int(step)
+            else:
+                step = 1
+            start, stop = i.split('-')
+            start = int(start)
+            stop = int(stop) + 1  # last index is ignored in python
+            indices.extend(range(start, stop, step))
+        else:
+            indices.append(int(i))
+    return indices
+
+
+# Environment I/O to communicate with model
+# =========================================
 
 # prefix for environ variables
 ENVPREFIX = "SIMTOOLS_"
 
-ENVIRON_MAP = {
-    "runid" : ENVPREFIX+"RUNID",
-    "expdir" : ENVPREFIX+"EXPDIR",
-}
-
 def getenv(name, *failobj):
     " for runner to set environment variables" 
-    return os.environ.get(ENVIRON_MAP[name], *failobj)
+    return os.environ.get(ENVPREFIX+name.upper(), *failobj)
+
+def makenv(context, env=None):
+    env = env or {}
+    for k in context:
+        if context[k] is not None:
+            env[ENVPREFIX+k.upper()] = context[k]
+    return env
 
 
-
-#class ParamSet(object):
-#    """Represent a parameter set for a model
-#    """
-#    def __init__(self, params=None):
-#        """params : dict of params
-#        """
-#        if isinstance(params, ParamSet):
-#            params = params.params
-#        self.params = dict(params)
-#
-#    @classmethod
-#    def parfile(cls, rundir):
-#        return os.path.join(rundir, "params.json")
-#
-#    @classmethod
-#    def read(cls, rundir):
-#        """Read single from rundir
-#        """
-#        return cls(json.load(open(cls.parfile(rundir))))
-#
-#    def write(self, rundir):
-#        """write params to rundir
-#        """
-#        with open(self.parfile(rundir), "w") as f:
-#            json.dump(self.params, f)
-#
-#    def copy(self):
-#        return ParamSet(self.params.copy())
 
 def _create_dirtree(a,chunksize=2):
     """create a directory tree from a single, long name
@@ -73,7 +68,7 @@ def _create_dirtree(a,chunksize=2):
 class XDir(object):
     """Experiment Directory Structure
     """
-    def __init__(self, expdir, digit=4):
+    def __init__(self, expdir, digit=DIGIT):
         self.expdir = expdir
         self.digit = digit
 
@@ -81,6 +76,8 @@ class XDir(object):
         return os.path.join(self.expdir, *file)
 
     def runtag(self, runid=None):
+        "provide a tag with same length accross the ensemble"
+        digit = self.digit or len(str(self.size()-1))
         fmt = "{:0>"+str(self.digit)+"}"
         return fmt.format(runid) if runid is not None else "default"
 
@@ -92,21 +89,20 @@ class XDir(object):
         else:
             return self.path("default")
 
+    def logdir(self, runid=None):
+        return self.path("logs")
+
+    def logout(self, runid=None):
+        return os.path.join(self.logdir(runid), 'log-{runid}.out').format(runid)
+
+    def logerr(self, runid=None):
+        return os.path.join(self.logdir(runid), 'log-{runid}.err').format(runid)
+
     def statefile(self, runid=None):
         """state variable name
         """
         runtag = self.runtag(runid)
         return self.path(self.expdir, "state.{}".format(runtag))
-
-    def top_rundirs(self, indices):
-        """top rundir directories for linking
-        """
-        tops = ["default"]
-        for i in indices:
-            top = self.rundir(i).split(os.path.sep)[0]
-            if top not in tops:
-                tops.append(top)
-        return tops
 
     def create_expdir(self, force=False):
         if not os.path.exists(self.expdir):
@@ -118,58 +114,109 @@ class XDir(object):
             print("     set  '--force' option to bypass this check")
             raise ValueError(self.expdir+" already exists")
 
+    def top_rundirs(self, indices):
+        """top rundir directories for linking
+        """
+        tops = ["default"]
+        for i in indices:
+            top = self.rundir(i).split(os.path.sep)[0]
+            if top not in tops:
+                tops.append(top)
+        return tops
 
-class XRun(XDir):
+    def link_results(self, orig):
+        """Link results from a previous expdir
+        """
+        assert orig != self.expdir, 'same directories !'
+        print("...link simulations results from",orig)
+        x = XDir(orig)
+        topdirs = x.top_rundirs(xrange(self.size()))
+        for top in topdirs:
+            os.system("cd "+self.expdir+" && ln -s "+os.path.abspath(top))
 
-    def __init__(self, model, params, expdir):
+    def size(self):
+        return XParams.read(self.path("params.txt")).size
+
+
+class XRun(object):
+
+    def __init__(self, model, params):
         self.model = model
         self.params = params  # XParams class
-        self.expdir = expdir
  
     @classmethod
     def read(cls, expdir):
         """read from existing experiment
         """
         o = XDir(expdir) # dir structure
+        model = Model.read(o.path("model.json"))
         params = XParams.read(o.path("params.txt"))
-        # also read default parameters
-        defaultdir = o.rundir(None)
-        try:
-            default = json.load(open(os.path.join(defaultdir, "params.json")))
-            params.default = [default[nm] for nm in params.names]
-        except:
-            pass
-        return cls(params, expdir)
+        return cls(model, params)
 
-    def setup(self, newdir=None, force=False):
-        """Setup experiment directory
+    def write(self, expdir, force=False):
+        """Write experiment params and default model to directory
         """
-        newdir = newdir or self.expdir
-        x = XDir(newdir)
+        x = XDir(expdir)
         x.create_expdir(force)
         self.params.write(x.path("params.txt"))
+        self.model.setup(x.path("default")) # default model setup
 
-    def link_results(self, newdir):
-        assert newdir != self.expdir, 'same directories !'
-        print("...link simulations results into",newdir)
-        topdirs = self.top_rundirs(xrange(self.params.size))
-        for top in topdirs:
-            os.system("cd "+newdir+" && ln -s "+os.path.abspath(top))
 
-    def command(self, runid=None):
-        """Return command line argument to run the model
+    def run(self, runid=None, background=False, submit=False, expdir='./', **kwargs):
+        """Run a model instance
+
+        Returns
+        -------
+        Popen instance (or equivalent if submit)
         """
+        x = XDir(expdir)
+        rundir = x.rundir(runid) # will be created upon run
+
+        logdir = x.logdir()
+        if not os.path.exists(logdir): 
+            os.makedirs(logdir) # needs to be created before
+
+        logout = kwargs.pop("output", x.logout(runid))
+        logerr = kwargs.pop("error", x.logerr(runid))
+
+        if background:
+            stdout = open(logout, 'w')
+            stderr = open(logerr, 'w')
+        else:
+            stdout = subprocess.STDOUT
+            stderr = subprocess.STDERR
+
+        # environment variables to define
+        context = dict(
+            runid = runid,
+            expdir = expdir,
+            rundir = rundir,
+            runtag = x.runtag(runid),
+        )
+
+        # update model parameters, setup directory
         params = self.params.pset_as_dict(runid)
-        rundir = self.rundir(runid=runid)
-        return self.model.command(rundir, params)
+        model = copy.deepcopy(self.model) 
+        model.update(params)
+        model.setup(rundir)
 
-    def run(self, runid=None, **kwargs):
-        cmd = self.command(runid)
-        rundir = self.rundir(runid)
-        return run_command(cmd, rundir, **kwargs)
+        if submit:
+            assert 'array' not in kwargs, "batch command for --array"
+            model.submit(context, output=logout, error=logerr, env=makenv(context),
+                         jobfile=os.path.join(rundir, 'submit.sh'), **kwargs)
 
-    def runbatch(self, array=None, background=False, submit=True, wait=False, **kwargs):
-        """ Run ensemble
+        else:
+            env = makenv(context, os.environ.copy())
+            p = subprocess.Popen(args, env=env, stdin=stdin, stdout=stdout, stderr=stderr)
+
+        if not background:
+            ret = p.wait()
+
+        return p
+
+
+    def batch(self, array=None, expdir="./", wait=True, submit=True, **kwargs):
+        """Run ensemble
         """
         N = self.params.size
 
@@ -181,159 +228,77 @@ class XRun(XDir):
         # write config to expdirectory
         self.setup(force=True)  # things are up to date
 
-        cmd = ["python", __file__, "run", self.expdir]
-
-        #if args:
-        #    cmd.append(args)
-        #cmdstr = " ".join(cmd)
-
-        if background:
-            if wait:
-                raise NotImplementedError("cannot wait in background mode")
-            # local testing : do not use slurm
+        # local testing : do not use slurm
+        if not submit:
             indices = parse_slurm_array_indices(array)
             print("Run",len(indices),"out of",N,"simulations in the background")
             print(indices)
-            for idx in indices:
-                runcmd = cmd + ['--id',str(idx),'--background']
-                os.system(" ".join(runcmd))
-            return 
+            processes = []
+            for runid in indices:
+                p = self.run(runid=runid, expdir=expdir, background=True)
+                processes.append(p)
+            if wait:
+                for p in processes:
+                    p.wait()
+            return processes
 
         # submit job to slurm (the default)
         print("Submit job array batch to SLURM")
-        jobfile = os.path.join(self.expdir, "batch.sh")
-        logsdir = os.path.join(self.expdir, "logs")
+        jobfile = os.path.join(expdir, "batch.sh")
 
-        runcmd = cmd + ['--id','$SLURM_ARRAY_TASK_ID']
+        logdir = x.logdir()
+        logout = kwargs.pop("output", x.logout("%a"))
+        logerr = kwargs.pop("error", x.logerr("%a"))
 
-        #os.system("rm -fr logs; mkdir -p logs") # clean logs
-        if not os.path.exists(logsdir):
-            os.makedirs(logsdir)
+        # log-files
+        if not os.path.exists(logdir): 
+            os.makedirs(logdir) # needs to be created before
 
-        return run_command(runcmd, self.expdir, submit=True, wait=wait,
-                           array=array, jobfile=jobfile,
-                output=os.path.join(logsdir, "log-%A-%a.out"),
-                error=os.path.join(logsdir, "log-%A-%a.err"), **kwargs)
+        # actual command
+        pycmd = ["from "+__name__+" import XRun", 
+                 "XRun.run(runid=$SLURM_ARRAY_TASK_ID, expdir='{expdir}')"]
 
+        pycmds = "; ".join(pycmd).format( expdir=expdir )
 
-    # state variables I/O
-    def write_state_var(self, name, value, runid=None):
-        """Write state variable on disk in a format understood by XRun
-        """
-        statefile = self.statefile(runid)+'.json' # state file in json format
-        with open(statefile, "w") as f:
-            json.dump(value, f)
+        cmds = '{} -c "{}"'.format(sys.executable, pycmds)
+        jobfile = kwargs.pop("jobfile", os.path.join(expdir, 'submit.sh'))
 
-    def read_state_var(self, name, runid=None):
-        statefile = self.statefile(runid)+'.json' # state file in json format
-        with open(statefile) as f:
-            return json.load(f)
+        p = submit_job(cmds, output=logout, error=logerr, jobfile=jobfile **kwargs)
+
+        if wait:
+            p.wait()
+
+        return p
 
 
-    # analyze ensemble
-    # ----------------
-    def get(self, name, runid=None):
-        """Get variable 
-        """
-        return self.read_state_var(name, runid)
-
-
-    def get_all(self, name):
-        """Return variable for all realizations
-        """
-        dim = size(self.get(name, 0)) # check size of first variable
-        var = np.empty((self.params.size, dim))
-        var.fill(np.nan)
-        for i in xrange(self.params.size):
-            var[i] = self.get(name, i)
-        return var.squeeze(1)
-
-
-    def loglik(self, constraints, runid=None):
-        """Log-like for one realization
-        """
-        return sum([c.logpdf( self.get(c.name, runid)) for c in constraints])
-
-
-    def loglik_all(self, constraints):
-        """Log-likelihood for all realizations
-        """
-        var = np.empty(self.params.size)
-        for i in xrange(self.params.size):
-            try:
-                var[i] = self.loglik(constraints, i)
-            except:
-                var[i] = -np.inf
-        return var
-
-    
-    def analyze(self, constraints, fill_array=np.nan):
-        """Analyze experiment directory and return a Results objet
-
-        Parameters
-        ----------
-        constraints : list of constraints
-        fill_array : float or callable
-            value to use instead of (skipped) array constraints (nan by default)
-        """
-        from simtools.analysis import Results
-
-        N = self.params.size
-        state2 = np.empty((N, len(constraints)))
-        state2.fill(np.nan)
-        loglik2 = np.empty((N, len(constraints)))
-        loglik2.fill(-np.inf)
-
-        def reduce_array(s):
-            return fill_array(s) if callable(fill_array) else fill_array
-
-        failed = 0
-
-        for i in xrange(N):
-            try:
-                state = [self.get(c.name, i) for c in constraints]
-            except Exception as error:
-                failed += 1
-                continue
-
-            # diagnostic per constraint
-            for j, s in enumerate(state):
-                loglik2[i, j] = constraints[j].logpdf(s)
-                state2[i, j] = s if np.size(s) == 1 else reduce_array(s)
-
-        print("warning :: {} out of {} simulations failed".format(failed, N))
-
-        return Results(constraints, state2, loglik2=loglik2, params=self.params)
-
-
-class Runtime(object):
-    """Interface between model and simtools, to be imported by model at runtime
-    """
-    def __init__(self):
-        """ Communicate with environment variable to derive default parameters
-        """
-        expdir = XRun.getenv("expdir", None)
-        runid = XRun.getenv("runid", None)
-        self.runid = int(runid) if runid else None
-
-        if expdir is not None:
-            xrun = XRun.read(expdir)
-            self._xrun = xrun
-            self.params = xrun.params.pset_as_dict(self.runid)
-            self.rundir = xrun.rundir(self.runid)
-        else:
-            self._xrun = None
-            self.params = {}
-            self.rundir = None
-
-    def getpar(self, name, *failval):
-        """Retrieve experiment parameters
-        """
-        return self.params.copy().pop(name, *failval)
-
-    def setvar(self, name, value):
-        """Set experiment variables
-        """
-        if self._xrun is None:
-            return  # simtools is not active, do nothing
-        self._xrun.write_state_var(name, value)
+#class Runtime(object):
+#    """Interface between model and simtools, to be imported by model at runtime
+#    """
+#    def __init__(self):
+#        """ Communicate with environment variable to derive default parameters
+#        """
+#        expdir = getenv("expdir", None)
+#        runid = getenv("runid", None)
+#        self.runid = int(runid) if runid else None
+#
+#        if expdir is not None:
+#            xrun = XRun.read(expdir)
+#            self._xrun = xrun
+#            self.params = xrun.params.pset_as_dict(self.runid)
+#            self.rundir = xrun.rundir(self.runid)
+#        else:
+#            self._xrun = None
+#            self.params = {}
+#            self.rundir = None
+#
+#    def getpar(self, name, *failval):
+#        """Retrieve experiment parameters
+#        """
+#        return self.params.copy().pop(name, *failval)
+#
+#    def setvar(self, name, value):
+#        """Set experiment variables
+#        """
+#        if self._xrun is None:
+#            return  # simtools is not active, do nothing
+#        self._xrun.write_state_var(name, value)

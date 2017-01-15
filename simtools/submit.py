@@ -4,6 +4,7 @@ import os
 import subprocess
 import tempfile
 
+MANAGER = "slurm"
 
 # To submit the model
 # ===================
@@ -12,6 +13,9 @@ class JobScript(object):
     interpreter = "#!/bin/bash"
 
     def __init__(self, commands, env=None, **opt):
+
+        if isinstance(commands, basestring):
+            commands = commands.splitlines()
         
         self.opt = opt
         self.lines = []
@@ -100,11 +104,11 @@ class SlurmProcess(object):
 
 
 
-def submit_job(commands, manager=None, jobfile=None, 
+def submit_job(commands, manager=MANAGER, jobfile=None, 
                output=None, error=None, **kwargs):
     """Write a series of command to file and execute them
 
-    commands : [str]
+    commands : [str] or str
         list of (string) commands to be written to a file
     manager : str, optional
         job manager ("slurm" or None) so far

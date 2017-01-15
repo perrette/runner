@@ -285,4 +285,4 @@ class Model(object):
         """Slurm(Model.command(context), **kwargs)
         """
         args = self.command(context)
-        return submit_job(args, **kwargs)
+        return submit_job(" ".join(args), **kwargs)
