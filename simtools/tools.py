@@ -13,10 +13,79 @@ def parse_val(s):
             val = s
     return val
 
-def parse_keyval(string):
-    name, value = string.split("=")
-    value = parse_val(value)
-    return name, value
+#def parse_keyval(string):
+#    name, value = string.split("=")
+#    value = parse_val(value)
+#    return name, value
+
+
+def nans(N):
+    a = np.empty(N)
+    a.fill(np.nan)
+    return a
+
+
+# Sscipy Dist String I/O (useful for command line)
+# ======================
+
+# param to string
+# ---------------
+def dist_to_str(dist):
+    """format scipy-dist distribution
+    """
+    dname=dist.dist.name
+    dargs=dist.args
+
+    # hack (shorted notation)
+    dname = dname.replace("norm","N")
+    if dname == "uniform":
+        dname = "U"
+        loc, scale = dargs
+        dargs = loc, loc+scale  # more natural
+
+    sargs=",".join(*[str(v) for v in dargs])
+    return "{}?{}".format(dname, sargs)
+
+
+# string to param
+# ---------------
+def parse_list(string):
+    """Parse list of parameters VALUE[,VALUE,...]
+    """
+    return [parse_val(value) for value in string.split(',')]
+
+def parse_range(string):
+    """Parse parameters START:STOP:N
+    """
+    start, stop, n = string.split(':')
+    start = float(start)
+    stop = float(stop)
+    n = int(n)
+    return np.linspace(start, stop, n).tolist()
+
+def parse_dist(string):
+    """Parse distribution dist?loc,scale
+    """
+    name,spec = string.split('?')
+    args = [float(a) for a in spec.split(',')]
+    
+    # alias for common cases
+    if name == "N":
+        mean, std = args
+        dist = norm(mean, std)
+
+    elif name == "U":
+        lo, hi = args  # note: uniform?loc,scale differs !
+        dist = uniform(lo, hi-lo) 
+
+    else:
+        dist = getattr(scipy.stats.distributions, name)(*args)
+
+    return dist
+
+
+# 2-D data structure
+# ==================
 
 
 def str_dataframe(pnames, pmatrix, max_rows=1e20, include_index=False, index=None):
@@ -125,9 +194,3 @@ class DataFrame(object):
     @property
     def index(self):
         return np.arange(self.size)
-
-def nans(N):
-    a = np.empty(N)
-    a.fill(np.nan)
-    return a
-

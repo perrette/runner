@@ -37,7 +37,6 @@ def parse_slurm_array_indices(a):
             indices.append(int(i))
     return indices
 
-
 # Environment I/O to communicate with model
 # =========================================
 
