@@ -23,7 +23,15 @@ class GenericParam(object):
     """
     @staticmethod
     def parse(string):
-        """Return either a PriorParam or a DiscreteParam
+        """Prior parameter defintion as NAME=SPEC.
+
+        SPEC specifies param values or distribution.
+        Discrete parameter values can be provided 
+        as a comma-separated list `VALUE[,VALUE...]`
+        or a range `START:STOP:N`.
+        A distribution is provided as `TYPE?ARG,ARG[,ARG,...]`.
+        Pre-defined `U?min,max` (uniform) and `N?mean,sd` (normal)
+        or any scipy.stats distribution as TYPE?[SHP,]LOC,SCALE.")
         """
         try:
             if '?' in string:
@@ -275,3 +283,41 @@ class Prior(object):
             self.params = [p for p in self.params if p.name not in names]
 
     #TODO: `bounds` method for resampling
+
+
+    @classmethod
+    def from_namespace(cls, args):
+        """return Prior class
+        """
+        if args.prior_file:
+            prior = cls.read(args.prior_file, args.prior_key)
+            if args.only_params
+                prior.filter_params(args.only_params, keep=True)
+            if args.exclude_params:
+                prior.filter_params(args.exclude_params, keep=False)
+
+        else:
+            prior = cls(args.prior_params)
+
+        return prior
+
+
+def add_prior_argument_group(parser):
+    """To match Prior.from_namespace method
+    """
+    grp = parser.add_argument_group("prior parameters")
+    x = grp.add_mutually_exclude_arguments()
+    x.add_argument('-p', '--prior-params', default=[], nargs='*', 
+                            type=GenericParam.parse, metavar="NAME=SPEC", 
+                            help=GenericParam.parse.__doc__)
+
+    x.add_argument('--prior-file', 
+                     help='prior parameter file (json file with "'+PRIOR_KEY+'" key)')
+
+    grp.add_argument('--prior-key', default=PRIOR_KEY, help=argparse.SUPPRESS)
+
+    x = grp.add_mutually_exclude_arguments()
+    x.add_argument('--only-params', nargs='*', 
+                     help="filter out all but these parameters")
+    x.add_argument('--exclude-params', nargs='*', 
+                     help="filter out these parameters")
