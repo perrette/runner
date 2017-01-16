@@ -154,43 +154,138 @@ def get_constraint(name, error=None, pct_error=None, getobs=None, **kwargs):
 
 
 
-class Likelihood(Constraint):
-    def __init__(self, constraints):
-        """Likelihood as composite of several constraints
+#class Likelihood(Constraint):
+#    def __init__(self, constraints):
+#        """Likelihood as composite of several constraints
+#        """
+#        self.constraints = constraints
+#
+#    def names(self):
+#        return [c.name for c in self.constraints]
+#
+#    @property
+#    def mean(self):
+#        return [c.mean for c in self.constraints]
+#
+#    @property
+#    def std(self):
+#        return [c.std for c in self.constraints]
+#
+#    def __getitem__(self, name):
+#        return self.constraints[self.names().index(name)]
+#
+#    @classmethod
+#    def read(cls, file, getobs=None):
+#        dat = json.load(open(file))
+#        constraints = [get_constraint(getobs=getobs, **cdef) 
+#                       for cdef in dat["constraints"]]
+#        return cls(constraints)
+#
+#    def update(self, constraints):
+#        for c in constraints:
+#            names = self.names()
+#            if c.name in names:
+#                self.constraints[names.index[c.name]] = c  # replace
+#            else:
+#                self.constraints.append(c)
+#
+#    def logpdf(self, state):
+#        return sum([c.logpdf(s) for c, s in zip(self.constraints, state)])
+
+
+class Analyzer(XDir):
+    """perform analysis of the ensemble
+    """
+    def __init__(self, constraints, expdir):
+
+    # state variables I/O
+    def write_state_var(self, name, value, runid=None):
+        """Write state variable on disk in a format understood by XRun
         """
-        self.constraints = constraints
+        statefile = self.statefile(runid)+'.json' # state file in json format
+        with open(statefile, "w") as f:
+            json.dump(value, f)
 
-    def names(self):
-        return [c.name for c in self.constraints]
+    def read_state_var(self, name, runid=None):
+        statefile = self.statefile(runid)+'.json' # state file in json format
+        with open(statefile) as f:
+            return json.load(f)
 
-    @property
-    def mean(self):
-        return [c.mean for c in self.constraints]
 
-    @property
-    def std(self):
-        return [c.std for c in self.constraints]
+    # analyze ensemble
+    # ----------------
+    def get(self, name, runid=None):
+        """Get variable 
+        """
+        return self.read_state_var(name, runid)
 
-    def __getitem__(self, name):
-        return self.constraints[self.names().index(name)]
 
-    @classmethod
-    def read(cls, file, getobs=None):
-        dat = json.load(open(file))
-        constraints = [get_constraint(getobs=getobs, **cdef) 
-                       for cdef in dat["constraints"]]
-        return cls(constraints)
+    def get_all(self, name):
+        """Return variable for all realizations
+        """
+        dim = size(self.get(name, 0)) # check size of first variable
+        var = np.empty((self.params.size, dim))
+        var.fill(np.nan)
+        for i in xrange(self.params.size):
+            var[i] = self.get(name, i)
+        return var.squeeze(1)
 
-    def update(self, constraints):
-        for c in constraints:
-            names = self.names()
-            if c.name in names:
-                self.constraints[names.index[c.name]] = c  # replace
-            else:
-                self.constraints.append(c)
 
-    def logpdf(self, state):
-        return sum([c.logpdf(s) for c, s in zip(self.constraints, state)])
+    def loglik(self, constraints, runid=None):
+        """Log-like for one realization
+        """
+        return sum([c.logpdf( self.get(c.name, runid)) for c in constraints])
+
+
+    def loglik_all(self, constraints):
+        """Log-likelihood for all realizations
+        """
+        var = np.empty(self.params.size)
+        for i in xrange(self.params.size):
+            try:
+                var[i] = self.loglik(constraints, i)
+            except:
+                var[i] = -np.inf
+        return var
+
+    
+    def analyze(self, constraints, fill_array=np.nan):
+        """Analyze experiment directory and return a Results objet
+
+        Parameters
+        ----------
+        constraints : list of constraints
+        fill_array : float or callable
+            value to use instead of (skipped) array constraints (nan by default)
+        """
+        from simtools.analysis import Results
+
+        N = self.params.size
+        state2 = np.empty((N, len(constraints)))
+        state2.fill(np.nan)
+        loglik2 = np.empty((N, len(constraints)))
+        loglik2.fill(-np.inf)
+
+        def reduce_array(s):
+            return fill_array(s) if callable(fill_array) else fill_array
+
+        failed = 0
+
+        for i in xrange(N):
+            try:
+                state = [self.get(c.name, i) for c in constraints]
+            except Exception as error:
+                failed += 1
+                continue
+
+            # diagnostic per constraint
+            for j, s in enumerate(state):
+                loglik2[i, j] = constraints[j].logpdf(s)
+                state2[i, j] = s if np.size(s) == 1 else reduce_array(s)
+
+        print("warning :: {} out of {} simulations failed".format(failed, N))
+
+        return Results(constraints, state2, loglik2=loglik2, params=self.params)
 
 
 class Results(object):

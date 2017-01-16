@@ -50,7 +50,7 @@ class Model(object):
         self.filetype = get_or_make_filetype(filetype)
 
     @classmethod
-    def read(cls, configfile, root=None):
+    def read(cls, configfile, root='model'):
         with open(configfile) as f:
             dat = json.load(f)
         if root:
@@ -73,14 +73,17 @@ class Model(object):
         filetype = get_or_make_filetype(filetypedat)
 
         # read default params
-        if isinstance(default, basestring):
-            params = filetype.load(open(default))
+        if default is not None:
+            if isinstance(default, basestring):
+                params = filetype.load(open(default))
 
-        elif isinstance(default, dict):
-            params = [Param(k, default[k]) for k in default]
+            elif isinstance(default, dict):
+                params = [Param(k, default[k]) for k in default]
 
+            else:
+                raise ValueError("invalid format for default params:"+repr(default))
         else:
-            raise ValueError("invalid format for default params:"+repr(default))
+            params = []
 
         # Initialize model class
         dat.update(dict(

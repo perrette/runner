@@ -14,6 +14,7 @@ from simtools.submit import submit_job
 from simtools.xparams import XParams
 
 DIGIT = 4  # number of digits for output folders
+EMPTYCONFIG = "empty.json" # todo path
 
 
 # Ensemble Xperiment
@@ -153,7 +154,7 @@ class XRun(object):
         """read from existing experiment
         """
         o = XDir(expdir) # dir structure
-        model = Model.read(o.path("model.json"))
+        model = Model.read(o.path("config.json"))
         params = XParams.read(o.path("params.txt"))
         return cls(model, params)
 
@@ -166,7 +167,7 @@ class XRun(object):
         self.model.setup(x.path("default")) # default model setup
 
 
-    def run(self, runid=None, background=False, submit=False, expdir='./', **kwargs):
+    def run(self, runid=None, background=False, submit=False, dry_run=False, expdir='./', **kwargs):
         """Run a model instance
 
         Returns
@@ -202,6 +203,11 @@ class XRun(object):
         params = self.params.pset_as_dict(runid)
         model = copy.deepcopy(self.model) 
         model.update(params)
+
+        if dry_run:
+            print(mode.command(context))
+            return
+
         model.setup(rundir)
 
         if submit:
@@ -274,6 +280,239 @@ class XRun(object):
 
         return p
 
+
+
+##########
+#
+# Main run
+#
+from simtools.xparams import ParamsParser
+
+
+class XParser(object):
+    """Helper class to build ArgumentParser with subcommand and keep clean
+    """
+    def __init__(self, *args, **kwargs):
+        self.parser = argparse.ArgumentParser(*args, **kwargs)
+        self.subparsers = self.parser.add_subparsers(dest='cmd')
+
+        # define model parser
+    def add_model_group(self, root, required=False):
+        grp = root.add_argument_group("model")
+        grp.add_argument("--config", default="config.json", 
+                         help="job configuration file (default=%(default)s)")
+        grp.add_argument("-x","--executable", required=required,
+                         help="model executable")
+        grp.add_argument("--args", default=[], nargs="*",
+                         help="model arguments to replace whatever is in the config. Use the `--` separator to append arguments.)")
+
+
+    def add_config(self, prior):
+        """edit configuration file from command-line
+        """
+        p = self.subparsers.add_parser('config', 
+                                       add_help=False, 
+                                       parents=[prior],
+                                       help=self.add_config.__doc__)
+
+
+        p.add_argument("--force","-f", action="store_true", 
+                       help="do not prompt even if file already exists (edit anyway)")
+
+        self.add_model_group(p, required=True)
+        grp = p.add_argument_group("params i/o")
+
+        from simtools.model.params import filetypes
+        grp.add_argument("--filetype", choices=filetypes.keys(), 
+                                help="model params file type")
+        grp.add_argument("--default", 
+                        help="default parameters for look-up and checking on parameter names. A file name with same format as specified by --filetype")
+        #grp.add_argument("--addon", nargs="*",
+        #                help="add ons to import ")
+
+        grp2 = grp.add_mutually_exclusive_group()
+        grp2.add_argument("--params-write", default="params.json",
+                                help="param to write to each model rundir")
+        grp2.add_argument("--no-write", action="store_true",
+                                help="do not write params to file")
+
+        grp2 = grp.add_mutually_exclusive_group()
+        grp2.add_argument("--params-args", default=None,
+                                help="format for the command-line args (default=%(default)s)")
+        grp2.add_argument("--no-args", action="store_true",
+                                help="do not pass param args via command-line")
+
+        # obs
+        grp = p.add_argument_group("constraints")
+        p.add_argument("--obs", action="store_true",
+                                help="observations to constrain the model")
+
+
+    def add_run(self):
+        "run model"
+        p = self.subparsers.add_parser('run', help=self.add_run.__doc__)
+        p.add_argument("expdir", help="experiment directory (need to setup first)")
+
+        p.add_argument("--id", type=int, help="run id")
+        p.add_argument("--dry-run", action="store_true",
+                       help="do not execute, simply print the command")
+        p.add_argument("--background", action="store_true",
+                       help="run in the background, do not check result")
+        return p
+
+    def add_slurm_group(self, root):
+        slurm = root.add_argument_group("slurm")
+        slurm.add_argument("--qos", default="short", help="queue (default=%(default)s)")
+        slurm.add_argument("--job-name", default=__file__, help="default=%(default)s")
+        slurm.add_argument("--account", default="megarun", help="default=%(default)s")
+        slurm.add_argument("--time", default="2", help="wall time m or d-h:m:s (default=%(default)s)")
+
+    def add_batch(self):
+        "run ensemble"
+        p = self.subparsers.add_parser("batch", 
+                                   help=self.add_batch.__doc__)
+        p.add_argument("expdir", help="experiment directory (need to setup first)")
+
+        #p.add_argument("--args", help="pass on to glacier")
+        p.add_argument("--background", action="store_true", 
+                          help="run in background instead of submitting to slurm queue")
+        p.add_argument("--array",'-a', help="slurm sbatch --array")
+        p.add_argument("--wait", action="store_true")
+        self.add_slurm_group(p)
+        return p
+
+
+def make_config(args):
+    """Make configuration from argument parser
+    """
+
+    # model config
+    # ------------
+    if args.no_args:
+        args.params_args = None
+
+    if args.no_write:
+        args.params_write = None
+
+    model = {
+        "executable" : args.executable,
+        "args" : args.args,
+        "params_write" : args.params_write,
+        "params_args" : args.params_args,
+        "filetype" : args.filetype,
+        "default" : args.default,
+    }
+
+    # check
+    modelobj = Model.fromconfig(model)
+
+    # prior params
+    # ------------
+    if args.prior_file and os.path.exists(args.prior_file):
+        prior = json.load(open(args.prior_file))
+        assert args.prior_params, "cannot provide both prior_file and prior_params"
+
+    else:
+        prior = {
+            "params" : [],
+        }
+        for p in args.prior_params:
+            pdef = p.todict()
+            prior["params"].append(pdef)
+
+    # update default values, for info
+    names = [p.name for p in modelobj.params]
+    for p in prior["params"]:
+        if p["name"] in names:
+            i = names.index(p["name"])
+            pval = modelobj.params[i].default 
+            phelp = modelobj.params[i].help
+            if pval:
+                p["default"] = pval
+            if help:
+                p["help"] = phelp
+
+    # observations
+    # ------------
+    if args.obs_file and os.path.exists(args.obs_file):
+        obs = json.load(open(args.obs_file))
+        assert args.obs, "cannot provide both obs_file and obs"
+
+    else:
+        obs = {
+            "obs" : [],
+            #"correlation" : None,
+        }
+        for p in args.obs:
+            pdef = p.todict()
+            prior["obs"].append(pdef)
+
+    # Done !! write down to disk !
+    config = {
+        "model" : model,
+        "prior" : prior,
+        "obs" : obs,
+    }
+
+    return config
+
+
+def main(argv=None):
+
+    pparser = ParamsParser(description=__doc__, add_help=False)
+    
+    pp = pparser.add_product()
+    ps = pparser.add_sample()
+    pr = pparser.add_resample()
+    pn = pparser.add_neff()
+
+    xparser = XParser(description=__doc__)
+
+    xparser.add_config(pparser.prior)
+    xparser.add_run()
+    xparser.add_batch()
+    #parser.add_loglik()
+    #parser.add_analysis()
+    #parser.add_iis()
+
+    args = xparser.parser.parse_args(argv)
+
+    if args.cmd == "config":
+
+        if os.path.exists(args.config):
+            if not args.force:
+                print("please use '--force' to overwrite existing config")
+                import sys
+                sys.exit(1)
+
+        config = make_config(args)
+
+        with open(args.config, "w") as f:
+            json.dump(config, args.config)
+
+    elif args.cmd == "run":
+
+        xrun = XRun.read(args.expdir)
+        xrun.run(runid=args.id, dry_run=args.dry_run, background=args.background)
+
+    elif args.cmd == "batch":
+
+        xrun = XRun.read(args.expdir)
+        xrun.batch(array=args.array, background=args.background, 
+                      qos=args.qos, job_name=args.job_name, account=args.account, time=args.time, wait=args.wait)
+
+
+#class XParser(XParams):
+#    """Experiment Parser
+#    """
+#    def __init__(self, *args, **kwargs):
+#        self.parser = argparse.ArgumentParser(*args, **kwargs)
+#        self.subparsers = self.parser.add_subparsers(dest='cmd')
+#        self.define_parents()
+#
+#
+#
+#def main(argv=None):
 
 #class Runtime(object):
 #    """Interface between model and simtools, to be imported by model at runtime
