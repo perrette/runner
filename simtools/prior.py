@@ -268,7 +268,10 @@ class Prior(object):
         return XParams(pmatrix, self.names)
 
 
+    def filter_params(self, names, keep=True):
+        if keep:
+            self.params = [p for p in self.params if p.name in names]
+        else:
+            self.params = [p for p in self.params if p.name not in names]
+
     #TODO: `bounds` method for resampling
-
-
-
