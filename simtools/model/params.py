@@ -1,16 +1,8 @@
-"""Model definition, mostly Param I/O
+"""Parameters I/O to communicate with model
 """
 from __future__ import print_function, absolute_import
 import json
 
-FILETYPES = {}
-
-def register_filetype(name, cls):
-    FILETYPES[name] = cls
-
-
-# Parameters I/O to communicate with model
-# ========================================
 class Param(object):
     """default parameter --> useful to specify custom I/O formats
     """
@@ -49,27 +41,9 @@ class ParamsFile(object):
     def load(self, f):
         return self.loads(f.read())
 
-    DEFAULT = "jsondict"  # convenient to pack it here
 
-    @classmethod
-    def fromconfig(cls, dat=None):
-        """Initialize ParamsFile from dictionary config
-        """
-        dat = dat or {}
-        typename = dat.pop("type", cls.DEFAULT)
-        settings = dat.pop("settings", {}) # key-word arguments
-
-        # param file def?
-        if typename in FILETYPES:
-            cls = FILETYPES[typename]
-            filetype = cls(**settings)
-
-        else:
-            print("Available filetypes:",FILETYPES.keys())
-            raise ValueError("Unknown file type: "+repr(typename))
-
-        return filetype
-
+# Json file types
+# ===============
 
 class JsonDict(ParamsFile):
     """json file format
@@ -101,42 +75,31 @@ class JsonList(ParamsFile):
         return [Param(**p) for p in json.loads(string)]
 
 
-class GenericFile(ParamsFile):
-    """Generic class to write to a parameter file
+# FileType register
+# =================
+
+filetypes = {}
+
+def register_filetype(name, filetype):
+    filetypes[name] = filetype
+
+# register filetypes
+register_filetype(None, JsonDict())  # the default
+register_filetype("jsondict", JsonDict())
+register_filetype("jsonlist", JsonList())
+
+
+def get_filetype(name=None):
+    """Return filetype instance based on string
     """
-    DEFAULT = "{name}={value}"
+    if isinstance(name, ParamsFile) or hasattr(name, "dumps"):
+        return name
 
-    def __init__(self,  line_fmt=DEFAULT):
-        """
-        line_fmt : str, optional
-            param format for each line, with placeholders {name} and {value}.
-            By default "{name}={value}".
-        """
-        self.line_fmt = line_fmt
+    elif name in filetypes:
+        return filetypes[name]
 
-    def dumps(self, params):
-        """return the file as a string
-        """
-        lines = [ self.line_fmt.format(**p.__dict__) for p in params ]
-        return "\n".join(lines)
+    else:
+        raise ValueError("Unknown file type: "+repr(name))
 
-
-class TemplateFile(ParamsFile):
-    """Custom file format based on a full file template
-    """
-    def __init__(self, string):
-        assert string, "must provide template string"
-        self.string = string
-
-    def dumps(self, params):
-        return self.string.format(**{p.name:p.value for p in params})
-
-    @classmethod
-    def read(cls, file):
-        return cls(open(file).read())
-
-
-register_filetype("jsonlist", JsonList)
-register_filetype("jsondict", JsonDict)
-register_filetype("generic", GenericFile)
-register_filetype("template", TemplateFile.read)
+def print_filetypes():
+    print("Available filetypes:", ", ".join([repr(k) for k in filetypes.keys()]))

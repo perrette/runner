@@ -6,6 +6,7 @@ import json
 
 from simtools.submit import submit_job
 from simtools.model.params import Param, ParamsFile
+from simtools.model.generic import get_or_make_filetype
 
 PARAMS_ARG = "--{name} {value}" # by default 
 
@@ -34,8 +35,7 @@ class Model(object):
         params_write : str, optional
             By default parameters are provided as command-line arguments but if file
             name is provided they will be written to file. Path is relative to rundir.
-        filetype : ParamsFile instance or anything with `dump` method, optional
-            By default JsonDict.
+        filetype : ParamsFile instance or str or anything with `dump` method, optional
         """
         self.executable = executable
         if isinstance(args, basestring):
@@ -47,10 +47,7 @@ class Model(object):
             params_args = params_args.split()
         self.params_args = params_args or []
         self.params_write = params_write 
-        self.filetype = filetype or JsonDict()
-        if not hasattr(self.filetype, "dump"):
-            raise TypeError("filetype has no `dump` method: "\
-                            +repr(self.filetype))
+        self.filetype = get_or_make_filetype(filetype)
 
     @classmethod
     def read(cls, configfile, root=None):
@@ -73,8 +70,7 @@ class Model(object):
         args = pdef.pop("args", PARAMS_ARG)
         default = pdef.pop("default", None)
         filetypedat = pdef.pop("file", None)
-        filetype = ParamsFile.fromconfig(filetypedat)
-
+        filetype = get_or_make_filetype(filetypedat)
 
         # read default params
         if isinstance(default, basestring):
