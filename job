@@ -1,0 +1,381 @@
+#!/usr/bin/env python2.7
+
+"""Interface for prior parameter
+"""
+class ModelParser(object):
+    """Parser for the Model class
+    """
+    def __init__(self, parser=None, **kwargs):
+        self.parser = parser or argparse.ArgumentParser(description=self.__doc__, **kwargs)
+
+        grp = self.parser.add_argument_group("model config")
+
+        grp.add_argument("--config", default="config.json", 
+                         help="job configuration file (default=%(default)s)")
+
+        grp.add_argument("-x","--executable", required=required,
+                         help="model executable")
+        grp.add_argument("--args", default=[], nargs="*",
+                         help="model arguments to replace whatever is in the config. Use the `--` separator to append arguments.)")
+
+def make_config(args):
+    """Make configuration from argument parser
+    """
+
+    # model config
+    # ------------
+    if args.no_args:
+        args.params_args = None
+
+    if args.no_write:
+        args.params_write = None
+
+    model = {
+        "executable" : args.executable,
+        "args" : args.args,
+        "params_write" : args.params_write,
+        "params_args" : args.params_args,
+        "filetype" : args.filetype,
+        "default" : args.default,
+    }
+
+    # check
+    modelobj = Model.fromconfig(model)
+
+    # prior params
+    # ------------
+    if args.prior_file and os.path.exists(args.prior_file):
+        prior = json.load(open(args.prior_file))
+        assert args.prior_params, "cannot provide both prior_file and prior_params"
+
+    else:
+        prior = {
+            "params" : [],
+        }
+        for p in args.prior_params:
+            pdef = p.todict()
+            prior["params"].append(pdef)
+
+    # update default values, for info
+    names = [p.name for p in modelobj.params]
+    for p in prior["params"]:
+        if p["name"] in names:
+            i = names.index(p["name"])
+            pval = modelobj.params[i].default 
+            phelp = modelobj.params[i].help
+            if pval:
+                p["default"] = pval
+            if help:
+                p["help"] = phelp
+
+    # observations
+    # ------------
+    if args.obs_file and os.path.exists(args.obs_file):
+        obs = json.load(open(args.obs_file))
+        assert args.obs, "cannot provide both obs_file and obs"
+
+    else:
+        obs = {
+            "obs" : [],
+            #"correlation" : None,
+        }
+        for p in args.obs:
+            pdef = p.todict()
+            prior["obs"].append(pdef)
+
+    # Done !! write down to disk !
+    config = {
+        "model" : model,
+        "prior" : prior,
+        "obs" : obs,
+    }
+
+    return config
+
+
+
+
+# Commands 
+# ========
+
+class XParser(object):
+    """Helper class to build ArgumentParser with subcommand and keep clean
+    """
+    def __init__(self, *args, **kwargs):
+        self.parser = argparse.ArgumentParser(*args, **kwargs)
+        self.subparsers = self.parser.add_subparsers(dest='cmd')
+
+        # define model parser
+    def add_model_group(self, root, required=False):
+        grp = root.add_argument_group("model")
+        grp.add_argument("--config", default="config.json", 
+                         help="job configuration file (default=%(default)s)")
+        grp.add_argument("-x","--executable", required=required,
+                         help="model executable")
+        grp.add_argument("--args", default=[], nargs="*",
+                         help="model arguments to replace whatever is in the config. Use the `--` separator to append arguments.)")
+
+
+    def add_config(self, prior):
+        """edit configuration file from command-line
+        """
+        p = self.subparsers.add_parser('config', 
+                                       add_help=False, 
+                                       parents=[prior],
+                                       help=self.add_config.__doc__)
+
+
+        p.add_argument("--force","-f", action="store_true", 
+                       help="do not prompt even if file already exists (edit anyway)")
+
+        self.add_model_group(p, required=True)
+        grp = p.add_argument_group("params i/o")
+
+        from simtools.model.params import filetypes
+        grp.add_argument("--filetype", choices=filetypes.keys(), 
+                                help="model params file type")
+        grp.add_argument("--default", 
+                        help="default parameters for look-up and checking on parameter names. A file name with same format as specified by --filetype")
+        #grp.add_argument("--addon", nargs="*",
+        #                help="add ons to import ")
+
+        grp2 = grp.add_mutually_exclusive_group()
+        grp2.add_argument("--params-write", default="params.json",
+                                help="param to write to each model rundir")
+        grp2.add_argument("--no-write", action="store_true",
+                                help="do not write params to file")
+
+        grp2 = grp.add_mutually_exclusive_group()
+        grp2.add_argument("--params-args", default=None,
+                                help="format for the command-line args (default=%(default)s)")
+        grp2.add_argument("--no-args", action="store_true",
+                                help="do not pass param args via command-line")
+
+        # obs
+        grp = p.add_argument_group("constraints")
+        p.add_argument("--obs", action="store_true",
+                                help="observations to constrain the model")
+
+
+
+# for the sake of the scripts...
+class ParamsParser(object):
+    """Helper class to build ArgumentParser with subcommand and keep clean
+    """
+    def __init__(self, *args, **kwargs):
+        self.parser = argparse.ArgumentParser(*args, **kwargs)
+        self.subparsers = self.parser.add_subparsers(dest='cmd')
+        self.define_parents()
+
+    def define_parents(self):
+        " arguments shared in various commands "
+        # input prior parameters
+        self.prior = argparse.ArgumentParser(add_help=False)
+        grp = self.prior.add_argument_group("prior parameters")
+        grp.add_argument('-p', '--prior-params', default=[], nargs='*', 
+                                type=parse_param, metavar="NAME=SPEC", 
+                                help="Prior parameter defintion. \
+SPEC specifies a param values or distribution (depending on the sub-command).\
+            Discrete parameter values can be provided \
+            as a comma-separated list `VALUE[,VALUE...]` \
+            or a range `START:STOP:N`. \
+            A distribution is provided as `TYPE?ARG,ARG[,ARG,...]`. \
+            Pre-defined `U?min,max` (uniform) and `N?mean,sd` (normal) \
+            or any scipy.stats distribution as TYPE?[SHP,]LOC,SCALE.")
+
+        grp.add_argument('--prior-file', help='experimental')
+
+        ## size & sample
+        #self.size = argparse.ArgumentParser(add_help=False)
+
+        # input param file
+        self.pin = argparse.ArgumentParser(add_help=False)
+        self.pin.add_argument('params-file', help='input parameter file')
+
+        # input ensemble weights
+        self.win = argparse.ArgumentParser(add_help=False)
+        group = self.win.add_argument_group('weights')
+        group.add_argument('-w','--weights-file', required=True)
+        group.add_argument('--log', action='store_true', 
+                           help='weights are provided as log-likelihood?')
+
+        # output param file
+        self.pout = argparse.ArgumentParser(add_help=False)
+        self.pout.add_argument('-o', '--out', help="output parameter file")
+
+
+    def add_product(self):
+        """factorial combination of parameter values
+        """
+        subp = self.subparsers.add_parser("product", parents=[self.prior, self.pout],
+                                     help=self.add_product.__doc__)
+        return subp
+
+    def add_sample(self):
+        """Sample prior parameter distribution
+        """
+        subp = self.subparsers.add_parser("sample", parents=[self.prior, self.pout], 
+                                     help=__doc__)
+
+        subp.add_argument('-N', '--size',type=int, required=True, 
+                          help="Sample size")
+        subp.add_argument('--seed', type=int, 
+                          help="random seed, for reproducible results (default to None)")
+        subp.add_argument('--method', choices=['montecarlo','lhs'], 
+                          default='lhs', 
+                          help="Sampling method: Monte Carlo or Latin Hypercube Sampling (default=%(default)s)")
+
+        grp = subp.add_argument_group('Latin Hypercube Sampling (pyDOE)')
+        grp.add_argument('--lhs-criterion', default=LHS_CRITERION,
+                          help="see pyDOE.lhs (default=%(default)s)")
+        grp.add_argument('--lhs-iterations', type=int, help="see pyDOE.lhs")
+        return subp
+
+
+    def add_resample(self):
+        """Resample an existing parameter set using weights.
+        """
+        subp = self.subparsers.add_parser("resample", 
+                                          parents=[self.pout, self.pin, self.win], 
+                                     help=__doc__)
+
+        subp.add_argument('-N', '--size', help="New sample size (default: same size as before)", type=int)
+        subp.add_argument('--seed', type=int, help="random seed, for reproducible results (default to None)")
+
+        group = subp.add_argument_group('iis')
+        group.add_argument('--iis', action='store_true', 
+                          help="IIS-type resampling with likeihood flattening + jitter")
+        group.add_argument('--epsilon', type=float, 
+                           help='Exponent to flatten the weights and derive jitter \
+variance as a fraction of resampled parameter variance. \
+            If not provided 0.05 is used as a starting value but adjusted if the \
+        effective ensemble size is not in the range specified by --neff-bounds.')
+
+        group.add_argument('--neff-bounds', nargs=2, default=NEFF_BOUNDS, type=int, 
+                           help='Acceptable range for the effective ensemble size\
+                           when --epsilon is not provided. Default to %(default)s.')
+
+        group = subp.add_argument_group('sampling')
+        group.add_argument('--method', choices=['residual', 'multinomial'], 
+                           default=RESAMPLING_METHOD, 
+                           help='resampling method (default: %(default)s)')
+        return subp
+
+    def add_neff(self):
+        """Check effective ensemble size
+        """
+        subp = self.subparsers.add_parser("neff", parents=[self.pin, self.win], 
+                                     help=__doc__)
+        subp.add_argument('--epsilon', type=float, default=1, 
+                          help='likelihood flattening, see resample sub-command')
+
+        return subp
+        #group.add_argument('--neff-only', action='store_true', help='effective ensemble size')
+
+    def parse_args(self, *args, **kwargs):
+        return self.parser.parse_args(*args, **kwargs)
+
+
+
+def main(argv=None):
+
+    parser = ParamsParser(description=__doc__,
+            epilog='Examples: \n ./genparams.py product -p a=0,2 b=0:3:1 c=4 \n ./genparams.py sample -p a=uniform?0,10 b=norm?0,2 --method lhs --size 4',
+            formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    # add subcommands
+    parser.add_product()
+    parser.add_sample()
+    parser.add_resample()
+    parser.add_neff()
+
+    args = parser.parse_args(argv)
+
+    prior = get_prior(args)
+
+    # Combine parameter values
+    # ...factorial model: no numpy distribution allowed
+    if args.cmd == 'product':
+        xparams = prior.product()
+
+    # ...monte carlo and lhs mode
+    elif args.cmd == 'sample':
+        xparams = prior.sample(args.size, seed=args.seed, 
+                               method=args.method,
+                               criterion=args.lhs_criterion,
+                               iterations=args.lhs_iterations)
+
+    elif args.cmd == 'resample':
+
+        xpin = XParams.read(args.params_file)
+        w = np.loadtxt(args.weights_file)
+        if args.log:
+            w = np.exp(log)
+        xparams = xpin.resample(w, size=args.size, seed=args.seed,
+                                method=args.method,
+                                iis=args.iis, epsilon=args.epsilon, 
+                                neff_bounds=args.neff_bounds, 
+                                )
+
+    elif args.cmd == 'neff':
+        w = np.loadtxt(args.weights_file)
+        if args.log:
+            w = np.exp(log * args.epsilon)
+        else:
+            w = w ** args.epsilon
+        print( Resampler(w).neff() )
+        return
+
+
+    if args.out:
+        with open(args.out,'w') as f:
+            f.write(str(xparams))
+    else:
+        print (str(xparams))
+
+
+
+def main(argv=None):
+
+    pparser = ParamsParser(description=__doc__, add_help=False)
+    
+    pp = pparser.add_product()
+    ps = pparser.add_sample()
+    pr = pparser.add_resample()
+    pn = pparser.add_neff()
+
+    xparser = XParser(description=__doc__)
+
+    xparser.add_config(pparser.prior)
+    xparser.add_run()
+    xparser.add_batch()
+    #parser.add_loglik()
+    #parser.add_analysis()
+    #parser.add_iis()
+
+    args = xparser.parser.parse_args(argv)
+
+    if args.cmd == "config":
+
+        if os.path.exists(args.config):
+            if not args.force:
+                print("please use '--force' to overwrite existing config")
+                import sys
+                sys.exit(1)
+
+        config = make_config(args)
+
+        with open(args.config, "w") as f:
+            json.dump(config, args.config)
+
+    elif args.cmd == "run":
+
+        xrun = XRun.read(args.expdir)
+        xrun.run(runid=args.id, dry_run=args.dry_run, background=args.background)
+
+    elif args.cmd == "batch":
+
+        xrun = XRun.read(args.expdir)
+        xrun.batch(array=args.array, background=args.background, 
+                      qos=args.qos, job_name=args.job_name, account=args.account, time=args.time, wait=args.wait)
+

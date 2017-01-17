@@ -9,8 +9,9 @@ import numpy as np
 import scipy.stats
 from scipy.stats import norm, uniform
 
-from simtools.tools import parse_dist, dist_to_str
+from simtools.tools import parse_dist, parse_list, parse_range, dist_to_str
 from simtools.sampling.doelhs import lhs
+from simtools.job.parsetools import Command, Job
 
 # default criterion for the lhs method
 LHS_CRITERION = 'centermaximin' 
@@ -51,7 +52,6 @@ class GenericParam(object):
         else:
             return PriorParam.fromdict(**kwargs)
 
-
      
 class PriorParam(GenericParam):
     """Prior parameter based on any scipy distribution
@@ -76,29 +76,28 @@ class PriorParam(GenericParam):
     def todict(self):
         """dict representation to write to config file
         """
-        pname=self.name
         dname=self.dist.dist.name
         dargs=self.dist.args
 
         if dname == "uniform":
             loc, scale = dargs
             pdef = {
-                "name": pname,
                 "range": [loc, loc+scale],
             }
         elif dname == "norm":
             loc, scale = dargs
             pdef = {
-                "name": pname,
                 "mean": loc,
                 "std": scale,
             }
         else:
             pdef = {
-                "name": pname,
                 "dist": dname,
                 "args": dargs,
             }
+
+        pdef["name"] = self.name
+
         return pdef
 
 
@@ -221,7 +220,7 @@ class Prior(object):
         """
         cfg = json.load(open(file))
         if key: cfg = cfg[key]
-        params = [param_cls.fromdict(**p) for p in cfg]
+        params = [param_cls.fromdict(**p) for p in cfg["params"]]
         return cls(params)
 
 
@@ -285,39 +284,85 @@ class Prior(object):
     #TODO: `bounds` method for resampling
 
 
-    @classmethod
-    def from_namespace(cls, args):
+########################################################################
+#
+# 
+#
+class PriorParser(object):
+
+    @staticmethod
+    def add_arguments(parser, file_required=False, root=PRIOR_KEY):
+        """
+        parser : argparser.ArgumentParser instance
+        returns the class constructor from_parser_namespace
+        """
+        grp = parser.add_argument_group("prior parameters")
+        grp.add_argument('-p', '--prior-params', default=[], nargs='*', 
+                                type=GenericParam.parse, metavar="NAME=SPEC", 
+                                help=GenericParam.parse.__doc__)
+
+        grp.add_argument('--config', required=file_required,
+                         help='input prior parameter file (json file with "'+root+'" key)')
+
+        grp.add_argument('--prior-key', default=root, help=argparse.SUPPRESS)
+
+        x = grp.add_mutually_exclusive_group()
+        x.add_argument('--only-params', nargs='*', 
+                         help="filter out all but these parameters")
+        x.add_argument('--exclude-params', nargs='*', 
+                         help="filter out these parameters")
+        grp.add_argument("--add", nargs='*', type=GenericParam.parse)
+
+    @staticmethod
+    def from_namespace(args):
         """return Prior class
         """
-        if args.prior_file:
-            prior = cls.read(args.prior_file, args.prior_key)
-            if args.only_params
+        if args.config:
+            prior = Prior.read(args.config, args.prior_key)
+            if args.only_params:
                 prior.filter_params(args.only_params, keep=True)
             if args.exclude_params:
                 prior.filter_params(args.exclude_params, keep=False)
 
         else:
-            prior = cls(args.prior_params)
+            prior = Prior(args.prior_params)
 
         return prior
 
 
-def add_prior_argument_group(parser):
-    """To match Prior.from_namespace method
+class EditPriorConfig(Command):
+    """edit config w.r.t Prior Params and print to stdout
     """
-    grp = parser.add_argument_group("prior parameters")
-    x = grp.add_mutually_exclude_arguments()
-    x.add_argument('-p', '--prior-params', default=[], nargs='*', 
-                            type=GenericParam.parse, metavar="NAME=SPEC", 
-                            help=GenericParam.parse.__doc__)
+    def __init__(self, parser):
 
-    x.add_argument('--prior-file', 
-                     help='prior parameter file (json file with "'+PRIOR_KEY+'" key)')
+        PriorParser.add_arguments(parser, file_required=True)
+        parser.add_argument("--full", action='store_true')
 
-    grp.add_argument('--prior-key', default=PRIOR_KEY, help=argparse.SUPPRESS)
 
-    x = grp.add_mutually_exclude_arguments()
-    x.add_argument('--only-params', nargs='*', 
-                     help="filter out all but these parameters")
-    x.add_argument('--exclude-params', nargs='*', 
-                     help="filter out these parameters")
+    def __call__(self, args):
+        prior = Prior.read(args.config, args.prior_key)
+        print(prior.params)
+        print([p.todict() for p in args.add])
+        if args.only_params:
+            prior.filter_params(args.only_params, keep=True)
+        if args.exclude_params:
+            prior.filter_params(args.exclude_params, keep=False)
+
+        cfg = {
+            "params": [p.todict() for p in prior.params]
+        }
+
+        if args.full:
+            full = json.load(open(args.config))
+            full["prior"] = cfg
+            cfg = full
+
+        print(json.dumps(cfg, indent=2))
+
+
+def main():
+    EditPriorConfig.main()
+
+
+if __name__ == "__main__":
+    main()
