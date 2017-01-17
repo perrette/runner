@@ -4,6 +4,7 @@ from __future__ import print_function, division
 import json
 from itertools import product
 import argparse
+import sys
 import numpy as np
 
 import scipy.stats
@@ -311,7 +312,7 @@ class PriorParser(object):
                          help="filter out all but these parameters")
         x.add_argument('--exclude-params', nargs='*', 
                          help="filter out these parameters")
-        grp.add_argument("--add", nargs='*', type=GenericParam.parse)
+        #grp.add_argument("--add", nargs='*', type=GenericParam.parse)
 
     @staticmethod
     def from_namespace(args):
@@ -319,49 +320,54 @@ class PriorParser(object):
         """
         if args.config:
             prior = Prior.read(args.config, args.prior_key)
-            if args.only_params:
-                prior.filter_params(args.only_params, keep=True)
-            if args.exclude_params:
-                prior.filter_params(args.exclude_params, keep=False)
+            update = Prior(args.prior_params)
+            for p in update.params:
+                try:
+                    i = prior.names.index(p.name)
+                    prior.params[i] = p
+                except ValueError:
+                    prior.params.append(p)
 
         else:
             prior = Prior(args.prior_params)
 
-        return prior
-
-
-class EditPriorConfig(Command):
-    """edit config w.r.t Prior Params and print to stdout
-    """
-    def __init__(self, parser):
-
-        PriorParser.add_arguments(parser, file_required=True)
-        parser.add_argument("--full", action='store_true')
-
-
-    def __call__(self, args):
-        prior = Prior.read(args.config, args.prior_key)
-        print(prior.params)
-        print([p.todict() for p in args.add])
         if args.only_params:
             prior.filter_params(args.only_params, keep=True)
         if args.exclude_params:
             prior.filter_params(args.exclude_params, keep=False)
+
+        return prior
+
+
+class PrintPriorConfig(Command):
+    """edit config w.r.t Prior Params and print to stdout
+    """
+    def __init__(self, parser):
+
+        PriorParser.add_arguments(parser)
+        parser.add_argument("--full", action='store_true')
+
+
+    def __call__(self, args):
+        prior = PriorParser.from_namespace(args)
 
         cfg = {
             "params": [p.todict() for p in prior.params]
         }
 
         if args.full:
+            if not args.config:
+                print("ERROR: `--config FILE` must be provided with the `--full` option")
+                sys.exit(1)
             full = json.load(open(args.config))
             full["prior"] = cfg
             cfg = full
 
-        print(json.dumps(cfg, indent=2))
+        print(json.dumps(cfg, indent=2, sort_keys=True))
 
 
 def main():
-    EditPriorConfig.main()
+    PrintPriorConfig.main()
 
 
 if __name__ == "__main__":
