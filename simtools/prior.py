@@ -83,7 +83,7 @@ class PriorParam(GenericParam):
     def __str__(self):
         return "{}={}".format(self.name, dist_to_str(self.dist))
 
-    def tojson(self):
+    def tojson(self, sort_keys=True, **kwargs):
         """dict representation to write to config file
         """
         dname=self.dist.dist.name
@@ -108,7 +108,7 @@ class PriorParam(GenericParam):
 
         pdef["name"] = self.name
 
-        return json.dumps(pdef, indent=2, sort_keys=True)
+        return json.dumps(pdef, sort_keys=sort_keys, **kwargs)
 
 
     @classmethod
@@ -196,11 +196,11 @@ class DiscreteParam(GenericParam):
         return cls(name, values)
 
 
-    def tojson(self):
+    def tojson(self, sort_keys=True, **kwargs):
         return json.dumps({
             "name":self.name,
             "values":self.values.tolist(),
-        }, indent=2, sort_keys=True)
+        }, sort_keys=sort_keys, **kwargs)
 
     @classmethod
     def _fromjson(cls, string):
@@ -386,6 +386,7 @@ def show_config_prog(argv=None):
     prog.add_object_parser(prior_parser, 'prior')
 
     prog.add_argument("--full", action='store_true')
+    prog.add_argument("--indent", type=int)
     args = prog.parse_objects(argv)
 
     cfg = {
@@ -400,7 +401,7 @@ def show_config_prog(argv=None):
         full["prior"] = cfg
         cfg = full
 
-    print(json.dumps(cfg, indent=2, sort_keys=True))
+    print(json.dumps(cfg, indent=args.indent, sort_keys=True))
 
 
 def return_params(xparams, out):
