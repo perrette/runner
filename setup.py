@@ -6,5 +6,5 @@ setup(name='simtools',
       cmdclass=versioneer.get_cmdclass(),
       author_email='mahe.perrette@pik-potsdam.de',
       packages = ['simtools', 'simtools.sampling', 'simtools.model'],
-      scripts = ['jobparams', 'job'], 
+      scripts = ['job'], 
       )
