@@ -1,6 +1,8 @@
 """Tools
 """
 import numpy as np
+from scipy.stats import norm, uniform
+import scipy.stats.distributions
 
 def parse_val(s):
     " string to int, float, str "

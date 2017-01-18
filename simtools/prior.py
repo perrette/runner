@@ -12,7 +12,10 @@ from scipy.stats import norm, uniform
 
 from simtools.tools import parse_dist, parse_list, parse_range, dist_to_str
 from simtools.sampling.doelhs import lhs
-from simtools.parsetools import ObjectParser, Program, Job
+from simtools.parsetools import ObjectParser, ProgramParser, Job
+
+import simtools.xparams as xp
+from simtools.xparams import XParams
 
 # default criterion for the lhs method
 LHS_CRITERION = 'centermaximin' 
@@ -236,7 +239,7 @@ class Prior(object):
             (for more informative error messages)
         """
         cfg = json.load(open(file))
-        if key: cfg = cfg[key]
+        if key and key in cfg: cfg = cfg[key]
         params = [param_cls.parse(json.dumps(p)) for p in cfg["params"]]
         return cls(params)
 
@@ -305,13 +308,13 @@ class Prior(object):
 #
 # 
 #
-class PriorParser(object):
+class PriorParser(ObjectParser):
     """
     """
     def __init__(self, file_required=False):
         self.file_required = file_required
 
-    def __call__(self, parser):
+    def add_arguments(self, parser):
         """
         parser : argparser.ArgumentParser instance
         returns the class constructor from_parser_namespace
@@ -329,45 +332,61 @@ class PriorParser(object):
                          help="filter out all but these parameters")
         x.add_argument('--exclude-params', nargs='*', 
                          help="filter out these parameters")
-        #grp.add_argument("--add", nargs='*', type=GenericParam.parse)
-
-        return getprior
 
 
-def getprior(args):
-    """return Prior class from namespace
-    """
-    if args.config:
-        prior = Prior.read(args.config)
-        update = Prior(args.prior_params)
-        for p in update.params:
-            try:
-                i = prior.names.index(p.name)
-                prior.params[i] = p
-            except ValueError:
-                prior.params.append(p)
+    def postprocess(self, args):
+        """return Prior class from namespace
+        """
+        if args.config:
+            prior = Prior.read(args.config)
+            update = Prior(args.prior_params)
+            for p in update.params:
+                try:
+                    i = prior.names.index(p.name)
+                    prior.params[i] = p
+                except ValueError:
+                    prior.params.append(p)
 
-    else:
-        prior = Prior(args.prior_params)
+        else:
+            prior = Prior(args.prior_params)
 
-    if args.only_params:
-        prior.filter_params(args.only_params, keep=True)
-    if args.exclude_params:
-        prior.filter_params(args.exclude_params, keep=False)
+        if args.only_params:
+            prior.filter_params(args.only_params, keep=True)
+        if args.exclude_params:
+            prior.filter_params(args.exclude_params, keep=False)
 
-    return prior
+        return prior
 
 
 
-def main(argv=None):
+class WeightsParser(ObjectParser):
+    def __init__(self, required=True):
+        self.required = required
+
+    def add_arguments(self, parser):
+        group = parser.add_argument_group('weights')
+        group.add_argument('-w','--weights-file', required=self.required)
+        group.add_argument('--log', action='store_true', 
+                           help='weights are provided as log-likelihood?')
+
+    def postprocess(self, args):
+        w = np.loadtxt(args.weights_file)
+        if args.log:
+            w = np.exp(log)
+        return w
+
+
+# Programs
+# ========
+def show_config_prog(argv=None):
     """edit config w.r.t Prior Params and print to stdout
     """
-    prog = Program(description=main.__doc__)
+    prog = ProgramParser(description=main.__doc__)
     prior_parser = PriorParser()
     prog.add_object_parser(prior_parser, 'prior')
 
     prog.add_argument("--full", action='store_true')
-    args = prog.parse_args()
+    args = prog.parse_objects(argv)
 
     cfg = {
         "params": [json.loads(p.tojson()) for p in args.prior.params]
@@ -382,6 +401,129 @@ def main(argv=None):
         cfg = full
 
     print(json.dumps(cfg, indent=2, sort_keys=True))
+
+
+def return_params(xparams, out):
+    if out:
+        with open(out, "w") as f:
+            f.write(str(xparams))
+    else:
+        print(str(xparams))
+
+
+def product_prog(argv=None):
+    """Factorial combination of parameter values
+    """
+    prog = ProgramParser()
+    prog.add_object_parser(PriorParser(), 'prior')
+    prog.add_argument('-o', '--out', help="output parameter file")
+
+    o = prog.parse_objects(argv)
+
+    xparams = o.prior.product()
+    return return_params(xparams, o.out)
+
+
+def sample_prog(argv=None):
+    """Sample prior parameter distribution
+    """
+    prog = ProgramParser()
+    prog.add_object_parser(PriorParser(), 'prior')
+    prog.add_argument('-o', '--out', help="output parameter file")
+
+    prog.add_argument('-N', '--size',type=int, required=True, 
+                      help="Sample size")
+    prog.add_argument('--seed', type=int, 
+                      help="random seed, for reproducible results (default to None)")
+    prog.add_argument('--method', choices=['montecarlo','lhs'], 
+                      default='lhs', 
+                      help="Sampling method: Monte Carlo or Latin Hypercube Sampling (default=%(default)s)")
+
+    grp = prog.add_argument_group('Latin Hypercube Sampling (pyDOE)')
+    grp.add_argument('--lhs-criterion', default=LHS_CRITERION,
+                      help="see pyDOE.lhs (default=%(default)s)")
+    grp.add_argument('--lhs-iterations', type=int, help="see pyDOE.lhs")
+
+
+    o = prog.parse_objects(argv)
+
+    xparams = o.prior.sample(o.size, seed=o.seed, 
+                           method=o.method,
+                           criterion=o.lhs_criterion,
+                           iterations=o.lhs_iterations)
+
+    return return_params(xparams, o.out)
+
+
+
+def resample_prog(argv=None):
+    """Resample an existing parameter set using weights.
+    """
+    prog = ProgramParser(description=resample_prog.__doc__)
+    prog.add_object_parser(PriorParser(), 'prior')
+
+    #PriorParser.add_argument(parser)
+    # TODO: parameterize this argument to make it POSITIONAL (FunWrapper)
+    prog.add_argument("params_file", 
+                        help="ensemble parameter flle to resample")
+
+    prog.add_object_parser(WeightsParser(), "weights")
+
+
+    prog.add_argument('-N', '--size', help="New sample size (default: same size as before)", type=int)
+    prog.add_argument('--seed', type=int, help="random seed, for reproducible results (default to None)")
+
+    group = prog.add_argument_group('iis')
+    group.add_argument('--iis', action='store_true', 
+                      help="IIS-type resampling with likeihood flattening + jitter")
+    group.add_argument('--epsilon', type=float, 
+                       help='Exponent to flatten the weights and derive jitter \
+variance as a fraction of resampled parameter variance. \
+        If not provided 0.05 is used as a starting value but adjusted if the \
+    effective ensemble size is not in the range specified by --neff-bounds.')
+
+    group.add_argument('--neff-bounds', nargs=2, default=xp.NEFF_BOUNDS, type=int, 
+                       help='Acceptable range for the effective ensemble size\
+                       when --epsilon is not provided. Default to %(default)s.')
+
+    group = prog.add_argument_group('sampling')
+    group.add_argument('--method', choices=['residual', 'multinomial'], 
+                       default=xp.RESAMPLING_METHOD, 
+                       help='resampling method (default: %(default)s)')
+
+
+    args = prog.parse_objects(argv)
+    xpin = XParams.read(args.params_file)
+    xparams = xpin.resample(args.weights, size=args.size, seed=args.seed,
+                            method=args.method,
+                            iis=args.iis, epsilon=args.epsilon, 
+                            neff_bounds=args.neff_bounds, 
+                            )
+    return return_params(xparams, args)
+
+
+def neff_prog(argv=None):
+    """Check effective ensemble size
+    """
+    prog = ProgramParser()
+    prog.add_object_parser(WeightsParser(), "weights")
+    prog.add_argument('--epsilon', type=float, default=1, 
+                      help='likelihood flattening, see resample sub-command')
+
+    print( Resampler(args.weights**args.epsilon).neff() )
+
+
+def main(argv=None):
+
+    job = Job()
+    job.add_command("show", show_config_prog)
+    job.add_command("product", product_prog)
+    job.add_command("sample", sample_prog)
+    job.add_command("resample", resample_prog)
+    job.add_command("neff", neff_prog)
+    #job.add_command("neff", Neff)
+
+    job.main(argv)
 
 
 if __name__ == "__main__":

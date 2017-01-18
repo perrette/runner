@@ -1,5 +1,6 @@
 """Decentralize Job scripts
 """
+from __future__ import print_function
 import argparse
 import inspect
 
@@ -28,12 +29,13 @@ class ObjectParser(object):
         return self.postprocess
 
 
-class Program(argparse.ArgumentParser):
+class ProgramParser(argparse.ArgumentParser):
     """Program with command-line arguments.
     """
     def __init__(self, *args, **kwargs):
         argparse.ArgumentParser.__init__(self, *args, **kwargs)
-        self.object_hooks = {}
+        self.object_hooks = []
+
 
     def add_object_parser(self, objectparser, dest, *args, **kwargs):
         """Add a group of parser 
@@ -44,20 +46,18 @@ class Program(argparse.ArgumentParser):
         grp = self.add_argument_group(*args, **kwargs)
         postproc = objectparser(grp)
         if dest is not None: # no postproc if dest is None
-            self.object_hooks[dest] = postproc
+            self.object_hooks.append((dest, postproc))
 
-    def parse_object(self, namespace):
-        for k in self.object_hooks:
-            postproc = self.object_hooks[k]
+
+    def _postproc(self, namespace):
+        for k, postproc in self.object_hooks:
             setattr(namespace, k, postproc(namespace))
         return namespace
 
-    def parse_known_args(self, argv=None, namespace=None):
-        """Also postprocess objects to namespace
-        """
-        namespace, unknown = \
-            argparse.ArgumentParser.parse_known_args(self, argv, namespace)
-        return self.parse_object(namespace), unknown
+
+    def parse_objects(self, argv=None, namespace=None):
+        namespace = self.parse_args(argv, namespace)
+        return self._postproc(namespace)
 
 
 class Job(object):
@@ -77,12 +77,12 @@ class Job(object):
         subparser = self.subparsers.add_parser(name, **kwargs)
         self.commands[name] = command
 
-    def __call__(self, argv=None):
+    def main(self, argv=None):
         """Exectute program by calling the command
         """
-        namespace, unknown = self.parser.parse_known_args(argv)
+        namespace, cmdarg = self.parser.parse_known_args(argv)
         program = self.commands[getattr(namespace, self.dest)]
-        return program(unknown)
+        return program(cmdarg)
 
 
 #############################################################

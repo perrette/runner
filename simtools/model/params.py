@@ -19,8 +19,8 @@ class Param(object):
         self.help = help
         self.__dict__.update(kwargs)
 
-    def __repr__(self):
-        return "Param(name={name},default={default},value={value})".format(**self.__dict__)
+    #def __repr__(self):
+    #    return "{cls}(name={name},default={default},value={value})".format(cls=type(self).__name__, **self.__dict__)
 
     def __str__(self):
         return "{name}={value} [{default}]".format(**self.__dict__)
