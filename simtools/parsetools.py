@@ -11,98 +11,78 @@ class ObjectParser(object):
     This is useful to deal with a large number of arguments and their 
     re-use in various subcommands.
     """
-    def __init__(self, **kwargs):
-        """Parameterize the parser --> anything here will be available in its methods
-        """
-        self._description = (self.__doc__ or "").strip()
-        self.__dict__.update(kwargs)
-
     def add_arguments(self, parser):
         """Add arguments to a argparse.ArgumentParser instance
         """
         raise NotImplementedError()
-
-    def parse_args(self, argv=None, formatter_class=argparse.RawDescriptionHelpFormatter, **kwargs):
-        """Parse command-line arguments and return argparse.Namespace
-        """
-        description = kwargs.pop("description", self._description)
-        parser = argparse.ArgumentParser(description=description,
-                                         formatter_class=formatter_class, **kwargs)
-        self.add_arguments(parser)
-        namespace = parser.parse_args(argv)
-        return namespace
 
     def postprocess(self, namespace):
         """Return desired object based on argparse.Namespace instance
         """
         raise NotImplementedError()
 
-    def __call__(self, argv=None):
-        """Perform action based on command-line args
+    def __call__(self, parser):
+        """Add arguments and return subprocessing routine
         """
-        namespace = self.parse_args(argv, *args, **kwargs)
-        return self.postprocess(namespace)
+        self.add_arguments(parser)
+        return self.postprocess
 
 
-class Program(object):
+class Program(argparse.ArgumentParser):
     """Program with command-line arguments.
     """
-    def __init__(self, description=(__doc__ or "").strip(), 
-                 formatter_class=argparse.RawDescriptionHelpFormatter, **kwargs):
+    def __init__(self, *args, **kwargs):
+        argparse.ArgumentParser.__init__(self, *args, **kwargs)
+        self.object_hooks = {}
 
-        self.parser = argparse.ArgumentParser(description=description,
-                formatter_class=formatter_class, **kwargs)
-
-
-    def add_object_arguments(self, objectparser, *args, **kwargs):
+    def add_object_parser(self, objectparser, dest, *args, **kwargs):
         """Add a group of parser 
         
         objectparser = ObjectParser instance
         *args and **kwargs are passed to ArgumentParser.add_argument_group
         """
-        grp = self.parser.add_argument_group(*args, **kwargs)
-        objectparser.add_argument(grp)
+        grp = self.add_argument_group(*args, **kwargs)
+        postproc = objectparser(grp)
+        if dest is not None: # no postproc if dest is None
+            self.object_hooks[dest] = postproc
 
+    def parse_object(self, namespace):
+        for k in self.object_hooks:
+            postproc = self.object_hooks[k]
+            setattr(namespace, k, postproc(namespace))
+        return namespace
 
-    def main(self, namespace):
-        """Main function taking argparse.Namespace instance as argument.
+    def parse_known_args(self, argv=None, namespace=None):
+        """Also postprocess objects to namespace
         """
-        raise NotImplementedError()
-
-
-    def __call__(self, argv=None):
-        namespace = self.parser.parse_args(argv)
-        return self.main(namespace)
-
+        namespace, unknown = \
+            argparse.ArgumentParser.parse_known_args(self, argv, namespace)
+        return self.parse_object(namespace), unknown
 
 
 class Job(object):
-    """Multiple programs organized as sub-commands.
+    """Multiple main functions organized as sub-commands.
     """
-    def __init__(self, dest="cmd", description=(__doc__ or "").strip(), 
-                 formatter_class=argparse.RawDescriptionHelpFormatter, **kwargs):
+    def __init__(self, dest="cmd", **kwargs):
 
-        self.parser = argparse.ArgumentParser(description=description,
-                formatter_class=formatter_class, **kwargs)
-
+        self.parser = argparse.ArgumentParser(**kwargs)
         self.subparsers = self.parser.add_subparsers(dest=dest)
         self.commands = {}
         self.dest = dest
 
-    def add_command(self, name, program, **kwargs):
-        """Register a command
+    def add_command(self, name, command, **kwargs):
+        """Register a command (`command`)
         """
-        desc = kwargs.pop("description", program.__doc__)
-        subparser = self.subparsers.add_parser(name, description=desc, **kwargs)
-        program.add_arguments(subparser)
-        self.commands[name] = program
+        assert callable(command)
+        subparser = self.subparsers.add_parser(name, **kwargs)
+        self.commands[name] = command
 
     def __call__(self, argv=None):
         """Exectute program by calling the command
         """
-        namespace = self.parser.parse_args(argv)
-        program = self.commands[namespace.dest]
-        return program.main(namespace)
+        namespace, unknown = self.parser.parse_known_args(argv)
+        program = self.commands[getattr(namespace, self.dest)]
+        return program(unknown)
 
 
 #############################################################

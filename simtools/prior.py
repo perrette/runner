@@ -12,7 +12,7 @@ from scipy.stats import norm, uniform
 
 from simtools.tools import parse_dist, parse_list, parse_range, dist_to_str
 from simtools.sampling.doelhs import lhs
-from simtools.job.parsetools import Command, Job
+from simtools.parsetools import ObjectParser, Program, Job
 
 # default criterion for the lhs method
 LHS_CRITERION = 'centermaximin' 
@@ -35,6 +35,13 @@ class GenericParam(object):
         Pre-defined `U?min,max` (uniform) and `N?mean,sd` (normal)
         or any scipy.stats distribution as TYPE?[SHP,]LOC,SCALE.")
         """
+        # first try json format
+        try:
+            return GenericParam._fromjson(string)
+        except:
+            pass
+
+        # otherwise custom, command-line specific representation
         try:
             if '?' in string:
                 param = PriorParam.parse(string)
@@ -47,11 +54,11 @@ class GenericParam(object):
         return param
 
     @staticmethod
-    def fromdict(**kwargs):
-        if "values" in kwargs:
-            return DiscreteParam.fromdict(**kwargs)
+    def _fromjson(string):
+        if "values" in json.loads(string):
+            return DiscreteParam._fromjson(string)
         else:
-            return PriorParam.fromdict(**kwargs)
+            return PriorParam._fromjson(string)
 
      
 class PriorParam(GenericParam):
@@ -73,8 +80,7 @@ class PriorParam(GenericParam):
     def __str__(self):
         return "{}={}".format(self.name, dist_to_str(self.dist))
 
-
-    def todict(self):
+    def tojson(self):
         """dict representation to write to config file
         """
         dname=self.dist.dist.name
@@ -99,13 +105,14 @@ class PriorParam(GenericParam):
 
         pdef["name"] = self.name
 
-        return pdef
+        return json.dumps(pdef, indent=2, sort_keys=True)
 
 
     @classmethod
-    def fromdict(cls, **kw):
+    def _fromjson(cls, string):
         """initialize from prior.json config (dat is a dict)
         """
+        kw = json.loads(string)
         name = kw["name"]
 
         dname = kw.pop("dist", None)
@@ -128,6 +135,10 @@ class PriorParam(GenericParam):
 
     @classmethod
     def parse(cls, string):
+        try:
+            return cls._fromjson(string)
+        except:
+            pass
         name, spec = string.split('=')
         dist = parse_dist(spec)
         return cls(name, dist)
@@ -170,6 +181,10 @@ class DiscreteParam(GenericParam):
 
     @classmethod
     def parse(cls, string):
+        try:
+            return cls._fromjson(string)
+        except:
+            pass
         name, spec = string.split("=")
         if ':' in spec:
             values = parse_range(spec)
@@ -178,14 +193,15 @@ class DiscreteParam(GenericParam):
         return cls(name, values)
 
 
-    def todict(self):
-        return {
+    def tojson(self):
+        return json.dumps({
             "name":self.name,
             "values":self.values.tolist(),
-        }
+        }, indent=2, sort_keys=True)
 
     @classmethod
-    def fromdict(cls, **kw):
+    def _fromjson(cls, string):
+        kw = json.loads(string)
         return cls(kw["name"], kw["values"])
 
 
@@ -207,8 +223,8 @@ class Prior(object):
         " list of PriorParam instances (for product)"
         self.params = list(params)
         for p in self.params:
-            if not isinstance(p, PriorParam):
-                raise TypeError(repr(p))
+            if not isinstance(p, GenericParam):
+                raise TypeError("expected GenericParam, got:"+repr(type(p)))
 
     @classmethod
     def read(cls, file, key=PRIOR_KEY, param_cls=GenericParam):
@@ -221,7 +237,7 @@ class Prior(object):
         """
         cfg = json.load(open(file))
         if key: cfg = cfg[key]
-        params = [param_cls.fromdict(**p) for p in cfg["params"]]
+        params = [param_cls.parse(json.dumps(p)) for p in cfg["params"]]
         return cls(params)
 
 
@@ -290,9 +306,12 @@ class Prior(object):
 # 
 #
 class PriorParser(object):
+    """
+    """
+    def __init__(self, file_required=False):
+        self.file_required = file_required
 
-    @staticmethod
-    def add_arguments(parser, file_required=False, root=PRIOR_KEY):
+    def __call__(self, parser):
         """
         parser : argparser.ArgumentParser instance
         returns the class constructor from_parser_namespace
@@ -302,10 +321,8 @@ class PriorParser(object):
                                 type=GenericParam.parse, metavar="NAME=SPEC", 
                                 help=GenericParam.parse.__doc__)
 
-        grp.add_argument('--config', required=file_required,
-                         help='input prior parameter file (json file with "'+root+'" key)')
-
-        grp.add_argument('--prior-key', default=root, help=argparse.SUPPRESS)
+        grp.add_argument('--config', required=self.file_required,
+                         help='input config file')
 
         x = grp.add_mutually_exclusive_group()
         x.add_argument('--only-params', nargs='*', 
@@ -314,60 +331,57 @@ class PriorParser(object):
                          help="filter out these parameters")
         #grp.add_argument("--add", nargs='*', type=GenericParam.parse)
 
-    @staticmethod
-    def from_namespace(args):
-        """return Prior class
-        """
-        if args.config:
-            prior = Prior.read(args.config, args.prior_key)
-            update = Prior(args.prior_params)
-            for p in update.params:
-                try:
-                    i = prior.names.index(p.name)
-                    prior.params[i] = p
-                except ValueError:
-                    prior.params.append(p)
-
-        else:
-            prior = Prior(args.prior_params)
-
-        if args.only_params:
-            prior.filter_params(args.only_params, keep=True)
-        if args.exclude_params:
-            prior.filter_params(args.exclude_params, keep=False)
-
-        return prior
+        return getprior
 
 
-class PrintPriorConfig(Command):
+def getprior(args):
+    """return Prior class from namespace
+    """
+    if args.config:
+        prior = Prior.read(args.config)
+        update = Prior(args.prior_params)
+        for p in update.params:
+            try:
+                i = prior.names.index(p.name)
+                prior.params[i] = p
+            except ValueError:
+                prior.params.append(p)
+
+    else:
+        prior = Prior(args.prior_params)
+
+    if args.only_params:
+        prior.filter_params(args.only_params, keep=True)
+    if args.exclude_params:
+        prior.filter_params(args.exclude_params, keep=False)
+
+    return prior
+
+
+
+def main(argv=None):
     """edit config w.r.t Prior Params and print to stdout
     """
-    def __init__(self, parser):
+    prog = Program(description=main.__doc__)
+    prior_parser = PriorParser()
+    prog.add_object_parser(prior_parser, 'prior')
 
-        PriorParser.add_arguments(parser)
-        parser.add_argument("--full", action='store_true')
+    prog.add_argument("--full", action='store_true')
+    args = prog.parse_args()
 
+    cfg = {
+        "params": [json.loads(p.tojson()) for p in args.prior.params]
+    }
 
-    def __call__(self, args):
-        prior = PriorParser.from_namespace(args)
+    if args.full:
+        if not args.config:
+            print("ERROR: `--config FILE` must be provided with the `--full` option")
+            sys.exit(1)
+        full = json.load(open(args.config))
+        full["prior"] = cfg
+        cfg = full
 
-        cfg = {
-            "params": [p.todict() for p in prior.params]
-        }
-
-        if args.full:
-            if not args.config:
-                print("ERROR: `--config FILE` must be provided with the `--full` option")
-                sys.exit(1)
-            full = json.load(open(args.config))
-            full["prior"] = cfg
-            cfg = full
-
-        print(json.dumps(cfg, indent=2, sort_keys=True))
-
-
-def main():
-    PrintPriorConfig.main()
+    print(json.dumps(cfg, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":
