@@ -4,60 +4,171 @@ from __future__ import print_function
 import argparse
 import inspect
 
-class ObjectParser(object):
-    """Bundle argument definition and postprocessing in the same class.
-
-    ObjectParser helps to define and process a group of arguments in an integrated
-    manner, such as to initialize a class. 
-    This is useful to deal with a large number of arguments and their 
-    re-use in various subcommands.
-    """
-    def add_arguments(self, parser):
-        """Add arguments to a argparse.ArgumentParser instance
-        """
-        raise NotImplementedError()
-
-    def postprocess(self, namespace):
-        """Return desired object based on argparse.Namespace instance
-        """
-        raise NotImplementedError()
-
-    def __call__(self, parser):
-        """Add arguments and return subprocessing routine
-        """
-        self.add_arguments(parser)
-        return self.postprocess
-
-
-class ProgramParser(argparse.ArgumentParser):
+class CustomParser(argparse.ArgumentParser):
     """Program with command-line arguments.
     """
     def __init__(self, *args, **kwargs):
         argparse.ArgumentParser.__init__(self, *args, **kwargs)
-        self.object_hooks = []
+        self._postprocessors = []
+
+        # also copy postprocessors from parents
+        for parent in kwargs.pop('parents', []):
+            if hasattr(parent, '_postprocessors'):
+                self._postprocessors.extends(parent._postprocessors)
 
 
-    def add_object_parser(self, objectparser, dest, *args, **kwargs):
+    def add_postprocessor(self, func, args=None, optargs=(), 
+                          varargs=(), inspect=False, mapping=None, dest=None, add_arguments=False):
         """Add a group of parser 
         
-        objectparser = ObjectParser instance
-        *args and **kwargs are passed to ArgumentParser.add_argument_group
+        Parameters
+        ----------
+        func : callable
+        args : [str], select namespace arguments to be passed to func
+            (if None, all namespace arguments are passed)
+        optargs : optional arguments, not required to be in the namespace
+            (the default behaviour is to raise an error if the argument was not found)
+        varargs : [str], namespace arguments to be passed as variable arguments
+            No mapping is applied on these arguments, and they must be present in the namespace.
+        inspect : bool, false by default
+            if True, use inspect function to guess args and optargs
+        mapping : {kwargs : destarg}, mapping between function key-word arguments 
+            to command arguments (the `dest` keyword in `add_argument`). 
+        dest : str or [None], destination of `func` return value in the result 
+            namespace. By default no result is stored.
+        add_arguments : bool, if True, also add postprocessor arguments to the parser
+
+        Examples
+        --------
+        >>> def func(required, integer=1, real=1., string='a', ofcourse=True, really=False, none=None):
+        ...    return locals()
+        >>> 
+        >>> p = CustomParser('test')
+        >>> p.add_postprocessor(func, inspect=True, add_arguments=True, dest='result')
+        >>> p.print_help()
         """
-        grp = self.add_argument_group(*args, **kwargs)
-        postproc = objectparser(grp)
-        if dest is not None: # no postproc if dest is None
-            self.object_hooks.append((dest, postproc))
+        if mapping is None:
+            mapping = {}
+
+        if inspect:
+            from inspect import getargspec
+            spec = getargspec(func)
+            args = spec.args
+            optargs = spec.args[-len(spec.defaults):]
+            defaults = {arg:val for  arg,val in zip(optargs, spec.defaults)}
+        else:
+            defaults = {}
+
+        args = [a for a in args if a not in optargs] # make args and optargs disjoint
+
+        self._postprocessors.append((func, args, optargs, varargs, mapping, dest))
+
+        # add arguments to parser ?
+        if add_arguments:
+            for arg in args + optargs:
+                if arg in optargs:
+                    self._add_optional_argument(arg, default=defaults.pop(arg, None))
+                else:
+                    self._add_optional_argument(arg, required=True)
 
 
-    def _postproc(self, namespace):
-        for k, postproc in self.object_hooks:
-            setattr(namespace, k, postproc(namespace))
-        return namespace
+    def _add_optional_argument(self, dest, default=None, aliases=(), required=False, **kwargs):
+        """Add an optional argument to parser based on its dest name and default value
+
+        (called by add_optional_argument)
+
+        dest : same as `add_argument`
+            The flag name `--ARG-NAME` or `--no-ARG-NAME` is built from `dest`.
+        default : default value
+            `type` and help is derived from default.
+            If boolean, `store_true` or `store_false` will be determined, and 
+            name updated.
+        required : same as `add_argument`
+        aliases : [str], additional aliases such as `--OTHER-NAME` or `-X`
+        **kwargs keyword arguments are passed to `add_argument`
+        """
+        name = dest.replace('_','-')
+
+        opt = {}
+
+        if type(default) is bool:
+            if default is False:
+                opt["action"] = "store_true"
+            else:
+                opt["action"] = "store_false"
+                name = 'no-'+name
+        elif default is not None:
+            opt["type"] = type(default)
+
+        # determine help
+        if default is not None and not required:
+            if default is False:
+                opt["help"] = '[default: False]'
+            elif default is True:
+                opt["help"] = '[default: True]'
+            else:
+                opt["help"] = '[default: %(default)s]'
+
+        # update with user-specified
+        opt.update(kwargs)
+
+        return self.add_argument('--'+name, *aliases, dest=dest, required=required, default=default, **opt)
 
 
-    def parse_objects(self, argv=None, namespace=None):
+    def postprocess(self, namespace, results=None):
+        """Postprocess namespace
+
+        namespace : Namespace instance
+            returned by parse_args
+
+        results : Namespace instance, optional
+            if results is not provided, the original namespace
+            will be populated accordingly to `dest` keyword
+            in add_postprocessor
+        """
+        if results is None:
+            results = namespace
+
+        for func, args, optargs, varargs, mapping, dest in self._postprocessors:
+
+            # determine arguments to extract from namespace
+            if args is None:
+                args = namespace.__dict__.keys()
+
+            # extract arguments from namespace
+            kwargs = {arg: getattr(namespace, arg) for arg in args if args not in optargs}
+            kwargs_opt = {arg: getattr(namespace, arg) for arg in optargs if hasattr(namespace, arg)}
+            kwargs.update(kwargs_opt)
+
+            # mapping toward function name
+            mapping = mapping.copy()
+
+            varvals = [getattr(namespace, arg) for k in varargs]
+
+            res = func(*varvals, **kwargs)
+
+            if dest is not None:
+                setattr(results, dest, res)
+
+        return results
+
+
+    def main(self, argv=None, namespace=None):
+        """Callable as main function: parse arguments 
+        and return custom namespace.
+        """
         namespace = self.parse_args(argv, namespace)
-        return self._postproc(namespace)
+        return self.postprocess(namespace)
+
+
+    def __call__(self, func):
+        """To use as a decorator
+        """
+        # if no postprocessor is present, build a default postproc from func
+        if not self._postprocessors:
+            self.add_postprocessor(func, inspect=True, add_arguments=True)
+
+        return self.main
 
 
 class Job(object):
@@ -83,160 +194,3 @@ class Job(object):
         namespace, cmdarg = self.parser.parse_known_args(argv)
         program = self.commands[getattr(namespace, self.dest)]
         return program(cmdarg)
-
-
-#############################################################
-#
-#
-#
-# Result of intense procrastination, but in the end powerful :
-
-class FunWrapper(ObjectParser):
-    """Automatically create a parser for a function or class
-
-    This class is pretty rich and lets you a lot of flexibility about 
-    how to define the argparse wrapper.
-
-    The basic usage is to provide it with a callable with its keyword
-    arguments, and optionally with a variable list of key-word arguments
-    used to specify the order in which they shall appear.
-
-    Take a look at the various classes to see how the default behaviour can be 
-    modified (e.g. argument mapping, aliases, require, hide ...). 
-    Or on the opposite end, use the `inspect` class method to automatically
-    determine the default arguments.
-    """
-    def __init__(self, fun, *args, **kwargs):
-        """
-        fun : callable
-        *args : may be provided to specify order
-        **kwargs : default key-word arguments for fun.
-        """
-        self.fun = fun
-        self._arguments = args or sorted(kwargs.keys())
-        self._defaults = kwargs
-        self._description = (fun.__doc__ or "").strip()
-        self._required = []
-        self._hidden = []
-        self._aliases = {}
-        self._added_arguments = []
-        self._mapping = {}
-        self._custom_update = {} 
-
-    def require(self, k):
-        """Require the argument from the command-line (no default)
-        """
-        self._required.append(k)
-
-    def hide(self, k):
-        """Hide argument from command-line usage and help
-        """
-        self._hidden.append(k)
-
-    def alias(self, k, aliases=None):
-        """Add aliases to the parser
-
-        aliases : list of aliases, optional
-            by default just use the first letter
-        """
-        self._aliases[k] = aliases or ('-'+k[0],)
-
-    def map(self, **kwargs):
-        """Provide a mapping for the arguments
-        """
-        self._mapping.update(kwargs)
-
-
-    def add_argument(self, *args, **kwargs):
-        """Add single argument to parser (passed to ArgumentParser.add_argument)
-        """
-        self._added_arguments.append( (args, kwargs) )
-
-    def update_argument(self, k, *aliases, **kwargs):
-        """Update specification compared to default
-        """
-        self._custom_update[k] = aliases, kwargs
-
-    def add_arguments(self, parser):
-        """Populate parser
-        """
-        for k in self._arguments:
-
-            name = k.replace('_','-')
-            args = ('--'+name,) + self._aliases.copy().pop(k, ())
-            kwargs = {}
-
-            default = self._defaults[k]
-            kwargs["default"] = default
-
-            if type(default) is bool:
-                if default is False:
-                    kwargs["action"] = "store_true"
-                else:
-                    kwargs["action"] = "store_false"
-                    args = ('--no-'+name,) + args[1:]
-            else:
-                kwargs["type"] = type(default)
-
-            if k in self._required:
-                kwargs["required"] = True
-
-            if k in self._hidden:
-                kwargs["help"] = argparse.SUPPRESS
-            elif default is False:
-                kwargs["help"] = 'set [unset by default]'
-            elif default is True:
-                kwargs["help"] = 'unset [set by default]'
-            elif k not in self._required:
-                kwargs["help"] = '[default: %(default)s]'
-
-
-            kwargs["dest"] = k
-            
-            # custom update: replace args (aliases), update kwargs
-            args, update = self._custom_update.copy().pop(k,(args, {}))
-            kwargs.update(update)
-
-            parser.add_argument(*args, **kwargs)
-
-        # Add custom arguments as indicated by user
-        for args, kwargs in self._added_arguments:
-            parser.add_argument(*args, **kwargs)
-
-    def postprocess(self, namespace):
-        kwargs = namespace.__dict__.copy()
-        for k in self._mapping:
-            kwargs[k] = kwargs.pop(self._mapping[k])
-        return self.fun(**kwargs)
-
-
-    @staticmethod
-    def _inspect_order(fun):
-        # remove self or cls as first argument
-        args = inspect.getargspec(fun).args
-        if not inspect.isfunction(fun):
-            args = args[1:]
-        return args
-
-    @staticmethod
-    def _inspect_defaults(fun):
-        spec = inspect.getargspec(fun)
-        default_list = spec.defaults or ()
-        defaults = {spec.args[::-1][i] : val 
-                    for i,val in enumerate(default_list[::-1])}
-        return defaults
-
-    @classmethod
-    def inspect(cls, fun, **kwargs):
-        """initialize Wrapper from inspect module
-
-        func : function or callable
-        **kwargs : update or specify default arguments for func
-        """
-        args = cls._inspect_order(fun)
-        defaults = cls._inspect_defaults(fun)
-        defaults.update(kwargs)
-        undefined = [a for a in args if a not in defaults]
-        if undefined:
-            raise ValueError("undefined arguments: "+",".join(undefined))
-        return cls(fun, *args, **defaults)
