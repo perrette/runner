@@ -4,13 +4,15 @@
 from __future__ import print_function, division
 
 from simtools.parsetools import Job
-from simtools.job.sample import product_main, sample_main
+from simtools.job.sample import product_main, sample_main, prior_config_main
 from simtools.job.resample import resample_main, neff_main
 
 def main(argv=None):
 
     job = Job()
     #job.add_command("config", show_config_main)
+    job.add_command("prior", prior_config_main, 
+                    help='update prior configuration file')
     job.add_command("product", product_main, 
                     help='generate ensemble from all parameter combinations')
     job.add_command("sample", sample_main, 

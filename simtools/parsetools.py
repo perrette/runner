@@ -208,6 +208,12 @@ class Job(object):
         if argv is None:
             argv = sys.argv[1:]
 
+        if '--debug' in argv:
+            debug = True
+            argv.remove('--debug') 
+        else:
+            debug = False
+
         # if subcommand, just call it:
         if len(argv) > 0:
             if argv[0] in self.commands:
@@ -216,7 +222,10 @@ class Job(object):
                 try:
                     return program(argv[1:])
                 except Exception as error:
+                    if debug:
+                        raise
                     print("ERROR:",error.message)
+                    print("(use '--debug' for full traceback)")
                     sys.exit(1)
 
 

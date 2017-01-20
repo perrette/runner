@@ -117,3 +117,27 @@ def sample_main(argv=None):
                            iterations=o.lhs_iterations)
 
     return return_params(xparams, o.out)
+
+
+def prior_config_main(argv=None):
+    """update prior config file and print result to screen
+    """
+    parser = CustomParser(description="update prior config file and print result to screen", 
+                          parents=[prior_parser])
+    parser.add_argument("--full", 
+                        action='store_true', 
+                        help='show full configuration file (including model etc.)')
+    parser.add_argument("--indent", type=int)
+
+    o = parser.parse_args(argv)
+    o = parser.postprocess(o)
+
+    jsonstring = o.prior.tojson(indent=o.indent)
+    if o.full:
+        if not o.config_file:
+            parser.error("The `--full` option requires `--config-file FILE` to be provided")
+        cfg = json.load(open(o.config_file))
+        cfg.update(json.loads(jsonstring))
+        jsonstring = json.dumps(cfg, sort_keys=True, indent=o.indent)
+
+    print(jsonstring)

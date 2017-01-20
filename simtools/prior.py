@@ -300,3 +300,13 @@ class Prior(object):
             self.params = [p for p in self.params if p.name not in names]
 
     #TODO: `bounds` method for resampling?
+
+
+    def tojson(self, sort_keys=True, **kwargs):
+        """Create json-compatible configuration file
+        """
+        cfg = {
+            "params": [json.loads(p.tojson()) for p in self.params]
+        }
+        return json.dumps(cfg, sort_keys=True, **kwargs)
+
