@@ -3,6 +3,7 @@
 from __future__ import print_function
 import argparse
 import inspect
+import sys
 
 class CustomParser(argparse.ArgumentParser):
     """Program with command-line arguments.
@@ -14,9 +15,13 @@ class CustomParser(argparse.ArgumentParser):
         # also copy postprocessors from parents
         for parent in kwargs.pop('parents', []):
             if hasattr(parent, '_postprocessors'):
-                self._postprocessors.extends(parent._postprocessors)
+                self._postprocessors.extend(parent._postprocessors)
 
 
+    #TODO: think about simplifying the postprocessor trigger (which takes a namespace
+    # as argument) and the function <--> namespace mapping.
+    # ==> make a function decorator **kwargs --> namespace
+    # and a method `add_arguments(parser...)` 
     def add_postprocessor(self, func, args=None, optargs=(), 
                           varargs=(), inspect=False, mapping=None, dest=None, add_arguments=False):
         """Add a group of parser 
@@ -170,6 +175,15 @@ class CustomParser(argparse.ArgumentParser):
 
         return self.main
 
+def parser(func):
+    """Decorator to make the function `main`
+    """
+    parser = CustomParser(description=func.__doc__,
+                          formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_postprocessor(func, inspect=True, add_arguments=True)
+    return parser.main
+
+
 
 class Job(object):
     """Multiple main functions organized as sub-commands.
@@ -191,6 +205,20 @@ class Job(object):
     def main(self, argv=None):
         """Exectute program by calling the command
         """
-        namespace, cmdarg = self.parser.parse_known_args(argv)
-        program = self.commands[getattr(namespace, self.dest)]
-        return program(cmdarg)
+        if argv is None:
+            argv = sys.argv[1:]
+
+        # if subcommand, just call it:
+        if len(argv) > 0:
+            if argv[0] in self.commands:
+                program = self.commands[argv[0]]
+                sys.argv[0] = " ".join(sys.argv[:2]) # for help message
+                try:
+                    return program(argv[1:])
+                except Exception as error:
+                    print("ERROR:",error.message)
+                    sys.exit(1)
+
+
+        # error message and help:
+        self.parser.parse_args(argv)

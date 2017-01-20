@@ -3,7 +3,6 @@
 from __future__ import print_function, division
 import json
 from itertools import product
-import argparse
 import sys
 import numpy as np
 
@@ -12,7 +11,6 @@ from scipy.stats import norm, uniform
 
 from simtools.tools import parse_dist, parse_list, parse_range, dist_to_str
 from simtools.sampling.doelhs import lhs
-from simtools.parsetools import ObjectParser, ProgramParser, Job
 
 import simtools.xparams as xp
 from simtools.xparams import XParams
