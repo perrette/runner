@@ -49,7 +49,7 @@ import numpy as np
 import argparse
 from simtools.parsetools import CustomParser
 import simtools.sampling.resampling as xp
-from simtools.xparams import XParams
+from simtools.xparams import XParams, Resampler
 
 def getweights(weights_file, log=False):
     w = np.loadtxt(weights_file)
@@ -68,7 +68,7 @@ def resample_main(argv=None):
                         help="ensemble parameter flle to resample")
 
     group = parser.add_argument_group('weights')
-    group.add_argument('--weights-file', required=True, 
+    group.add_argument('--weights-file', '-w', required=True, 
                        help='typically the likelihood from a bayesian analysis, i.e. exp(-((model - obs)**2/(2*variance), to be multiplied when several observations are used')
     group.add_argument('--log', action='store_true', 
                        help='set if weights are provided as log-likelihood (no exponential)')
@@ -111,3 +111,23 @@ variance as a fraction of resampled parameter variance. \
                             neff_bounds=o.neff_bounds, 
                             )
     return return_params(xparams, o)
+
+
+
+def neff_main(argv=None):
+    """Check effective ensemble size
+    """
+    parser = CustomParser(description=neff_main.__doc__, parents=[], 
+                          formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--weights-file', '-w', required=True, 
+                       help='typically the likelihood from a bayesian analysis, i.e. exp(-((model - obs)**2/(2*variance), to be multiplied when several observations are used')
+    parser.add_argument('--log', action='store_true', 
+                       help='set if weights are provided as log-likelihood (no exponential)')
+    parser.add_argument('--epsilon', type=float, default=1, 
+                      help='likelihood flattening, see resample sub-command')
+
+    args = parser.parse_args()
+    args.weights = getweights(args.weights_file, args.log)
+
+    print( Resampler(args.weights**args.epsilon).neff() )
+

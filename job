@@ -5,7 +5,7 @@ from __future__ import print_function, division
 
 from simtools.parsetools import Job
 from simtools.job.sample import product_main, sample_main
-from simtools.job.resample import resample_main
+from simtools.job.resample import resample_main, neff_main
 
 def main(argv=None):
 
@@ -17,6 +17,8 @@ def main(argv=None):
                     help='generate ensemble by sampling prior distributions')
     job.add_command("resample", resample_main, 
                     help='resample parameters from previous simulation')
+    job.add_command("neff", neff_main, 
+                    help='(resample helper) calculate effective ensemble size')
     #job.add_command("neff", neff_main)
     #job.add_command("neff", Neff)
 
