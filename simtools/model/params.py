@@ -2,6 +2,7 @@
 """
 from __future__ import print_function, absolute_import
 import json
+from simtools.tools import parse_val
 
 class Param(object):
     """default parameter --> useful to specify custom I/O formats
@@ -23,7 +24,15 @@ class Param(object):
     #    return "{cls}(name={name},default={default},value={value})".format(cls=type(self).__name__, **self.__dict__)
 
     def __str__(self):
-        return "{name}={value} [{default}]".format(**self.__dict__)
+        return "{name}={value}".format(name=self.name, value=self.value)
+
+    @classmethod
+    def parse(cls, string):
+        name, value = string.split('=')
+        return cls(name, parse_val(value))
+
+    def tojson(self, **kwargs):
+        return json.dumps({p.name:p.value}, **kwargs)
 
 
 class ParamsFile(object):
@@ -41,7 +50,6 @@ class ParamsFile(object):
     def load(self, f):
         return self.loads(f.read())
 
-
 # Json file types
 # ===============
 
@@ -54,7 +62,7 @@ class JsonDict(ParamsFile):
         self.kwargs = kwargs
 
     def dumps(self, params):
-        return json.dumps({p.name:p.value for p in params}, **kwargs)
+        return json.dumps({p.name:p.value for p in params}, **self.kwargs)
 
     def loads(self, string):
         kwargs = json.loads(string)
@@ -74,19 +82,19 @@ class JsonList(ParamsFile):
     def loads(self, string):
         return [Param(**p) for p in json.loads(string)]
 
-
 # FileType register
 # =================
 
 filetypes = {}
 
 def register_filetype(name, filetype):
+    assert hasattr(filetype, 'dumps')
+    filetype._filetype_name = name  # to write to config file
     filetypes[name] = filetype
 
 # register filetypes
 register_filetype(None, JsonDict())  # the default
-register_filetype("jsondict", JsonDict())
-register_filetype("jsonlist", JsonList())
+register_filetype("json", JsonList())
 
 
 def get_filetype(name=None):

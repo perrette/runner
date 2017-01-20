@@ -37,12 +37,12 @@ class TemplateFile(ParamsFile):
     Here the parameter a : {a}
         {b} <-----  parameter b !
     """
-    def __init__(self, string):
-        assert string, "must provide template string"
-        self.string = string
+    def __init__(self, template):
+        assert template, "must provide template string"
+        self.template = template
 
     def dumps(self, params):
-        return self.string.format(**{p.name:p.value for p in params})
+        return self.template.format(**{p.name:p.value for p in params})
 
     @classmethod
     def read(cls, file):
@@ -116,7 +116,9 @@ def get_or_make_filetype(name):
 
     # one --> separator?
     if len(name) == 1 or len(name.strip()) <= 1:
-        return LineSeparator(name)
+        filetype = LineSeparator(name)
+        filetype._filetype_name = name  # to write to config file
+        return filetype
 
     # line template?
     try:
@@ -124,7 +126,9 @@ def get_or_make_filetype(name):
     except IndexError:
         # error means that brackets are present and therefore is a valid
         # LineTemplate filetype definition
-        return LineTemplate(name)
+        filetype = LineTemplate(name)
+        filetype._filetype_name = name  # to write to config file
+        return filetype
 
     print(__doc__)
     print_filetypes()

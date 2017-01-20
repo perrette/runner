@@ -47,53 +47,68 @@ class Model(object):
             params_args = params_args.split()
         self.params_args = params_args or []
         self.params_write = params_write 
-        self.filetype = get_or_make_filetype(filetype)
+        self.filetype = filetype
+        self.check_paramsio()
+
+        #self.filetype = get_or_make_filetype(filetype)
+
+    def tojson(self, sort_keys=True, **kwargs):
+        """return a json representation of a Model instance
+
+        Note that some secondary information might be lost, such as the original
+        parameter file from which default parameters were read.
+        """
+        return json.dumps({
+            "model" : {
+                "executable": self.executable, 
+                "args": self.args,
+                "params_write": self.params_write,
+                "params_args": self.params_args,
+                "params_default": {p.name:p.default for p in self.params 
+                            if p.default is not None},
+                "filetype": getattr(self.filetype,"_filetype_name", None),
+                "template": getattr(self.filetype, "template", None),
+            }
+        }, sort_keys=sort_keys, **kwargs)
 
     @classmethod
-    def read(cls, configfile, root='model'):
-        with open(configfile) as f:
-            dat = json.load(f)
-        if root:
-            dat = dat[root]
-        return cls.fromconfig(dat)
-
-
-    @classmethod
-    def fromconfig(cls, dat):
+    def fromjson(cls, string):
         """Initialize Model from dictionary config
         """
-        dat = dat.copy()
+        dat = json.loads(string)
+        dat = dat.pop("model", dat) # remove any leading "model" key
 
-        pdef = dat.pop("params", {})
+        executable = dat.pop("executable")
+        args = dat.pop("args", None)
+        params_args = dat.pop("params_args", None)
+        params_write = dat.pop("params_write", False)
+        params_file = dat.pop("params_file", None)
+        params_default = dat.pop("params_default", {})
+        return cls(executable, args, params_default, params_args, params_write, filetype)
 
-        write = pdef.pop("write", None)
-        args = pdef.pop("args", PARAMS_ARG)
-        default = pdef.pop("default", None)
-        filetypedat = pdef.pop("file", None)
-        filetype = get_or_make_filetype(filetypedat)
+    def check_paramsio(self):
+        """check default params or possibly read from file
+        """
+        if not hasattr(self.filetype, 'dumps'):
+            self.filetype = get_or_make_filetype(self.filetype)
 
         # read default params
-        if default is not None:
-            if isinstance(default, basestring):
-                params = filetype.load(open(default))
+        if not isinstance(self.params, list):
+            if isinstance(self.params, basestring):
+                self.params = self.filetype.load(open(self.params))
 
-            elif isinstance(default, dict):
-                params = [Param(k, default[k]) for k in default]
+            elif isinstance(self.params, dict):
+                self.params = [Param(k, self.params[k]) for k in self.params]
+
+            elif self.params is None:
+                self.params = []
 
             else:
-                raise ValueError("invalid format for default params:"+repr(default))
+                raise ValueError("invalid format for params_default:"+repr(self.params))
         else:
-            params = []
-
-        # Initialize model class
-        dat.update(dict(
-            params=params,
-            filetype=filetype,
-            params_write=write,
-            params_args=args,
-        ))
-
-        return cls(**dat)
+            for p in self.params:
+                if not hasattr(p, 'name') or not hasattr(p, 'value'):
+                    raise TypeError('model params have wrong type:'+repr(p))
 
 
     def update(self, params_kw):

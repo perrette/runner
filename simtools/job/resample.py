@@ -58,7 +58,7 @@ def getweights(weights_file, log=False):
     return w
 
 
-def resample_main(argv=None):
+def resample(argv=None):
     """Resample an existing ensemble set using weights.
     """
     parser = CustomParser(description=__doc__, parents=[], 
@@ -114,10 +114,10 @@ variance as a fraction of resampled parameter variance. \
 
 
 
-def neff_main(argv=None):
+def neff(argv=None):
     """Check effective ensemble size
     """
-    parser = CustomParser(description=neff_main.__doc__, parents=[], 
+    parser = CustomParser(description=neff.__doc__, parents=[], 
                           formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--weights-file', '-w', required=True, 
                        help='typically the likelihood from a bayesian analysis, i.e. exp(-((model - obs)**2/(2*variance), to be multiplied when several observations are used')

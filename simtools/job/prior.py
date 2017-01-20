@@ -12,17 +12,26 @@ from simtools.prior import Prior, GenericParam, LHS_CRITERION
 
 # Get prior parameter
 # ===================
-def getprior(prior_params=None, config_file=None, only_params=None, exclude_params=None):
+def getprior(prior_params=None, config_file=None, only_params=None, exclude_params=None, update_params=None):
     """Return prior parameters from configuration file and any command-line update
 
     * prior_params : [GenericParam]
     * config_file : config file to define params from
     * only_params : [str] filter out all but these parameters
     * exclude_params : [str] filter out these parameters
+    * update_params : [GenericParam] update or append params to config file
     """
-    if config_file:
-        prior = Prior.read(config_file)
-        update = Prior(prior_params or [])
+    if prior_params:
+        # provide parameters from command-line directly
+        prior = Prior(prior_params or [])
+
+    else:
+        # start from configuration file and update
+        if config_file:
+            prior = Prior.read(config_file)
+        else:
+            prior = Prior([])
+        update = Prior(update_params or [])
         for p in update.params:
             try:
                 i = prior.names.index(p.name)
@@ -30,31 +39,36 @@ def getprior(prior_params=None, config_file=None, only_params=None, exclude_para
             except ValueError:
                 prior.params.append(p)
 
-    else:
-        prior = Prior(prior_params or [])
-
-    if only_params:
-        prior.filter_params(only_params, keep=True)
-    if exclude_params:
-        prior.filter_params(exclude_params, keep=False)
+        if only_params:
+            prior.filter_params(only_params, keep=True)
+        if exclude_params:
+            prior.filter_params(exclude_params, keep=False)
+        if exclude_params:
+            prior.filter_params(exclude_params, keep=False)
 
     if not prior.params:
-        prior_parser.error("either --prior-params or --config-file must be provided")
-        sys.exit(1) 
+        prior_parser.error("--prior-params or --config-file must be provided")
 
     return prior
 
 
 prior_parser = CustomParser(add_help=False)
 grp = prior_parser.add_argument_group('prior parameters')
-grp.add_argument('--prior-params', '-p',
+x = grp.add_mutually_exclusive_group()
+x.add_argument('--prior-params', '-p',
                          type=GenericParam.parse,
                          help=GenericParam.parse.__doc__,
                          metavar="NAME=SPEC",
                          nargs='*',
                          default = [])
+x.add_argument('--update-params', '-u',
+                         type=GenericParam.parse,
+                         help='same as --prior-params, but used to update --config-file', 
+                         metavar="NAME=SPEC",
+                         nargs='*',
+                         default = [])
 #prior_parser.add_argument('--prior-file', dest="config_file", help=argparse.SUPPRESS)
-grp.add_argument('--config-file', dest="config_file", help="configuration file")
+grp.add_argument('--config-file', '-c', dest="config_file", help="configuration file")
 
 x = grp.add_mutually_exclusive_group()
 x.add_argument('--only-params', nargs='*', 
@@ -77,10 +91,10 @@ def return_params(xparams, out):
         print(str(xparams))
 
 
-def product_main(argv=None):
+def product(argv=None):
     """Factorial combination of parameter values
     """
-    parser = CustomParser(description=product_main.__doc__, parents=[prior_parser])
+    parser = CustomParser(description=product.__doc__, parents=[prior_parser])
     parser.add_argument('-o', '--out', help="output parameter file")
     o = parser.parse_args(argv)
     o = parser.postprocess(o) # add prior
@@ -88,10 +102,11 @@ def product_main(argv=None):
     return return_params(xparams, o.out)
 
 
-def sample_main(argv=None):
+def sample(argv=None):
     """Sample prior parameter distribution
     """
-    parser = CustomParser(description=sample_main.__doc__, parents=[prior_parser])
+    parser = CustomParser(description=sample.__doc__, parents=[prior_parser])
+    #grp.add_argument('--config-file', dest="config_file", help="configuration file")
     parser.add_argument('-o', '--out', help="output parameter file")
 
     parser.add_argument('-N', '--size',type=int, required=True, 
@@ -119,23 +134,18 @@ def sample_main(argv=None):
     return return_params(xparams, o.out)
 
 
-def prior_config_main(argv=None):
-    """update prior config file and print result to screen
+def priorconfig(argv=None):
+    """create or update prior parameters
     """
-    parser = CustomParser(description="update prior config file and print result to screen", 
+    parser = CustomParser(description=priorconfig.__doc__, 
                           parents=[prior_parser])
-    parser.add_argument("--full", 
-                        action='store_true', 
-                        help='show full configuration file (including model etc.)')
     parser.add_argument("--indent", type=int)
 
     o = parser.parse_args(argv)
     o = parser.postprocess(o)
 
     jsonstring = o.prior.tojson(indent=o.indent)
-    if o.full:
-        if not o.config_file:
-            parser.error("The `--full` option requires `--config-file FILE` to be provided")
+    if o.config_file:
         cfg = json.load(open(o.config_file))
         cfg.update(json.loads(jsonstring))
         jsonstring = json.dumps(cfg, sort_keys=True, indent=o.indent)
