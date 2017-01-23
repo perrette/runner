@@ -36,12 +36,6 @@ class GenericParam(object):
         Pre-defined `U?min,max` (uniform) and `N?mean,sd` (normal)
         or any scipy.stats distribution as TYPE?[SHP,]LOC,SCALE.")
         """
-        # first try json format
-        try:
-            return GenericParam._fromjson(string)
-        except:
-            pass
-
         # otherwise custom, command-line specific representation
         try:
             if '?' in string:
@@ -55,19 +49,20 @@ class GenericParam(object):
         return param
 
     @staticmethod
-    def _fromjson(string):
+    def fromjson(string):
         if "values" in json.loads(string):
-            return DiscreteParam._fromjson(string)
+            return DiscreteParam.fromjson(string)
         else:
-            return PriorParam._fromjson(string)
+            return PriorParam.fromjson(string)
 
      
 class PriorParam(GenericParam):
     """Prior parameter based on any scipy distribution
     """
-    def __init__(self, name, dist):
+    def __init__(self, name, dist, default=None):
         self.name = name
         self.dist = dist
+        self.default = default
 
     def sample(self, size):
         """Monte Carlo sampling
@@ -91,12 +86,14 @@ class PriorParam(GenericParam):
             loc, scale = dargs
             pdef = {
                 "range": [loc, loc+scale],
+                "dist": dname,
             }
         elif dname == "norm":
             loc, scale = dargs
             pdef = {
                 "mean": loc,
                 "std": scale,
+                "dist": "normal",
             }
         else:
             pdef = {
@@ -105,30 +102,30 @@ class PriorParam(GenericParam):
             }
 
         pdef["name"] = self.name
+        if self.default:
+            pdef["default"] = self.default
 
         return json.dumps(pdef, sort_keys=sort_keys, **kwargs)
 
 
     @classmethod
-    def _fromjson(cls, string):
+    def fromjson(cls, string):
         """initialize from prior.json config (dat is a dict)
         """
         kw = json.loads(string)
         name = kw["name"]
 
-        dname = kw.pop("dist", None)
+        dname = kw.pop("dist", "uniform")
         args = kw.pop("args", None)
 
-        if not dname:
-            if "range" in kw:
-                dname = "uniform"
-                lo, hi = kw["range"]
-                args = lo, hi-lo
-            elif "mean" in kw:
-                dname = "norm"
-                args = kw["mean"], kw["std"]
-            else:
-                raise ValueError("invalid distribution")
+        if dname == "uniform":
+            lo, hi = kw["range"]
+            args = lo, hi-lo
+        elif dname == "normal":
+            dname = "norm"
+            args = kw["mean"], kw["std"]
+        elif not hasattr(scipy.stats.distributions, dname):
+            raise ValueError("invalid distribution: "+dname)
 
         dist = getattr(scipy.stats.distributions, dname)
         return cls(name, dist(*args))
@@ -136,13 +133,14 @@ class PriorParam(GenericParam):
 
     @classmethod
     def parse(cls, string):
-        try:
-            return cls._fromjson(string)
-        except:
-            pass
         name, spec = string.split('=')
+        if '!' in spec:
+            spec, default = spec.split('!')
+            default = parse_val(default)
+        else:
+            default = None
         dist = parse_dist(spec)
-        return cls(name, dist)
+        return cls(name, dist, default)
 
 
 # Commented out because the LHS topic is in fact non-trivial
@@ -182,10 +180,6 @@ class DiscreteParam(GenericParam):
 
     @classmethod
     def parse(cls, string):
-        try:
-            return cls._fromjson(string)
-        except:
-            pass
         name, spec = string.split("=")
         if ':' in spec:
             values = parse_range(spec)
@@ -201,7 +195,7 @@ class DiscreteParam(GenericParam):
         }, sort_keys=sort_keys, **kwargs)
 
     @classmethod
-    def _fromjson(cls, string):
+    def fromjson(cls, string):
         kw = json.loads(string)
         return cls(kw["name"], kw["values"])
 
@@ -238,7 +232,7 @@ class Prior(object):
         """
         cfg = json.load(open(file))
         if key and key in cfg: cfg = cfg[key]
-        params = [param_cls.parse(json.dumps(p)) for p in cfg["params"]]
+        params = [param_cls.fromjson(json.dumps(p)) for p in cfg["params"]]
         return cls(params)
 
 

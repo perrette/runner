@@ -9,75 +9,7 @@ import numpy as np
 
 from simtools.parsetools import CustomParser, Job
 from simtools.prior import Prior, GenericParam, LHS_CRITERION
-
-# Get prior parameter
-# ===================
-def getprior(prior_params=None, config_file=None, only_params=None, exclude_params=None, update_params=None):
-    """Return prior parameters from configuration file and any command-line update
-
-    * prior_params : [GenericParam]
-    * config_file : config file to define params from
-    * only_params : [str] filter out all but these parameters
-    * exclude_params : [str] filter out these parameters
-    * update_params : [GenericParam] update or append params to config file
-    """
-    if prior_params:
-        # provide parameters from command-line directly
-        prior = Prior(prior_params or [])
-
-    else:
-        # start from configuration file and update
-        if config_file:
-            prior = Prior.read(config_file)
-        else:
-            prior = Prior([])
-        update = Prior(update_params or [])
-        for p in update.params:
-            try:
-                i = prior.names.index(p.name)
-                prior.params[i] = p
-            except ValueError:
-                prior.params.append(p)
-
-        if only_params:
-            prior.filter_params(only_params, keep=True)
-        if exclude_params:
-            prior.filter_params(exclude_params, keep=False)
-        if exclude_params:
-            prior.filter_params(exclude_params, keep=False)
-
-    if not prior.params:
-        prior_parser.error("--prior-params or --config-file must be provided")
-
-    return prior
-
-
-prior_parser = CustomParser(add_help=False)
-grp = prior_parser.add_argument_group('prior parameters')
-x = grp.add_mutually_exclusive_group()
-x.add_argument('--prior-params', '-p',
-                         type=GenericParam.parse,
-                         help=GenericParam.parse.__doc__,
-                         metavar="NAME=SPEC",
-                         nargs='*',
-                         default = [])
-x.add_argument('--update-params', '-u',
-                         type=GenericParam.parse,
-                         help='same as --prior-params, but used to update --config-file', 
-                         metavar="NAME=SPEC",
-                         nargs='*',
-                         default = [])
-#prior_parser.add_argument('--prior-file', dest="config_file", help=argparse.SUPPRESS)
-grp.add_argument('--config-file', '-c', dest="config_file", help="configuration file")
-
-x = grp.add_mutually_exclusive_group()
-x.add_argument('--only-params', nargs='*', 
-                 help="filter out all but these parameters")
-x.add_argument('--exclude-params', nargs='*', 
-                 help="filter out these parameters")
-
-prior_parser.add_postprocessor(getprior, inspect=True, dest='prior')
-
+from simtools.job.config import prior_parser
 
 
 # Return new ensemble parameters
@@ -132,22 +64,3 @@ def sample(argv=None):
                            iterations=o.lhs_iterations)
 
     return return_params(xparams, o.out)
-
-
-def priorconfig(argv=None):
-    """create or update prior parameters
-    """
-    parser = CustomParser(description=priorconfig.__doc__, 
-                          parents=[prior_parser])
-    parser.add_argument("--indent", type=int)
-
-    o = parser.parse_args(argv)
-    o = parser.postprocess(o)
-
-    jsonstring = o.prior.tojson(indent=o.indent)
-    if o.config_file:
-        cfg = json.load(open(o.config_file))
-        cfg.update(json.loads(jsonstring))
-        jsonstring = json.dumps(cfg, sort_keys=True, indent=o.indent)
-
-    print(jsonstring)

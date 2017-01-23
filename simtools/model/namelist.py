@@ -7,7 +7,8 @@ from __future__ import print_function, absolute_import
 from collections import OrderedDict as odict
 import re
 from itertools import groupby
-from simtools.model.params import Param, ParamsFile, register_filetype
+from simtools.model.params import Param, ParamsFile
+from simtools.job.filetype import register_filetype
 
 NAME_FORMAT = "{group}.{short}"
 

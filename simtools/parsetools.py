@@ -5,6 +5,21 @@ import argparse
 import inspect
 import sys
 
+
+def grep(txt, pattern):
+    for line in txt.splitlines():
+        if pattern in line:
+            return line
+
+def grepdoc(txt, item, prefix='* ', suffix=' :'):
+    " return an item from documentation, for parameter help"
+    pattern = prefix+item+suffix
+    line = grep(txt, pattern)
+    i = line.find(pattern)
+    return line[i+len(pattern):].strip()
+
+
+
 class CustomParser(argparse.ArgumentParser):
     """Program with command-line arguments.
     """
@@ -30,7 +45,7 @@ class CustomParser(argparse.ArgumentParser):
         ----------
         func : callable
         args : [str], select namespace arguments to be passed to func
-            (if None, all namespace arguments are passed)
+            (if None and no mapping, all namespace arguments are passed)
         optargs : optional arguments, not required to be in the namespace
             (the default behaviour is to raise an error if the argument was not found)
         varargs : [str], namespace arguments to be passed as variable arguments
@@ -38,7 +53,7 @@ class CustomParser(argparse.ArgumentParser):
         inspect : bool, false by default
             if True, use inspect function to guess args and optargs
         mapping : {kwargs : destarg}, mapping between function key-word arguments 
-            to command arguments (the `dest` keyword in `add_argument`). 
+            to command arguments (the `dest` keyword in `add_argument`) --> added to args
         dest : str or [None], destination of `func` return value in the result 
             namespace. By default no result is stored.
         add_arguments : bool, if True, also add postprocessor arguments to the parser
@@ -61,23 +76,39 @@ class CustomParser(argparse.ArgumentParser):
             args = spec.args
             optargs = spec.args[-len(spec.defaults):]
             defaults = {arg:val for  arg,val in zip(optargs, spec.defaults)}
+
+            # inspect retrieves function argument --> apply mapping towards namespace
+            if mapping:
+                args = [mapping.copy().pop(a, a) for a in args]
+                optargs = [mapping.copy().pop(a, a) for a in optargs]
+                defaults = {mapping.copy().pop(a, a):defaults[a] for a in defaults}
         else:
             defaults = {}
 
-        args = [a for a in args if a not in optargs] # make args and optargs disjoint
+        # add arguments from mapping
+        for a in mapping:
+            if mapping[a] not in (args or []) and mapping[a] not in (optargs or []):
+                args = (args or []) + [mapping[a]]
+
+        if args is not None:
+            args = [a for a in args if a not in optargs] # make args and optargs disjoint
 
         self._postprocessors.append((func, args, optargs, varargs, mapping, dest))
 
         # add arguments to parser ?
         if add_arguments:
             for arg in args + optargs:
+                try:
+                    help = grepdoc(func.__doc__, arg)
+                except:
+                    help = None
                 if arg in optargs:
-                    self._add_optional_argument(arg, default=defaults.pop(arg, None))
+                    self._add_optional_argument(arg, default=defaults.pop(arg, None), help=help)
                 else:
-                    self._add_optional_argument(arg, required=True)
+                    self._add_optional_argument(arg, required=True, help=help)
 
 
-    def _add_optional_argument(self, dest, default=None, aliases=(), required=False, **kwargs):
+    def _add_optional_argument(self, dest, default=None, aliases=(), required=False, help=None, **kwargs):
         """Add an optional argument to parser based on its dest name and default value
 
         (called by add_optional_argument)
@@ -88,6 +119,7 @@ class CustomParser(argparse.ArgumentParser):
             `type` and help is derived from default.
             If boolean, `store_true` or `store_false` will be determined, and 
             name updated.
+        help : help text without default
         required : same as `add_argument`
         aliases : [str], additional aliases such as `--OTHER-NAME` or `-X`
         **kwargs keyword arguments are passed to `add_argument`
@@ -108,16 +140,17 @@ class CustomParser(argparse.ArgumentParser):
         # determine help
         if default is not None and not required:
             if default is False:
-                opt["help"] = '[default: False]'
+                helpdef += '[default: False]'
             elif default is True:
-                opt["help"] = '[default: True]'
+                helpdef += '[default: True]'
             else:
-                opt["help"] = '[default: %(default)s]'
+                helpdef += '[default: %(default)s]'
+            help = (help + " " + helpdef) if help else helpdef
 
         # update with user-specified
         opt.update(kwargs)
 
-        return self.add_argument('--'+name, *aliases, dest=dest, required=required, default=default, **opt)
+        return self.add_argument('--'+name, *aliases, dest=dest, required=required, help=help, default=default, **opt)
 
 
     def postprocess(self, namespace, results=None):
@@ -146,7 +179,8 @@ class CustomParser(argparse.ArgumentParser):
             kwargs.update(kwargs_opt)
 
             # mapping toward function name
-            mapping = mapping.copy()
+            for k in mapping:
+                kwargs[k] = kwargs.pop(mapping[k])
 
             varvals = [getattr(namespace, arg) for k in varargs]
 

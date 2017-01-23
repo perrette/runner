@@ -1,5 +1,3 @@
-"""Parameters I/O to communicate with model
-"""
 from __future__ import print_function, absolute_import
 import json
 from simtools.tools import parse_val
@@ -13,6 +11,7 @@ class Param(object):
         default : default value, optional
         help : help (e.g. to provide for argparse), optional
         **kwargs : any other attribute required for custom file formats
+            or to define prior distributions.
         """
         self.name = name
         self.default = default
@@ -50,6 +49,7 @@ class ParamsFile(object):
     def load(self, f):
         return self.loads(f.read())
 
+
 # Json file types
 # ===============
 
@@ -82,32 +82,3 @@ class JsonList(ParamsFile):
     def loads(self, string):
         return [Param(**p) for p in json.loads(string)]
 
-# FileType register
-# =================
-
-filetypes = {}
-
-def register_filetype(name, filetype):
-    assert hasattr(filetype, 'dumps')
-    filetype._filetype_name = name  # to write to config file
-    filetypes[name] = filetype
-
-# register filetypes
-register_filetype(None, JsonDict())  # the default
-register_filetype("json", JsonList())
-
-
-def get_filetype(name=None):
-    """Return filetype instance based on string
-    """
-    if isinstance(name, ParamsFile) or hasattr(name, "dumps"):
-        return name
-
-    elif name in filetypes:
-        return filetypes[name]
-
-    else:
-        raise ValueError("Unknown file type: "+repr(name))
-
-def print_filetypes():
-    print("Available filetypes:", ", ".join([repr(k) for k in filetypes.keys()]))

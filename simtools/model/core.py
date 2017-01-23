@@ -6,7 +6,7 @@ import json
 
 from simtools.submit import submit_job
 from simtools.model.params import Param, ParamsFile
-from simtools.model.generic import get_or_make_filetype
+#from simtools.model.generic import get_or_make_filetype
 
 PARAMS_ARG = "--{name} {value}" # by default 
 
@@ -16,7 +16,7 @@ PARAMS_ARG = "--{name} {value}" # by default
 class Model(object):
     """Generic model configuration
     """
-    def __init__(self, executable, args=None, params=None, params_args=PARAMS_ARG, params_write=None, filetype=None):
+    def __init__(self, executable, args=None, params=None, arg_template=PARAMS_ARG, filename=None, filetype=None):
         """
         executable : runscript
         args : [str] or str, optional
@@ -27,15 +27,15 @@ class Model(object):
             list of model parameters to be updated with modified params
             If params is provided, strict checking of param names is performed during 
             update, with informative error message.
-        params_args : [str] or str, optional
+        arg_template : [str] or str, optional
             Indicate parameter format for command-line with placeholders `{name}` and 
             `{value}`. By default `["--{name}", "{value}"]`, but note that any field
             in parameter definition can be used. Set to None or empty list to avoid
             passing parameters via the command-line.
-        params_write : str, optional
+        filename : str, optional
             By default parameters are provided as command-line arguments but if file
             name is provided they will be written to file. Path is relative to rundir.
-        filetype : ParamsFile instance or str or anything with `dump` method, optional
+        filetype : ParamsFile instance or anything with `dump` method, optional
         """
         self.executable = executable
         if isinstance(args, basestring):
@@ -43,72 +43,45 @@ class Model(object):
         self.args = args or []
         self.params = params or []
         self.strict = len(self.params) > 0  
-        if isinstance(params_args, basestring):
-            params_args = params_args.split()
-        self.params_args = params_args or []
-        self.params_write = params_write 
+        if isinstance(arg_template, basestring):
+            arg_template = arg_template.split()
+        self.arg_template = arg_template or []
+        self.filename = filename 
         self.filetype = filetype
-        self.check_paramsio()
 
+        if filename:
+            if filetype is None: 
+                raise ValueError("need to provide FileType with filename")
+            if not hasattr(filetype, "dumps"):
+                raise TypeError("invalid filetype: no `dumps` method: "+repr(filetype))
+
+        #if not hasattr(filetype, "dumps") 
+        #self._check_paramsio()
         #self.filetype = get_or_make_filetype(filetype)
 
-    def tojson(self, sort_keys=True, **kwargs):
-        """return a json representation of a Model instance
+    #def _check_paramsio(self):
+    #    """check default params or possibly read from file
+    #    """
+    #    if not hasattr(self.filetype, 'dumps'):
+    #        self.filetype = get_or_make_filetype(self.filetype)
 
-        Note that some secondary information might be lost, such as the original
-        parameter file from which default parameters were read.
-        """
-        return json.dumps({
-            "model" : {
-                "executable": self.executable, 
-                "args": self.args,
-                "params_write": self.params_write,
-                "params_args": self.params_args,
-                "params_default": {p.name:p.default for p in self.params 
-                            if p.default is not None},
-                "filetype": getattr(self.filetype,"_filetype_name", None),
-                "template": getattr(self.filetype, "template", None),
-            }
-        }, sort_keys=sort_keys, **kwargs)
+    #    # read default params
+    #    if not isinstance(self.params, list):
+    #        if isinstance(self.params, basestring):
+    #            self.params = self.filetype.load(open(self.params))
 
-    @classmethod
-    def fromjson(cls, string):
-        """Initialize Model from dictionary config
-        """
-        dat = json.loads(string)
-        dat = dat.pop("model", dat) # remove any leading "model" key
+    #        elif isinstance(self.params, dict):
+    #            self.params = [Param(k, self.params[k]) for k in self.params]
 
-        executable = dat.pop("executable")
-        args = dat.pop("args", None)
-        params_args = dat.pop("params_args", None)
-        params_write = dat.pop("params_write", False)
-        params_file = dat.pop("params_file", None)
-        params_default = dat.pop("params_default", {})
-        return cls(executable, args, params_default, params_args, params_write, filetype)
+    #        elif self.params is None:
+    #            self.params = []
 
-    def check_paramsio(self):
-        """check default params or possibly read from file
-        """
-        if not hasattr(self.filetype, 'dumps'):
-            self.filetype = get_or_make_filetype(self.filetype)
-
-        # read default params
-        if not isinstance(self.params, list):
-            if isinstance(self.params, basestring):
-                self.params = self.filetype.load(open(self.params))
-
-            elif isinstance(self.params, dict):
-                self.params = [Param(k, self.params[k]) for k in self.params]
-
-            elif self.params is None:
-                self.params = []
-
-            else:
-                raise ValueError("invalid format for params_default:"+repr(self.params))
-        else:
-            for p in self.params:
-                if not hasattr(p, 'name') or not hasattr(p, 'value'):
-                    raise TypeError('model params have wrong type:'+repr(p))
+    #        else:
+    #            raise ValueError("invalid format for params_default:"+repr(self.params))
+    #    else:
+    #        for p in self.params:
+    #            if not hasattr(p, 'name') or not hasattr(p, 'value'):
+    #                raise TypeError('model params have wrong type:'+repr(p))
 
 
     def update(self, params_kw):
@@ -141,8 +114,8 @@ class Model(object):
         """
         if not os.path.exists(rundir):
             os.path.makedirs(rundir)
-        if self.params_write:
-            fname = os.path.join(rundir, self.params_write)
+        if self.filename:
+            fname = os.path.join(rundir, self.filename)
             with open(fname, "w") as f:
                 self.filetype.dump(self.params, f)
 
@@ -156,7 +129,7 @@ class Model(object):
 
         # prepare modified command-line arguments with appropriate format
         for p in self.params:
-            for c in self.params_args:
+            for c in self.arg_template:
                 args.append(c.format(**p.__dict__))
 
         # format command string with `rundir`, `runid` etc.
