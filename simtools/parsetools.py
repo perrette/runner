@@ -15,6 +15,8 @@ def grepdoc(txt, item, prefix='* ', suffix=' :'):
     " return an item from documentation, for parameter help"
     pattern = prefix+item+suffix
     line = grep(txt, pattern)
+    if not line:
+        return None
     i = line.find(pattern)
     return line[i+len(pattern):].strip()
 
@@ -31,7 +33,6 @@ class CustomParser(argparse.ArgumentParser):
         for parent in kwargs.pop('parents', []):
             if hasattr(parent, '_postprocessors'):
                 self._postprocessors.extend(parent._postprocessors)
-
 
     #TODO: think about simplifying the postprocessor trigger (which takes a namespace
     # as argument) and the function <--> namespace mapping.
@@ -103,54 +104,9 @@ class CustomParser(argparse.ArgumentParser):
                 except:
                     help = None
                 if arg in optargs:
-                    self._add_optional_argument(arg, default=defaults.pop(arg, None), help=help)
+                    add_optional_argument(self, arg, default=defaults.pop(arg, None), help=help)
                 else:
-                    self._add_optional_argument(arg, required=True, help=help)
-
-
-    def _add_optional_argument(self, dest, default=None, aliases=(), required=False, help=None, **kwargs):
-        """Add an optional argument to parser based on its dest name and default value
-
-        (called by add_optional_argument)
-
-        dest : same as `add_argument`
-            The flag name `--ARG-NAME` or `--no-ARG-NAME` is built from `dest`.
-        default : default value
-            `type` and help is derived from default.
-            If boolean, `store_true` or `store_false` will be determined, and 
-            name updated.
-        help : help text without default
-        required : same as `add_argument`
-        aliases : [str], additional aliases such as `--OTHER-NAME` or `-X`
-        **kwargs keyword arguments are passed to `add_argument`
-        """
-        name = dest.replace('_','-')
-
-        opt = {}
-
-        if type(default) is bool:
-            if default is False:
-                opt["action"] = "store_true"
-            else:
-                opt["action"] = "store_false"
-                name = 'no-'+name
-        elif default is not None:
-            opt["type"] = type(default)
-
-        # determine help
-        if default is not None and not required:
-            if default is False:
-                helpdef += '[default: False]'
-            elif default is True:
-                helpdef += '[default: True]'
-            else:
-                helpdef += '[default: %(default)s]'
-            help = (help + " " + helpdef) if help else helpdef
-
-        # update with user-specified
-        opt.update(kwargs)
-
-        return self.add_argument('--'+name, *aliases, dest=dest, required=required, help=help, default=default, **opt)
+                    add_optional_argument(self, arg, required=True, help=help)
 
 
     def postprocess(self, namespace, results=None):
@@ -216,6 +172,53 @@ def parser(func):
                           formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_postprocessor(func, inspect=True, add_arguments=True)
     return parser.main
+
+
+def add_optional_argument(parser, dest, default=None, aliases=None, required=False, help=None, **kwargs):
+    """Add an optional argument to parser based on its dest name and default value
+
+    (called by add_optional_argument)
+
+    dest : same as `add_argument`
+        The flag name `--ARG-NAME` or `--no-ARG-NAME` is built from `dest`.
+    default : default value
+        `type` and help is derived from default.
+        If boolean, `store_true` or `store_false` will be determined, and 
+        name updated.
+    help : help text without default
+    required : same as `add_argument`
+    aliases : [str], additional aliases such as `--OTHER-NAME` or `-X`
+    **kwargs keyword arguments are passed to `add_argument`
+    """
+    name = dest.replace('_','-')
+
+    opt = {}
+
+    if type(default) is bool:
+        if default is False:
+            opt["action"] = "store_true"
+        else:
+            opt["action"] = "store_false"
+            name = 'no-'+name
+    elif default is not None:
+        opt["type"] = type(default)
+
+    # determine help
+    if default is not None and not required:
+        if default is False:
+            helpdef = '[default: False]'
+        elif default is True:
+            helpdef = '[default: True]'
+        else:
+            helpdef = '[default: %(default)s]'
+        help = (help + " " + helpdef) if help else helpdef
+
+    # update with user-specified
+    opt.update(kwargs)
+
+    return parser.add_argument('--'+name, *(aliases or ()), dest=dest, required=required, help=help, default=default, **opt)
+
+
 
 
 
