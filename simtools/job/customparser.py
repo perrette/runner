@@ -1,25 +1,8 @@
-"""Decentralize Job scripts
-"""
 from __future__ import print_function
 import argparse
 import inspect
 import sys
-
-
-def grep(txt, pattern):
-    for line in txt.splitlines():
-        if pattern in line:
-            return line
-
-def grepdoc(txt, item, prefix='* ', suffix=' :'):
-    " return an item from documentation, for parameter help"
-    pattern = prefix+item+suffix
-    line = grep(txt, pattern)
-    if not line:
-        return None
-    i = line.find(pattern)
-    return line[i+len(pattern):].strip()
-
+import json
 
 
 class CustomParser(argparse.ArgumentParser):
@@ -174,97 +157,3 @@ def parser(func):
     return parser.main
 
 
-def add_optional_argument(parser, dest, default=None, aliases=None, required=False, help=None, **kwargs):
-    """Add an optional argument to parser based on its dest name and default value
-
-    (called by add_optional_argument)
-
-    dest : same as `add_argument`
-        The flag name `--ARG-NAME` or `--no-ARG-NAME` is built from `dest`.
-    default : default value
-        `type` and help is derived from default.
-        If boolean, `store_true` or `store_false` will be determined, and 
-        name updated.
-    help : help text without default
-    required : same as `add_argument`
-    aliases : [str], additional aliases such as `--OTHER-NAME` or `-X`
-    **kwargs keyword arguments are passed to `add_argument`
-    """
-    name = dest.replace('_','-')
-
-    opt = {}
-
-    if type(default) is bool:
-        if default is False:
-            opt["action"] = "store_true"
-        else:
-            opt["action"] = "store_false"
-            name = 'no-'+name
-    elif default is not None:
-        opt["type"] = type(default)
-
-    # determine help
-    if default is not None and not required:
-        if default is False:
-            helpdef = '[default: False]'
-        elif default is True:
-            helpdef = '[default: True]'
-        else:
-            helpdef = '[default: %(default)s]'
-        help = (help + " " + helpdef) if help else helpdef
-
-    # update with user-specified
-    opt.update(kwargs)
-
-    return parser.add_argument('--'+name, *(aliases or ()), dest=dest, required=required, help=help, default=default, **opt)
-
-
-
-
-
-class Job(object):
-    """Multiple main functions organized as sub-commands.
-    """
-    def __init__(self, dest="cmd", **kwargs):
-
-        self.parser = argparse.ArgumentParser(**kwargs)
-        self.subparsers = self.parser.add_subparsers(dest=dest)
-        self.commands = {}
-        self.dest = dest
-
-    def add_command(self, name, command, **kwargs):
-        """Register a command (`command`)
-        """
-        assert callable(command)
-        subparser = self.subparsers.add_parser(name, **kwargs)
-        self.commands[name] = command
-
-    def main(self, argv=None):
-        """Exectute program by calling the command
-        """
-        if argv is None:
-            argv = sys.argv[1:]
-
-        if '--debug' in argv:
-            debug = True
-            argv.remove('--debug') 
-        else:
-            debug = False
-
-        # if subcommand, just call it:
-        if len(argv) > 0:
-            if argv[0] in self.commands:
-                program = self.commands[argv[0]]
-                sys.argv[0] = " ".join(sys.argv[:2]) # for help message
-                try:
-                    return program(argv[1:])
-                except Exception as error:
-                    if debug:
-                        raise
-                    print("ERROR:",error.message)
-                    print("(use '--debug' for full traceback)")
-                    sys.exit(1)
-
-
-        # error message and help:
-        self.parser.parse_args(argv)

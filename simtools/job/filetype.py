@@ -22,7 +22,7 @@ defined. Here an example with one of the existing file types:
 import argparse
 from simtools.model.params import JsonDict
 from simtools.model.generic import LineSeparator, LineTemplate, TemplateFile
-from simtools.parsetools import CustomParser, grepdoc
+#from simtools.parsetools import CustomParser, grepdoc
 #from simtools.job.addons import filetypes, protected_file_types
 
 
@@ -43,33 +43,23 @@ def register_filetype(name, filetype):
     choices.append(name)
 
 
-#def get_filetype(name=None):
-#    """Return filetype instance based on string
-#    """
-#    if name in filetypes:
-#        return filetypes[name]
-#
-#    else:
-#        raise ValueError("Unknown file type: "+repr(name))
-
 def print_filetypes():
     print("Available filetypes:", ", ".join([repr(k) for k in choices+filetypes.keys()]))
 
-
 # Params' file type
 # -----------------
-def getfiletype(file_type=None, line_sep=" ", line_template=None, template_file=None, file_module=None):
+def getfiletype(file_type=None, line_sep=" ", line_template=None, template_file=None, file_addon=None):
     """Initialize file type
 
     * file_type : model params file type
     * line_sep : separator for 'linesep' and 'lineseprev' file types
     * line_template : line template for 'linetemplate' file type
     * template_file : template file for 'template' file type
-    * file_module : module to import with custom file type
+    * file_addon : module to import with custom file type
     """
-    if file_module is not None:
+    if file_addon is not None:
         from importlib import import_module
-        import_module(file_module) # --> register_filetype command might be activated
+        import_module(file_addon) # --> register_filetype command might be activated
             
 
     if file_type == "json":
@@ -98,65 +88,3 @@ def getfiletype(file_type=None, line_sep=" ", line_template=None, template_file=
         print_filetypes()
         raise ValueError("Unknown file type: "+str(file_type))
     return filetype
-
-
-# Build corresponding parser
-doc = lambda param : grepdoc(getfiletype.__doc__, param)
-
-filetype_parser = CustomParser(add_help=False, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-grp = filetype_parser.add_argument_group("model params filetype")
-grp.add_argument("--file-type", default='json', 
-                 help=doc('file_type')+"(default: %(default)s)")
-grp.add_argument("--line-sep", default=" ", help=doc('line_sep'))
-grp.add_argument("--line-template", help=doc('line_template'))
-grp.add_argument("--template-file", help=doc('template_file'))
-grp.add_argument("--file-module", help='import module with additional file type (addon)')
-
-# add filetype class to parser namespace (inspect tells to look at function 
-# to determine the key-word arguments)
-filetype_parser.add_postprocessor(getfiletype, inspect=True, dest="filetype")
-
-
-# filetype round-trip from the json format
-
-def filetype_as_dict(filetype):
-    """File-type --> json
-    """
-    if isinstance(filetype, JsonDict):
-        cfg = {"file_type":"json"}
-
-    elif isinstance(filetype, LineSeparator):
-        if filetype.reverse:
-            cfg = {"file_type":"lineseprev",
-                   "line_sep" :filetype.sep}
-        else:
-            cfg = {"file_type":"linesep",
-                   "line_sep" :filetype.sep}
-
-    elif isinstance(filetype, LineTemplate):
-        cfg = {"file_type":"linetemplate",
-               "line_template" :filetype.line}
-    
-    elif isinstance(filetype, Template):
-        cfg = {"file_type":"template",
-               "template_file" :filetype.template_file}
-
-    else:
-        # maybe a custom file type?
-        registered = [id(filetypes[k]) for k in filetypes]
-        names = filetypes.keys()
-        if id(filetype) in registered:
-            cfg = {"file_type": names[registered.index(id(filetype))],
-                   "file_module": filetype.__class__.__module__,
-                   }
-        else:
-            raise ValueError("can't convert filetype to json !")
-
-    return cfg
-
-#def filetype_from_kw(**cfg):
-#    return getfiletype(file_type=cfg.pop('file_type'),
-#                       line_sep=cfg.pop('line_sep'," "), 
-#                       line_template=cfg.pop('line_template',None), 
-#                       template_file=cfg.pop('template_file', None), 
-#                       file_module=cfg.pop('filetype_module', None))
