@@ -12,6 +12,15 @@ from simtools.job.tools import add_optional_argument, grepdoc, SubConfig, Job
 from simtools.job.filetype import getfiletype
 
 
+def typechecker(type):
+    """check that the value is parsable, but do not parse it
+    """
+    def func(string):
+        type(string) # just a check
+        return string
+    return func
+
+
 # Parameter groups
 # ================
 
@@ -89,12 +98,8 @@ class SimuConfig(SubConfig):
         self._add_argument(grp, 'args')
         self._add_argument(grp, 'default_file')
 
-        def round_trip(p):
-            par = Param.parse(p) # OK?
-            return str(par)
-        
         grp.add_argument('--params', '-p',
-                         type=round_trip,
+                         type=typechecker(Param.parse),
                          help=Param.parse.__doc__,
                          metavar="NAME=VALUE",
                          nargs='*',
@@ -167,8 +172,7 @@ class PriorConfig(SubConfig):
         parser = self._parser(conflict_handler='resolve') # -p
         grp = parser.add_argument_group(self._doc())
         grp.add_argument('--prior-params', '-p',
-                         #type=lambda x: str(GenericParam.parse(x)), # parse back and forth
-                         #type=GenericParam.parse,
+                         type=typechecker(GenericParam.parse),
                          help=GenericParam.parse.__doc__,
                          metavar="NAME=SPEC",
                          nargs='*',
@@ -191,12 +195,8 @@ class ObsConfig(SubConfig):
         parser = self._parser()
         grp = parser.add_argument_group(self._doc())
 
-        def round_trip(p):
-            par = GenericParam.parse(p) # OK?
-            return str(par)
-
         grp.add_argument('--likelihood', '-l', dest='constraints',
-                         type=round_trip,
+                         type=typechecker(GenericParam.parse),
                          help=GenericParam.parse.__doc__,
                          metavar="NAME=SPEC",
                          nargs='*',
