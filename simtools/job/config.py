@@ -8,17 +8,8 @@ import logging
 import json
 from simtools.model import Model, Param
 from simtools.prior import Prior, GenericParam
-from simtools.job.tools import add_optional_argument, grepdoc, SubConfig, Job
+from simtools.job.tools import add_optional_argument, grepdoc, SubConfig, typechecker
 from simtools.job.filetype import getfiletype
-
-
-def typechecker(type):
-    """check that the value is parsable, but do not parse it
-    """
-    def func(string):
-        type(string) # just a check
-        return string
-    return func
 
 
 # Parameter groups
@@ -180,6 +171,8 @@ class PriorConfig(SubConfig):
         return parser
 
     def getprior(self):
+        if not self.prior_params:
+            raise ValueError("no prior parameters")
         return Prior([GenericParam.parse(p) for p in self.prior_params])
 
 
@@ -218,11 +211,10 @@ class JobConfig(PriorConfig, ModelConfig, SlurmConfig, ObsConfig):
     parser = SubConfig.parser
 
 
-# make additional checks w.r.t to parser and more
-globalconfig = JobConfig()
-globalconfig._assert_internals()
-del globalconfig  # just for debugging, remove !
-            
+## make additional checks w.r.t to parser and more
+#globalconfig = JobConfig()
+#globalconfig._assert_internals()
+#del globalconfig  # just for debugging, remove !
 
 
 # Programs
