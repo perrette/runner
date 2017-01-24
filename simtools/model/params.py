@@ -31,7 +31,8 @@ class Param(object):
         return cls(name, parse_val(value))
 
     def tojson(self, **kwargs):
-        return json.dumps({p.name:p.value}, **kwargs)
+        return json.dumps(self.__dict__)
+        #return json.dumps(str(self))
 
 
 class ParamsFile(object):

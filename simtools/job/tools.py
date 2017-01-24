@@ -154,15 +154,15 @@ class SubConfig(object):
         if not cls.__doc__:
             return ""
         if not name:  
-            return cls.__doc__.splitlines()[0]  # header
+            return cls.__doc__.splitlines()[0].capitalize()  # header
         return grepdoc(cls.__doc__, name)
 
     def _add_argument(self, parser, name, **kwargs):
         """add argument to a parser instance, based on diagnosed default
         """
-        return add_optional_argument(parser, name, 
-                                     default=getattr(self, name), 
-                                     help=self._doc(name), **kwargs)
+        kwargs["default"] = kwargs.pop("default", getattr(self, name))
+        kwargs["help"] = kwargs.pop("help", self._doc(name))
+        return add_optional_argument(parser, name, **kwargs)
 
     def _add_argument_group(self, parser, nogroup=False):
         """feeling lucky: add parser group and all its arguments
@@ -224,7 +224,7 @@ class SubConfig(object):
             for key, dict_ in self._partition():
                 if diff:
                     dict_ = _diff(dict_, defaults)
-                if key:
+                if key and dict_:
                     dict_ = {key : dict_}
                 cfg.update(dict_)
 
@@ -243,7 +243,7 @@ class SubConfig(object):
         kwargs = {}
         for key, dict_ in cls()._partition():
             if key:
-                cfg_ = cfg[key]
+                cfg_ = cfg.pop(key, {})
             else:
                 cfg_ = cfg
             kwargs.update({k:cfg_[k] for k in cfg_ if k in dict_})

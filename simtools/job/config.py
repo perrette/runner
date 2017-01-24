@@ -85,20 +85,25 @@ class SimuConfig(SubConfig):
     def parser(self):
         parser = self._parser(conflict_handler='resolve') # for -p, params
         grp = parser.add_argument_group(self._doc())
-        grp.add_argument("-x","--executable", help=self._doc('executable'), required=True)
+        grp.add_argument("-x","--executable", help=self._doc('executable'), required=False)
         self._add_argument(grp, 'args')
         self._add_argument(grp, 'default_file')
+
+        def round_trip(p):
+            par = Param.parse(p) # OK?
+            return str(par)
+        
         grp.add_argument('--params', '-p',
-                         type=Param.parse,
+                         type=round_trip,
                          help=Param.parse.__doc__,
                          metavar="NAME=VALUE",
                          nargs='*',
                          dest='model_params',
-                         default = [str(p) for p in self.model_params])
+                         default = self.model_params)
         return parser
 
 
-class ModelConfig(FileTypeConfig, Paramsio, SimuConfig):
+class ModelConfig(SimuConfig, Paramsio, FileTypeConfig):
     """all model config objects
     """
     _root = 'model'
@@ -128,7 +133,8 @@ class ModelConfig(FileTypeConfig, Paramsio, SimuConfig):
         model = Model(self.executable, self.args, params, arg_template, file_name, filetype)
 
         if self.model_params:
-            model.update({p.name:p.value for p in self.model_params})
+            params = [Param.parse(p) for p in self.model_params]
+            model.update({p.name:p.value for p in params})
                 
         return model
 
@@ -149,7 +155,7 @@ class SlurmConfig(SubConfig):
 
 
 class PriorConfig(SubConfig):
-    """model parameters
+    """prior distribution of model parameters
     """
     _root = 'prior'
 
@@ -161,15 +167,16 @@ class PriorConfig(SubConfig):
         parser = self._parser(conflict_handler='resolve') # -p
         grp = parser.add_argument_group(self._doc())
         grp.add_argument('--prior-params', '-p',
-                         type=GenericParam.parse,
+                         #type=lambda x: str(GenericParam.parse(x)), # parse back and forth
+                         #type=GenericParam.parse,
                          help=GenericParam.parse.__doc__,
                          metavar="NAME=SPEC",
                          nargs='*',
-                         default = [str(p) for p in self.prior_params])
+                         default = [p for p in self.prior_params])
         return parser
 
     def getprior(self):
-        return Prior(self.prior_params)
+        return Prior([GenericParam.parse(p) for p in self.prior_params])
 
 
 class ObsConfig(SubConfig):
@@ -183,12 +190,17 @@ class ObsConfig(SubConfig):
     def parser(self):
         parser = self._parser()
         grp = parser.add_argument_group(self._doc())
+
+        def round_trip(p):
+            par = GenericParam.parse(p) # OK?
+            return str(par)
+
         grp.add_argument('--likelihood', '-l', dest='constraints',
-                         type=GenericParam.parse,
+                         type=round_trip,
                          help=GenericParam.parse.__doc__,
                          metavar="NAME=SPEC",
                          nargs='*',
-                         default = [str(p) for p in self.constraints])
+                         default = [p for p in self.constraints])
         return parser
 
 
@@ -206,25 +218,43 @@ class JobConfig(PriorConfig, ModelConfig, SlurmConfig, ObsConfig):
     parser = SubConfig.parser
 
 
-# default configuration (can be updated e.g. by job)
-globalconfig = JobConfig()
-
 # make additional checks w.r.t to parser and more
+globalconfig = JobConfig()
 globalconfig._assert_internals()
+del globalconfig  # just for debugging, remove !
             
 
 
 # Programs
 # --------
 class Program(SubConfig):
-    """A program is just a callable SubConfig instance relies on the global configuration.
+    """Default configuration file
+
+    * config_file : default configuration file
     """
+    _root = 'config'
+
+    def __init__(self, config_file=None):
+        self.config_file = config_file
+
+    @property
+    def parser(self):
+        parser = self._parser()
+        self._add_argument(parser, 'config_file', aliases=('-c',))
+        return parser
+
     def main(self):
         raise NotImplementedError()
 
     def __call__(self, argv=None):
-        "normally done by Job (-c config.json), but just for checking"
+        """Actual program execution
+        """
         namespace = self.parser.parse_args(argv)
+        # update global config
+        if namespace.config_file:
+            jobconfig = JobConfig.read(namespace.config_file)
+            self._update_known(jobconfig.__dict__)
+            namespace = self.parser.parse_args(argv) # parse again !
         self._update(namespace.__dict__)
         return self.main()
 
@@ -232,34 +262,34 @@ class Program(SubConfig):
 class EditConfig(JobConfig, Program):
     """Setup job configuration via command-line
 
-    * group : pick a sub configuration to show
+    * only : pick a sub configuration to show
     * diff : only show difference to default config
     * flat : flatten config
     """
     _root = None
-    _choices = [(cls._root, cls) for cls in JobConfig.__bases__] + [(None, JobConfig)]
+    _choices = [(cls._root, cls) for cls in JobConfig._units_mro()] + [('model', JobConfig), (None, JobConfig)]
 
-    def __init__(self, group=None, diff=False, flat=False, **kwargs):
-        self.group = group  # which config group?
+    def __init__(self, only=None, diff=False, flat=False, **kwargs):
+        self.only = only
         self.diff = diff 
         self.flat = flat 
-        JobConfig.__init__(self, **kwargs)
+        self._super_init(self, **kwargs)
 
     @property
     def parser(self):
         " only have parser for ModelConfig "
-        #parent = globalconfig._group(self._cls).parser
-        #parser = argparse.ArgumentParser(add_help=True, parents=[parent])
         parser = self._parser(add_help=True)
         self._add_argument(parser, 'flat')
         self._add_argument(parser, 'diff')
-        self._add_argument(parser, 'group', choices=[name for name,cls in self._choices])
-        #self._add_argument_group(parser, nogroup=True)
+        self._add_argument(parser, 'only', nargs='*', choices=[x[0] for x in self._choices])
         return parser
 
     def main(self):
-        cfg = self._group(dict(self._choices)[self.group])
-        print( cfg.tojson(diff = self.diff, flat=self.flat) )
+        cfg = {}
+        for key in (self.only or [None]):
+            grp = self._group(dict(self._choices)[key])
+            cfg.update(json.loads(grp.tojson(diff=self.diff, flat=self.flat)))
+        print( json.dumps(cfg, indent=2, sort_keys=True))
 
 editconfig = EditConfig()
 
