@@ -47,7 +47,7 @@ size (see `--neff-bounds` parameter). No other jittering method is proposed.
 """
 import numpy as np
 import argparse
-from simtools.parsetools import CustomParser
+from simtools.job.tools import CustomParser
 import simtools.sampling.resampling as xp
 from simtools.xparams import XParams, Resampler
 

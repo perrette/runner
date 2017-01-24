@@ -6,7 +6,7 @@ from __future__ import print_function, division
 from simtools.parsetools import Job
 from simtools.job.config import editconfig
 from simtools.job.prior import product, sample
-#from simtools.job.resample import resample, neff
+from simtools.job.resample import resample, neff
 #from simtools.job.model import modelconfig
 
 def main(argv=None):
@@ -20,10 +20,10 @@ def main(argv=None):
                     help='generate ensemble from all parameter combinations')
     job.add_command("sample", sample, 
                     help='generate ensemble by sampling prior distributions')
-#    job.add_command("resample", resample, 
-#                    help='resample parameters from previous simulation')
-#    job.add_command("neff", neff, 
-#                    help='(resample helper) calculate effective ensemble size')
+    job.add_command("resample", resample, 
+                    help='resample parameters from previous simulation')
+    job.add_command("neff", neff, 
+                    help='(resample helper) calculate effective ensemble size')
     #job.add_command("model", modelconfig, 
     #                help='define model configuration via command-line (> terminal)')
     #job.add_command("neff", neff)
