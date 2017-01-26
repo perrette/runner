@@ -20,17 +20,8 @@ defined. Here an example with one of the existing file types:
     Take a look at `simtools.model.params.LineTemplate` to learn how to proceed.
 """
 import argparse
-from simtools.model.params import JsonDict
-from simtools.model.generic import LineSeparator, LineTemplate, TemplateFile
-#from simtools.parsetools import CustomParser, grepdoc
-#from simtools.job.addons import filetypes, protected_file_types
-
-
-# FileType registration system 
-# ============================
 filetypes = {}
-#choices = protected_file_types + filetypes.keys()
-choices = ['json', 'linesep', 'lineseprev', 'linetemplate', 'template']
+choices = ['json', 'linesep', 'lineseprev', 'linetemplate', 'template', 'namelist']
 
 def register_filetype(name, filetype):
     if name in choices:
@@ -42,25 +33,31 @@ def register_filetype(name, filetype):
     filetypes[name] = filetype
     choices.append(name)
 
-
 def print_filetypes():
     print("Available filetypes:", ", ".join([repr(k) for k in choices+filetypes.keys()]))
 
-# Params' file type
-# -----------------
-def getfiletype(file_type=None, line_sep=" ", line_template=None, template_file=None, file_addon=None):
-    """Initialize file type
 
-    * file_type : model params file type
-    * line_sep : separator for 'linesep' and 'lineseprev' file types
-    * line_template : line template for 'linetemplate' file type
-    * template_file : template file for 'template' file type
-    * file_addon : module to import with custom file type
+filetype = argparse.ArgumentParser(add_help=False, 
+                                   formatter_class=argparse.RawDescriptionHelpFormatter)
+grp = filetype.add_argument_group('filetype', description=__doc__)
+
+grp.add_argument('--file_type', help='model params file type')
+grp.add_argument('--line_sep', help='separator for "linesep" and "lineseprev" file types')
+grp.add_argument('--line_template', help='line template for "linetemplate" file type')
+grp.add_argument('--template_file', help='template file for "template" file type')
+grp.add_argument('--file_addon', help='module to import with custom file type')
+grp.add_argument('--help-file-type', help='print help for filetype and exit', 
+                 action='store_true')
+
+
+def _getfiletype_kw(file_type=None, line_sep=" ", line_template=None, template_file=None, file_addon=None, **unknown):
+    """Initialize file type
     """
+    from simtools.job.filetypes import filetypes, print_filetypes
+
     if file_addon is not None:
         from importlib import import_module
         import_module(file_addon) # --> register_filetype command might be activated
-            
 
     if file_type == "json":
         filetype = JsonDict()
@@ -88,3 +85,10 @@ def getfiletype(file_type=None, line_sep=" ", line_template=None, template_file=
         print_filetypes()
         raise ValueError("Unknown file type: "+str(file_type))
     return filetype
+
+
+def getfiletype(o):
+    if o.help_file_type:
+        filetype_parser.print_help()
+        filetype_parser.exit(0)
+    return _getfiletype_kw(**vars(o))

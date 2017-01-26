@@ -1,8 +1,60 @@
 #!/usr/bin/env python2.7
 # -*- coding: utf-8 -*-
-"""Resample an existing ensemble, based on an array of weights.
+"""Resample an existing parameter set
+
+Summary
+-------
+Resample an existing ensemble, based on an array of weights.
 Optionally, a scaled version of the weights may be used, with 
 addition of noise, according to Annan and Hargreave's Iterative Importance Sampling.
+
+
+Background
+----------
+Typically, weights can be derived from a Bayesian analysis, where each
+realization is compared with observations and assigned a likelihood.  An array
+of resampling indices can be derived from the weights, where realizations with
+large weights are resampled several times, while realization with small weights
+are not resampled.  To avoid the exact same parameter set to appear duplicated
+in the resampled ensemble, introduction of noise (jitter) is necessary, which
+conserves statistical properties of the resampled ensemble (covariance).
+
+The problem is not trivial and several approaches exist for both the sampling
+of indices and the addition of noise. Basically, differences in resampling
+methods (before application of jitter) mainly affect how the tail - low-weights
+realizations - are dealt with, which influences the results for "small"
+ensemble size:
+
+- multinomial : random sampling based on empirical distribution function.
+    Simple but poor performance.
+- residual : some of the resampling indices can be determined deterministically 
+    when weights are large enough, i.e. `w_i * N > 1` where `w_i` represents 
+    a normalized weight (sum of all weights equals 1), and N is the ensemble size.
+    The array of weight residuals (`w_i * N - int(w_i * N)`) is then resampled
+    using a basic multinomial approach.
+
+More advanced methods are typically similar to `residual`, but the array of
+residual weights is resampled taking into account the uniformity of samples in
+the parameter or state space (and therefore requires additional information).
+One of these methods, coined `deterministic` (re)sampling, is planned to be
+implemented, in addition to the two mentioned above.
+
+The jittering step is tricky because the noise is unlikely to have a pure
+(multivariate) normal distribution (especially when the model is strongly non
+linear).  An approach proposed by Annan and Heargraves, "iterative importance
+sampling" (`iis`), is to sample jitter with zero mean and covariance computed from the
+original (resampled) ensemble but scaled so that its variance is only a small
+fraction `epsilon` of the original ensemble. Addition of noise increases
+overall covariance by `1 + epsilon`, but they show that this can balance out if
+the weights used for resampling are "flattened" with the same `epsilon` as an
+exponent (`shrinking`).  This procedure leaves the posterior distribution
+invariant, so that it can be applied iteratively when starting from a prior
+which is far from the posterior. 
+
+One step of this resampling procedure can be activated with the `--iis` flag.
+By default the epsilon factor is computed automatically to keep an "effective
+ensemble size" in a reasonable proportion (50% to 90%) to the actual ensemble
+size (see `--neff-bounds` parameter). No other jittering method is proposed.
 
 References
 ----------

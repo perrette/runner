@@ -1,36 +1,625 @@
 #!/usr/bin/env python
-"""Prior parameter sampling
+"""Jobs for numerical experiments
 """
-from __future__ import print_function, division
+#import simtools.model.params as mp
+import argparse
+import inspect
+import copy
+import logging
+import json
+import subprocess
+import tempfile
+import numpy as np
+from simtools import __version__
+from simtools.model import Model, Param
+from simtools.prior import Prior, GenericParam, DiscreteParam
+import simtools.sampling.resampling as xp
+from simtools.xparams import XParams, Resampler
+from simtools.job.filetype import filetype_parser as filetype, getfiletype
 
-from simtools.parsetools import Job
-from simtools.job.config import editconfig
-from simtools.job.prior import product, sample
-from simtools.job.resample import resample, neff
-#from simtools.job.model import modelconfig
+
+# prepare job
+# ===========
+jobs = []
+
+def register_job(name, parser, postproc, help=None):
+    jobs.append((name, parser, postproc, help))
+
+
+# generate params.txt (XParams)
+# =============================
+def _return_params(xparams, out):
+    "Return new ensemble parameters"
+    if out:
+        with open(out, "w") as f:
+            f.write(str(xparams))
+    else:
+        print(str(xparams))
+
+# product
+# -------
+product = argparse.ArgumentParser(add_help=False,
+                                  description="Factorial combination of parameter values")
+product.add_argument('-p','--factors',
+                 type=DiscreteParam.parse,
+                 help="factors",
+                 metavar="NAME=VAL1[,VAL2 ...]",
+                 nargs='+', required=True)
+product.add_argument('-o','--out', help="output parameter file")
+
+
+def product_post(o):
+    xparams = Prior(o.factors).product()
+    return _return_params(xparams, o.out)
+
+register_job('product', product, product_post,
+                 help='generate ensemble from all parameter combinations')
+
+
+# sample
+# ------
+prior = argparse.ArgumentParser(add_help=False)
+grp = prior.add_argument_group("prior distribution of model parameters")
+grp.add_argument('-p','--dist',
+                 type=GenericParam.parse,
+                 help=GenericParam.parse.__doc__,
+                 metavar="NAME=DIST",
+                 nargs='+', required=True)
+
+lhs = argparse.ArgumentParser(add_help=False)
+grp = lhs.add_argument_group("Latin hypercube sampling")
+grp.add_argument('--lhs-criterion', 
+                   choices=('center', 'c', 'maximin', 'm', 
+                            'centermaximin', 'cm', 'correlation', 'corr'), 
+                 help='randomized by default')
+grp.add_argument('--lhs_iterations', type=int)
+
+
+sample = argparse.ArgumentParser(description="Sample prior parameter distribution", 
+                                 add_help=False, parents=[prior, lhs])
+sample.add_argument('-o', '--out', help="output parameter file")
+
+sample.add_argument('-N', '--size',type=int, required=True, 
+                  help="Sample size")
+sample.add_argument('--seed', type=int, 
+                  help="random seed, for reproducible results (default to None)")
+sample.add_argument('--method', choices=['montecarlo','lhs'], default='lhs', 
+                    help="sampling method (default=%(default)s)")
+
+def sample_post(o):
+    prior = Prior(o.dist)
+    xparams = prior.sample(o.size, seed=o.seed, 
+                           method=o.method,
+                           criterion=o.lhs_criterion,
+                           iterations=o.lhs_iterations)
+    return _return_params(xparams, o.out)
+
+register_job('sample', sample, sample_post,
+                 help='generate ensemble by sampling prior distributions')
+
+
+# resample
+# --------
+resample = argparse.ArgumentParser(add_help=False, description=xp.__doc__)
+resample.add_argument("params_file", 
+                    help="ensemble parameter flle to resample")
+
+#grp = resample.add_argument_group('weights')
+resample.add_argument('--weights-file', '-w', required=True, 
+                   help='typically the likelihood from a bayesian analysis, i.e. exp(-((model - obs)**2/(2*variance), to be multiplied when several observations are used')
+resample.add_argument('--log', action='store_true', 
+                   help='set if weights are provided as log-likelihood (no exponential)')
+
+grp = resample.add_argument_group('jittering')
+grp.add_argument('--iis', action='store_true', 
+                  help="IIS-type resampling with likelihood flattening + jitter")
+grp.add_argument('--epsilon', type=float, 
+                   help='Exponent to flatten the weights and derive jitter \
+variance as a fraction of resampled parameter variance. \
+    If not provided 0.05 is used as a starting value but adjusted if the \
+effective ensemble size is not in the range specified by --neff-bounds.')
+
+grp.add_argument('--neff-bounds', nargs=2, default=xp.NEFF_BOUNDS, type=int, 
+                   help='Acceptable range for the effective ensemble size\
+                   when --epsilon is not provided. Default to %(default)s.')
+
+grp = resample.add_argument_group('sampling')
+grp.add_argument('--method', choices=['residual', 'multinomial'], 
+                   default=xp.RESAMPLING_METHOD, 
+                   help='resampling method (default: %(default)s)')
+
+grp.add_argument('-N', '--size', help="New sample size (default: same size as before)", type=int)
+grp.add_argument('--seed', type=int, help="random seed, for reproducible results (default to None)")
+
+grp = resample.add_argument_group('output')
+grp.add_argument('-o', '--out', help="output parameter file (print to scree otherwise)")
+
+
+def _getweights(o):
+    w = np.loadtxt(o.weights_file)
+    if o.log:
+        w = np.exp(o.log)
+    return w
+
+
+def resample_post(o):
+    weights = _getweights(o)
+    xpin = XParams.read(o.params_file)
+    xparams = xpin.resample(weights, size=o.size, seed=o.seed,
+                            method=o.method,
+                            iis=o.iis, epsilon=o.epsilon, 
+                            neff_bounds=o.neff_bounds, 
+                            )
+    return _return_params(xparams, o)
+
+
+register_job('resample', resample, resample_post,
+                 help='resample parameters from previous simulation')
+
+
+# TODO : implement 1 check or tool function that returns a number of things, such as neff
+## check
+## -----
+#def neff(argv=None):
+#    """Check effective ensemble size
+#    """
+#    parser = CustomParser(description=neff.__doc__, parents=[], 
+#                          formatter_class=argparse.RawDescriptionHelpFormatter)
+#    parser.add_argument('--weights-file', '-w', required=True, 
+#                       help='typically the likelihood from a bayesian analysis, i.e. exp(-((model - obs)**2/(2*variance), to be multiplied when several observations are used')
+#    parser.add_argument('--log', action='store_true', 
+#                       help='set if weights are provided as log-likelihood (no exponential)')
+#    parser.add_argument('--epsilon', type=float, default=1, 
+#                      help='likelihood flattening, see resample sub-command')
+#
+#    args = parser.parse_args()
+#    args.weights = getweights(args.weights_file, args.log)
+#
+#    print( Resampler(args.weights**args.epsilon).neff() )
+#
+#    #job.add_command("neff", neff, 
+#    #                help='(resample helper) calculate effective ensemble size')
+
+
+# model runs
+# ==========
+
+model = argparse.ArgumentParser(add_help=False, parents=[filetype])
+
+grp = model.add_argument_group('model params io: passing job --> model')
+#grp.add_argument('--io-params', choices=["arg", "file"], default='arg',
+#                 help='mode for passing parameters to model (default:%(default)s)')
+grp.add_argument('--param-file',
+                      help='model input parameter file, relatively to {rundir}. \
+                 If provided, param passing via file instead of command arg.\
+                 Note this might be used in model arguments as "{paramfile}"')
+grp.add_argument('--param-arg', dest='arg_template', default='--{name} {value}',
+                      help='format for params as command-line args')
+
+grp = model.add_argument_group('model run')
+grp.add_argument('--executable','-x', 
+                      help='model executable (e.g. runscript etc)', required=True)
+grp.add_argument('--args', 
+                 help='model arguments (quoted).\
+Can also be passed after "--" separator. \
+Allowed tags filled by job: \
+    {expdir} (super folder), \
+    {rundir} (ensemble member folder), \
+    {runtag} (base name of {rundir}), \
+    {paramfile} (parameter set for one model), \
+    {runid} (simulation number in the ensemble). \
+Tags can also be formatted according to python rules, \
+e.g. {runid:0>6} to prefix runid with zeroes, total 6 digits')
+
+grp.add_argument('--default-file', help='default param file, required for certain file types (e.g. namelist)')
+
+def getmodel(o):
+    """return model
+    """
+    filetype = getfiletype(o)
+
+    if o.default_file:
+        params = filetype.load(open(o.default_file))
+    else:
+        params = []
+
+    if o.file_name:
+        o.arg_template = None  # only one or the other
+
+    return Model(o.executable, o.args, params, o.arg_template, o.file_name, filetype)
+
+# run
+# ---
+
+def parse_slurm_array_indices(a):
+    indices = []
+    for i in a.split(","):
+        if '-' in i:
+            if ':' in i:
+                i, step = i.split(':')
+                step = int(step)
+            else:
+                step = 1
+            start, stop = i.split('-')
+            start = int(start)
+            stop = int(stop) + 1  # last index is ignored in python
+            indices.extend(range(start, stop, step))
+        else:
+            indices.append(int(i))
+    return indices
+
+def _typechecker(type):
+    def check(string):
+        try:
+            type(string) # just a check
+        except Exception as error:
+            print('ERROR:', error.message)
+            raise
+        return string
+
+# SLURM high-performance computer
+slurm = argparse.ArgumentParser(add_help=False)
+grp = slurm.add_argument_group("slurm workload configuration (submit)")
+grp.add_argument('--qos', help='queue')
+grp.add_argument('--job-name')
+grp.add_argument('--account')
+grp.add_argument('--walltime')
+
+# 
+submit = argparse.ArgumentParser(add_help=False)
+grp = submit.add_argument_group("simulation mode (submit, background...)")
+#grp.add_argument('--batch-script', help='')
+x = grp.add_mutually_exclusive_group()
+x.add_argument('-s', '--submit', action='store_true', help='submit job to slurm')
+x.add_argument('-t', '--test', action='store_true', 
+               help='test mode: print to screen instead of log, run sequentially')
+grp.add_argument('-w','--wait', action='store_true', help='wait for job to end')
+grp.add_argument('-b', '--array', action='store_true', 
+                 help='submit using sbatch --array (faster!), EXPERIMENTAL)')
+grp.add_argument('--dry-run', action='store_true', 
+                 help='might write a few files, but do not run')
+#x.add_argument('--background', 
+#                 action='store_true', help='run in the background, do not wait for executation to end')
+
+simu = argparse.ArgumentParser(add_help=False)
+grp = simu.add_argument_group("simulation settings")
+simu.add_argument('-o','--out-dir', default='out',
+                  help='experiment directory \
+                  (params.txt and logs/ will be created, and possibly individual model output directories (each as {rundir}}')
+simu.add_argument('-a','--auto-folder', action='store_true', 
+                 help='{runtag} and {rundir} named according to parameter values instead of {runid}')
+
+x = simu.add_mutually_exclusive_group()
+x.add_argument('-p', '--params',
+                 type=DiscreteParam.parse,
+                 help=DiscreteParam.parse.__doc__,
+                 metavar="NAME=SPEC",
+                 nargs='*')
+x.add_argument('-i','--params-file', help='ensemble parameters file')
+simu.add_argument('-j','--id', type=_typechecker(parse_slurm_array_indices), dest='runid', 
+                 metavar="I[,J ...][,START-STOP:STEP ...]",
+                 help='select one or several ensemble members (0-based !), \
+slurm sbatch --array syntax, e.g. `0,2,4` or `0-4:2` \
+    or a combination of these, `0,2,4,5` <==> `0-4:2,5`')
+
+run = argparse.ArgumentParser(add_help=False, parents=[model, simu, submit, slurm],
+                              description='run model (single version or ensemble)')
+
+
+# sub
+_slurmarray = argparse.ArgumentParser(add_help=False, parents=[model, simu])
+_slurmarray_defaults = {a.dest:a.default for a in _slurmarray._actions}  # default arguments
+
+
+def _autodir(params):
+    " create automatic directory based on list of Param instances"
+    raise NotImplementedError()
+
+def run_post(o):
+    model = getmodel(o)  # default model
+
+    if o.params_file:
+        xparams = XParams.read(o.params_file)
+    elif o.params:
+        prior = Prior(o.params)
+        xparams = prior.product() # only product allowed as direct input
+        #update = {p.name:p.value for p in o.params}
+    else:
+        xparams = XParams(np.empty((0,0)), names=[])
+
+    xrun = XRun(model, xparams)
+    
+    if o.id:
+        indices = parse_slurm_array_indices(o.id)
+    else:
+        indices = np.arange(xparams.size)
+
+    # test: run everything serially
+    if o.test:
+        for i in indices:
+            rundir = '--auto' if self.auto_dir else None
+            xrun.run(runid=i, expdir=o.out_dir, background=False, rundir=rundir, dry_run=o.dry_run)
+
+    # array: create a parameterized "job" command [SLURM]
+    elif o.array:
+        # input via params file
+        if not os.path.exists(o.out_dir):
+            os.makedirs(o.out_dir)
+        params_file = os.path.join(o.out_dir, 'params.txt')
+        xrun.params.write(params_file)
+
+        # prepare job command: runid and params passed by slurm
+        cfg = o.__dict__.copy()
+        del cfg["params"] # passed by file
+        del cfg["params_file"] # see below
+        del cfg["id"] # see below
+
+        # write command based on namespace state
+        file = tempfile.mktemp(dir=o.out_dir, prefix='job.run-array.', suffix='.json')
+        write_config(cfg, file, defaults=_slurmarray_defaults, name="run-array") #FIXME
+        template = "{job} -c {config_file} run --id $SLURM_ARRAY_TASK_ID --params-file {params_file}"
+        command = template.format(job="job", config_file=file, params_file=params_file) 
+        #FIXME: job may be a full path `/path/to/job run` or called via `[/path/to/]python job run`
+        #TODO: maybe figure out something?
+
+        # slurm-related options are passed directyl
+        slurm_opt = _defaults(slurm)
+        slurm_opt = {k:getattr(o, k) for k in slurm_opt if slurm_opt[k] is not None}
+        slurm_opt["array"] = o.id or "{}-{}".format(0, xparams.size-1)
+
+        if o.dry_run:
+            print(slurm_opt)
+            print(command)
+            return
+
+        p = submit_job(command, **slurm_opt)
+
+        if o.wait:
+            p.wait()
+
+    # the default
+    else:
+        p = xrun.batch(self, indices=indices, wait=o.wait, submit=o.submit, 
+                   expdir=o.out_dir, autodir=o.auto_dir) #, output=o.log_out, error=o.log_err)
+
+    return
+
+
+#obs = argparse.ArgumentParser(add_help=False, description="observational constraints")
+#obs.add_argument('--likelihood', '-l', dest='constraints',
+#                 type=typechecker(GenericParam.parse),
+#                 help=GenericParam.parse.__doc__,
+#                 metavar="NAME=SPEC",
+#                 nargs='*')
+
+
+# job config I/O
+# ==============
+
+def _parser_defaults(parser):
+    " parser default values "
+    return {a.dest: a.default for a in parser._actions}
+
+
+# editconfig
+# ----------
+editconfig = argparse.ArgumentParser(parents=[], description="edit config", add_help=False)
+editconfig.add_argument('--out','-o', help='write to output file')
+
+# add as subparsers so that arguments do not conflict
+subp = editconfig.add_subparsers(dest='editconfig')
+groups = {}
+defaults = {}
+for name, parser, postproc, help in jobs:
+    subp.add_parser(parser, help=help)
+    groups[name] = parser
+    defaults[name] = _parser_defaults(parser)
+
+def _modified(kw, defaults):
+    """return key-words that are different from default parser values
+    """
+    return {k:kw[k] for k in kw if k in defaults and kw[k] != defaults[k]}
+
+def json_config(namespace, names):
+    import datetime
+    js = {
+        'groups': [
+            {
+                'name' : name,
+                #'title' : title,
+                'defaults' : _modified(vars(namespace), defaults[name]),
+            } for name
+        'version':__version__,
+        'date':str(datetime.date.today()),
+    }
+    return json.dumps(js, indent=2, sort_keys=True)
+
+def write_config(namespace, file, defaults):
+    string = json_config(namespace, defaults)
+    with open(file, 'w') as f:
+        f.write(string)
+
+def read_config(file):
+    js = json.load(open(file))
+    return js["defaults"]
+
+
+
+def editconfig_post(o):
+    if o.out:
+        write_config(o, o.out)
+    else:
+        print(json_config(o))
+
+register_job('config', editconfig, editconfig_post,
+                 help='edit default configuration')
+
+
+    #job.add_command("run", modelrun, 
+    #                help='single model simulation')
+
+
+
+# pull main job together
+# ======================
+
+job = argparse.ArgumentParser(description=__doc__, parents=[config])
+job.add_argument('-c','--config-file',help='default configuration file')
+
+subp = job.add_subparsers(dest='cmd')
+
+postprocs = {}
+parsers = {}
+for name, parser, postproc, help in jobs:
+    subp.add_parser(name, parents=[parser], help=help)
+    postprocs[name] = postproc
+    parsers[name] = parser
+
 
 def main(argv=None):
+    # simply get configuration
+    o = job.parse_args(argv)
 
-    job = Job()
-    #job.parser.add_argument('--addons', nargs='*')
-    #job.add_command("config", show_config_main)
-    job.add_command("config", editconfig, 
-                    help='create and edit default configurations')
-    job.add_command("product", product, 
-                    help='generate ensemble from all parameter combinations')
-    job.add_command("sample", sample, 
-                    help='generate ensemble by sampling prior distributions')
-    job.add_command("resample", resample, 
-                    help='resample parameters from previous simulation')
-    job.add_command("neff", neff, 
-                    help='(resample helper) calculate effective ensemble size')
-    #job.add_command("model", modelconfig, 
-    #                help='define model configuration via command-line (> terminal)')
-    #job.add_command("neff", neff)
-    #job.add_command("neff", Neff)
+    func = postprocs[o.cmd]
+    parser = parsers[o.cmd]
 
-    job.main(argv)
+    if o.config_file:
+        defaults = read_config(o.config_file, parser)
+        parser.set_defaults(**defaults)
+        # what is set is not anymore required
+        for a in parser._actions:
+            if a.dest in parser._defaults:
+                a.required = False
+        o, unknown = parser.parse_known_args(argv)
 
+    return func(o)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
+
+##editconfig.add_argument('--show-nested', action='store_true', help='show config')
+##editconfig.add_argument('--full','-o', help='show full config')
+## default values to store config
+#NESTED = True
+#DIFF = True
+#
+#def _config_dict(diff=False):
+#    " return dict of config parser state "
+#    if diff:
+#        return jobconfig._defaults
+#    else:
+#        namespace = jobconfig.parse_args([])
+#        return namespace.__dict__.copy()
+#
+#def _config_groups(dict_):
+#    " return nested dict of config parser state "
+#    for ag in jobconfig._action_groups:
+#        group = dict()
+#        for a in ag._actions:
+#            if a.dest in dict_:
+#                group[a.dest] = dict_[a.dest]
+#        if group:
+#            yield group
+#
+#def _serialize_config(diff=DIFF, nested=NESTED):
+#    dict_ = _config_dict(diff)
+#    if nested:
+#        js = {'groups':list(_config_dict(_dict))}
+#    else:
+#        js = {'defaults'}
+#    return dict_
+#
+#
+#def _flatten(js):
+#    " reverse _nested_config_dict "
+#    dict_ = {}
+#    for grp in js['groups']:
+#        grp.pop('__description__', None)
+#        grp.pop('__title__', None)
+#        dict_.update(grp)
+#    return dict_
+#
+#def read_config(file, nested=None):
+#    defaults = json.load(open(file))
+#    if nested is None:
+#        nested = 'groups' in 
+#    if nested:
+#        defaults = _flatten(defaults)
+#    return defaults
+#
+#def print_config(diff=False):
+#    dict_ = _nested_config(diff)
+#    print(json.dumps(dict_, sort_keys=True, indent=2))
+#
+#
+#
+## Programs
+## --------
+#class Program(SubConfig):
+#    """Default configuration file
+#
+#    * config_file : default configuration file
+#    """
+#    _root = 'config'
+#
+#    def __init__(self, config_file=None):
+#        self.config_file = config_file
+#
+#    @property
+#    def parser(self):
+#        parser = self._parser()
+#        self._add_argument(parser, 'config_file', aliases=('-c',))
+#        return parser
+#
+#    def main(self):
+#        raise NotImplementedError()
+#
+#    def __call__(self, argv=None):
+#        """Actual program execution
+#        """
+#        namespace = self.parser.parse_args(argv)
+#        # update global config
+#        if namespace.config_file:
+#            jobconfig = JobConfig.read(namespace.config_file)
+#            self._update_known(jobconfig.__dict__)
+#            namespace = self.parser.parse_args(argv) # parse again !
+#        self._update(namespace.__dict__)
+#        return self.main()
+#
+#
+#class EditConfig(JobConfig, Program):
+#    """Setup job configuration via command-line
+#
+#    * only : pick a sub configuration to show
+#    * diff : only show difference to default config
+#    * flat : flatten config
+#    """
+#    _root = None
+#    _choices = [(cls._root, cls) for cls in JobConfig._units_mro()] + [('model', JobConfig), (None, JobConfig)]
+#
+#    def __init__(self, only=None, diff=False, flat=False, **kwargs):
+#        self.only = only
+#        self.diff = diff 
+#        self.flat = flat 
+#        self._super_init(self, **kwargs)
+#
+#    @property
+#    def parser(self):
+#        " only have parser for ModelConfig "
+#        parser = self._parser(add_help=True)
+#        self._add_argument(parser, 'flat')
+#        self._add_argument(parser, 'diff')
+#        self._add_argument(parser, 'only', nargs='*', choices=[x[0] for x in self._choices])
+#        return parser
+#
+#    def main(self):
+#        cfg = {}
+#        for key in (self.only or [None]):
+#            grp = self._group(dict(self._choices)[key])
+#            cfg.update(json.loads(grp.tojson(diff=self.diff, flat=self.flat)))
+#        print( json.dumps(cfg, indent=2, sort_keys=True))
+#
+#editconfig = EditConfig()
+#
+#if __name__ == '__main__':
+#    editconfig()
