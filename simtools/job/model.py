@@ -40,9 +40,9 @@ grp = filetype.add_argument_group('filetype', description='file formats to pass 
 
 grp.add_argument('--file-type', help='model params file type (including registered custom)', 
                  choices=choices+register.filetypes.keys())
-grp.add_argument('--line_sep', help='separator for "linesep" and "lineseprev" file types')
-grp.add_argument('--line_template', help='line template for "linetemplate" file type')
-grp.add_argument('--template_file', help='template file for "template" file type')
+grp.add_argument('--line-sep', help='separator for "linesep" and "lineseprev" file types')
+grp.add_argument('--line-template', help='line template for "linetemplate" file type')
+grp.add_argument('--template-file', help='template file for "template" file type')
 grp.add_argument('--help-file-type', help='print help for filetype and exit', action='store_true')
 
 
@@ -136,7 +136,10 @@ def getmodel(o):
     else:
         params = []
 
-    if o.file_name:
+    if o.param_file:
         o.arg_template = None  # only one or the other
 
-    return Model(o.executable, o.args, params, o.arg_template, o.file_name, filetype)
+    if getattr(o, 'extras', None):
+        o.args = (o.args or "").split() + o.extras   # anything after --
+
+    return Model(o.executable, o.args, params, o.arg_template, o.out_template, o.param_file, filetype)

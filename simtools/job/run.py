@@ -3,17 +3,39 @@
 Examples
 --------
 
->>> job run -x runscript.sh -p a=2,3,4 b=0,1 -- --out_dir {rundir}
+Job-model interface
 
+>>> job run -x runscript.sh -p a=2,3,4 b=0,1
 
 The command above run an ensemble of 6 model versions.
+
+By default runscript.sh is called with command line arguments for parameters
+and run directory, as specified by --param-arg and --out-arg arguments, which 
+are templates formatted at run-time with appropriate values.
+
+>>> job --saveas run.json run -x runscript.sh --param-arg "--{name} {value}" --out-arg "--out {rundir}" --qos short --account megarun
+
+Save arguments to `run.json` file to be used as default arguments in subsequent calls.
+
+>>> job -c run.json run -p a=2,3,4 b=0,1
+
+Load run.json as default argument, and perform ensemble simulation. 
+
+>>> job -m model.py run -p a=2,3,4 b=0,1
+
+Use custom filetype and model definition.
+
+>>> job run -c run.json -- --years 100
+
 The arguments after `--` are formatted with appropriate runtime variables and
 passed to the runscript as command line argument.
 """
 import argparse
 import tempfile
+import numpy as np
 from simtools.prior import Prior, DiscreteParam
-from simtools.xparams import XParams
+#from simtools.xparams import XParams
+from simtools.xrun import XParams, XRun
 from simtools import register
 from simtools.job.model import model, getmodel
 import simtools.job.stats  # register !
@@ -77,10 +99,10 @@ grp.add_argument('--dry-run', action='store_true',
 
 simu = argparse.ArgumentParser(add_help=False)
 grp = simu.add_argument_group("simulation settings")
-simu.add_argument('-o','--out-dir', default='out',
+simu.add_argument('-o','--out-dir', default='out', dest='expdir',
                   help='experiment directory \
                   (params.txt and logs/ will be created, and possibly individual model output directories (each as {rundir})')
-simu.add_argument('-a','--auto-folder', action='store_true', 
+simu.add_argument('-a','--auto-dir', action='store_true', 
                  help='{runtag} and {rundir} named according to parameter values instead of {runid}')
 
 x = simu.add_mutually_exclusive_group()
@@ -95,6 +117,9 @@ simu.add_argument('-j','--id', type=_typechecker(parse_slurm_array_indices), des
                  help='select one or several ensemble members (0-based !), \
 slurm sbatch --array syntax, e.g. `0,2,4` or `0-4:2` \
     or a combination of these, `0,2,4,5` <==> `0-4:2,5`')
+simu.add_argument('--include-default', 
+                  action='store_true', 
+                  help='also run default model version (with no parameters)')
 
 run = argparse.ArgumentParser(add_help=False, parents=[model, simu, submit, slurm],
                               description=__doc__)
@@ -120,37 +145,40 @@ def run_post(o):
         #update = {p.name:p.value for p in o.params}
     else:
         xparams = XParams(np.empty((0,0)), names=[])
+        o.include_default = True
 
     xrun = XRun(model, xparams)
     
-    if o.id:
-        indices = parse_slurm_array_indices(o.id)
+    if o.runid:
+        indices = parse_slurm_array_indices(o.runid)
     else:
         indices = np.arange(xparams.size)
 
     # test: run everything serially
     if o.test:
+        rundir = '--auto' if o.auto_dir else None
         for i in indices:
-            rundir = '--auto' if self.auto_dir else None
-            xrun.run(runid=i, expdir=o.out_dir, background=False, rundir=rundir, dry_run=o.dry_run)
+            xrun.run(runid=i, expdir=o.expdir, background=False, rundir=rundir, dry_run=o.dry_run)
+        if o.include_default:
+            xrun.run(expdir=o.expdir, background=False, rundir=rundir, dry_run=o.dry_run)
         o.wait = False
 
     # array: create a parameterized "job" command [SLURM]
     elif o.array:
         # input via params file
-        if not os.path.exists(o.out_dir):
-            os.makedirs(o.out_dir)
-        params_file = os.path.join(o.out_dir, 'params.txt')
+        if not os.path.exists(o.expdir):
+            os.makedirs(o.expdir)
+        params_file = os.path.join(o.expdir, 'params.txt')
         xrun.params.write(params_file)
 
         # prepare job command: runid and params passed by slurm
         cfg = o.__dict__.copy()
         del cfg["params"] # passed by file
         del cfg["params_file"] # see below
-        del cfg["id"] # see below
+        del cfg["runid"] # see below
 
         # write command based on namespace state
-        file = tempfile.mktemp(dir=o.out_dir, prefix='job.run-array.', suffix='.json')
+        file = tempfile.mktemp(dir=o.expdir, prefix='job.run-array.', suffix='.json')
         write_config(cfg, file, defaults=_slurmarray_defaults, diff=True, name="run")
         template = "{job} -c {config_file} run --id $SLURM_ARRAY_TASK_ID --params-file {params_file}"
         command = template.format(job="job", config_file=file, params_file=params_file) 
@@ -159,7 +187,7 @@ def run_post(o):
 
         # slurm-related options are passed directyl
         slurm_opt = {a.dest:a.default for a in slurm._actions if a.default is not None}
-        slurm_opt["array"] = o.id or "{}-{}".format(0, xparams.size-1)
+        slurm_opt["array"] = o.runid or "{}-{}".format(0, xparams.size-1)
 
         if o.dry_run:
             print(slurm_opt)
@@ -170,8 +198,9 @@ def run_post(o):
 
     # the default
     else:
-        p = xrun.batch(self, indices=indices, submit=o.submit, 
-                   expdir=o.out_dir, autodir=o.auto_dir) #, output=o.log_out, error=o.log_err)
+        p = xrun.batch(indices=indices, submit=o.submit, 
+                   expdir=o.expdir, autodir=o.auto_dir, 
+                       include_default=o.include_default) #, output=o.log_out, error=o.log_err)
 
     if o.wait:
         p.wait()

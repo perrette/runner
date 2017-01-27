@@ -169,7 +169,7 @@ class Model(object):
         """Write param file to rundir if necessary
         """
         if not os.path.exists(rundir):
-            os.path.makedirs(rundir)
+            os.makedirs(rundir)
         if self.filename:
             fname = os.path.join(rundir, self.filename)
             with open(fname, "w") as f:

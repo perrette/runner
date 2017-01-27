@@ -58,8 +58,8 @@ class XDir(object):
         self.expdir = expdir
         self.digit = digit
 
-    def path(self, *file):
-        return os.path.join(self.expdir, *file)
+    def path(self, base, *args):
+        return os.path.join(self.expdir, base, *args)
 
     def autodir(self, params):
         """automatic directory name based on parameter names
@@ -75,10 +75,11 @@ class XDir(object):
     def rundir(self, runid=None):
         if runid is not None:
             runtag = self.runtag(runid)
-            rundirs = _create_dirtree(runtag)
-            return self.path(self.expdir, *rundirs)
+            rundirs = [runtag]
+            #rundirs = _create_dirtree(runtag)
+            return self.path(*rundirs)
         else:
-            return self.path(self.expdir, "default")
+            return self.path("default")
 
     def statefile(self, runid=None):
         """state variable name
@@ -168,22 +169,22 @@ class XRun(object):
             runtag = os.path.basename(rundir)
         else:
             runtag = os.path.basename(rundir)
-            rundir = os.path.join(expdir, rundir)
+            #rundir = os.path.join(expdir, rundir)
 
         # determine log file names
         logdir = os.path.join(expdir, 'logs')
         if not os.path.exists(logdir): 
             os.makedirs(logdir) # needs to be created before
-        output = output or os.path.join(logdir, '{runtag}.out').format(runtag)
-        error = error or os.path.join(logdir, '{runtag}.err').format(runtag)
+        output = output or os.path.join(logdir, '{runtag}.out').format(runtag=runtag)
+        error = error or os.path.join(logdir, '{runtag}.err').format(runtag=runtag)
 
         # open files for Popen (not used if `submit`)
         if background:
             stdout = open(output, 'w')
             stderr = open(error, 'w')
+            popenargs = dict(stdout=stdout, stderr=stderr)
         else:
-            stdout = subprocess.STDOUT
-            stderr = subprocess.STDERR
+            popenargs = dict()
 
         # environment variables to define and tag fillers
         context = dict(
@@ -210,7 +211,7 @@ class XRun(object):
 
         else:
             env = makenv(context, os.environ.copy())
-            p = subprocess.Popen(args, env=env, stdin=stdin, stdout=stdout, stderr=stderr)
+            p = model.run(context=context, **popenargs) #, stdout=stdout, stderr=stderr)
 
         if not background:
             ret = p.wait()
@@ -218,15 +219,23 @@ class XRun(object):
         return p
 
 
-    def batch(self, indices=None, expdir="./", submit=True, autodir=False, **kwargs):
+    def batch(self, indices=None, expdir="./", submit=True, autodir=False, include_default=False, **kwargs):
         """Run ensemble
         """
         N = self.params.size
         # write config to expdirectory
         # self.setup(force=True)  # things are up to date
 
-        print("Submit" if submit else "Run",len(indices),"out of",N,"simulations")
-        print(indices)
+        if indices is None:
+            indices = np.arange(self.params.size).tolist()
+
+        if include_default:
+            indices = indices + [None]
+            bla = ('+ default',)
+        else:
+            bla = ()
+
+        print("Submit" if submit else "Run",len(indices),"out of",N,"simulations",*bla)
         processes = []
 
         if autodir:
@@ -240,15 +249,15 @@ class XRun(object):
         return MultiProcess(processes) # has a `wait` command
 
 
-    class MultiProcess(object):
-        def __init__(self, processes):
-            self.processes = processes
+class MultiProcess(object):
+    def __init__(self, processes):
+        self.processes = processes
 
-        def apply_many(name, *args, **kwargs):
-            return [getattr(p, name)(p, *args, **kwargs) for p in self.processes]
+    def apply_many(name, *args, **kwargs):
+        return [getattr(p, name)(p, *args, **kwargs) for p in self.processes]
 
-        def wait(self):
-            return self.apply_many("wait")
+    def wait(self):
+        return self.apply_many("wait")
 
 
     #def array(self, indices=None, expdir="./", wait=True, **kwargs):

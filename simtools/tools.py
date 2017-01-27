@@ -54,6 +54,8 @@ def dist_to_str(dist):
 def parse_list(string):
     """Parse list of parameters VALUE[,VALUE,...]
     """
+    if not string:
+        raise ValueError("empty list")
     return [parse_val(value) for value in string.split(',')]
 
 def parse_range(string):

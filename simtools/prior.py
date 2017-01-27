@@ -60,6 +60,7 @@ class PriorParam(GenericParam):
     """Prior parameter based on any scipy distribution
     """
     def __init__(self, name, dist, default=None):
+        assert name, 'no param name'
         self.name = name
         self.dist = dist
         self.default = default

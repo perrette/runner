@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """Jobs for numerical experiments
 """
-#import simtools.model.params as mp
+import sys
+from importlib import import_module
 import argparse
 import warnings
 import json
@@ -27,7 +28,7 @@ def _filter(kw, after, diff=False, include_none=True):
         filtered = {k:kw[k] for k in kw if k in after}
     if not include_none:
         filtered = {k:filtered[k] for k in filtered if filtered[k] is not None}
-    return
+    return filtered
 
 def json_config(cfg, defaults=None, diff=False, name=None):
     import datetime
@@ -53,6 +54,8 @@ def write_config(cfg, file, defaults=None, diff=False, name=None):
 job = argparse.ArgumentParser(parents=[], description=__doc__, 
                               formatter_class=argparse.RawTextHelpFormatter)
 job.add_argument('-v','--version', action='version', version=__version__)
+job.add_argument('-m','--module', nargs='+',
+                 help='load python module(s) that contain custom file type or model definitions (see simtools.register)')
 job.add_argument('-c','--config-file', 
                     help='load defaults from configuration file')
 x = job.add_mutually_exclusive_group()
@@ -75,11 +78,27 @@ def main(argv=None):
         parsers[j.name] = j.parser
         postprocs[j.name] = j.postproc
 
+    if argv is None:
+        argv = sys.argv[1:]
+
+    # pass anything after -- to extras
+    if '--' in argv:
+        i = argv.index('--')
+        extras = argv[i+1:]
+        argv = argv[:i]
+    else:
+        extras = None
 
     # parse arguments and select sub-parser
     o = job.parse_args(argv)
     parser = parsers[o.cmd]
     func = postprocs[o.cmd]
+
+    o.extras = extras
+
+    if o.module:
+        for m in o.module:
+            import_module(m)
 
     # read config file?
     if o.config_file:
