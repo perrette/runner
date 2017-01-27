@@ -2,7 +2,42 @@
 """
 from simtools.model.params import ParamsFile, Param
 from simtools.tools import parse_val
+from simtools.register import register_filetype as register
 
+# Json file types
+# ===============
+
+class JsonDict(ParamsFile):
+    """json file format
+    """
+    def __init__(self, indent=2, sort_keys=True, **kwargs):
+        kwargs["indent"] = indent
+        kwargs["sort_keys"] = sort_keys
+        self.kwargs = kwargs
+
+    def dumps(self, params):
+        return json.dumps({p.name:p.value for p in params}, **self.kwargs)
+
+    def loads(self, string):
+        kwargs = json.loads(string)
+        return [Param(name=k, value=kwargs[k]) for k in sorted(kwargs.keys())]
+
+
+class JsonList(ParamsFile):
+    """json file format
+    """
+    def __init__(self, indent=2, **kwargs):
+        kwargs["indent"] = indent
+        self.kwargs = kwargs
+
+    def dumps(self, params):
+        return json.dumps([p.__dict__ for p in params], **kwargs)
+
+    def loads(self, string):
+        return [Param(**p) for p in json.loads(string)]
+
+
+# Template base
 
 class TemplateFile(ParamsFile):
     """Custom file format based on a full file template (`dumps` ONLY)

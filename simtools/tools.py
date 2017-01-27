@@ -45,7 +45,7 @@ def dist_to_str(dist):
         loc, scale = dargs
         dargs = loc, loc+scale  # more natural
 
-    sargs=",".join(*[str(v) for v in dargs])
+    sargs=",".join([str(v) for v in dargs])
     return "{}?{}".format(dname, sargs)
 
 

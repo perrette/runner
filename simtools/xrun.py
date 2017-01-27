@@ -218,7 +218,7 @@ class XRun(object):
         return p
 
 
-    def batch(self, indices=None, expdir="./", wait=True, submit=True, autodir=False, **kwargs):
+    def batch(self, indices=None, expdir="./", submit=True, autodir=False, **kwargs):
         """Run ensemble
         """
         N = self.params.size
@@ -237,12 +237,18 @@ class XRun(object):
         for runid in indices:
             p = self.run(runid=runid, expdir=expdir, submit=submit, background=True, rundir=rundir, **kwargs)
             processes.append(p)
-        if wait:
-            for p in processes:
-                p.wait()
-        return processes
+        return MultiProcess(processes) # has a `wait` command
 
-        # TODO: write a file of commands, and appropriate script to parse it
+
+    class MultiProcess(object):
+        def __init__(self, processes):
+            self.processes = processes
+
+        def apply_many(name, *args, **kwargs):
+            return [getattr(p, name)(p, *args, **kwargs) for p in self.processes]
+
+        def wait(self):
+            return self.apply_many("wait")
 
 
     #def array(self, indices=None, expdir="./", wait=True, **kwargs):
