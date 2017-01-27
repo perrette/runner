@@ -25,6 +25,7 @@ defined. Here an example how to use custom file types:
 import argparse
 from simtools import register
 from simtools.model import Model
+from simtools.filetype import JsonDict, LineSeparator, LineTemplate, TemplateFile
 
 # model file type
 # ===============

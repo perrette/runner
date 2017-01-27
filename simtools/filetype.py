@@ -1,6 +1,6 @@
 """Param type factory
 """
-from simtools.model.params import ParamsFile, Param
+from simtools.model import ParamsFile, Param
 from simtools.tools import parse_val
 from simtools.register import register_filetype as register
 
