@@ -7,7 +7,8 @@ from simtools.tools import parse_val
 from simtools.submit import submit_job
 #from simtools.model.generic import get_or_make_filetype
 
-PARAMS_ARG = "--{name} {value}" # by default 
+ARG_TEMPLATE = "--{name} {value}" # by default 
+OUT_TEMPLATE = "--out {rundir}" # by default 
 
 
 class Param(object):
@@ -64,7 +65,9 @@ class ParamsFile(object):
 class Model(object):
     """Generic model configuration
     """
-    def __init__(self, executable, args=None, params=None, arg_template=PARAMS_ARG, filename=None, filetype=None):
+    def __init__(self, executable, args=None, params=None, 
+                 arg_template=ARG_TEMPLATE, out_template=OUT_TEMPLATE, 
+                 filename=None, filetype=None):
         """
         executable : runscript
         args : [str] or str, optional
@@ -80,6 +83,8 @@ class Model(object):
             `{value}`. By default `["--{name}", "{value}"]`, but note that any field
             in parameter definition can be used. Set to None or empty list to avoid
             passing parameters via the command-line.
+        out_template : [str] or str, optional
+            indicate how the output directory is passed to the model
         filename : str, optional
             By default parameters are provided as command-line arguments but if file
             name is provided they will be written to file. Path is relative to rundir.
@@ -94,6 +99,9 @@ class Model(object):
         if isinstance(arg_template, basestring):
             arg_template = arg_template.split()
         self.arg_template = arg_template or []
+        if isinstance(out_template, basestring):
+            out_template = out_template.split()
+        self.out_template = out_template or []
         self.filename = filename 
         self.filetype = filetype
 
@@ -170,10 +178,10 @@ class Model(object):
 
     def command(self, context=None):
         """
-        context : dict of experiment variables such as `expdir` and `runid`, which 
+        context : dict of experiment variables such as `rundir` and `runid`, which 
             maybe used to format some of the commands before passing to Popen.
         """
-        args = [self.executable] + self.args
+        args = [self.executable] + self.out_template + self.args
 
         # prepare modified command-line arguments with appropriate format
         for p in self.params:

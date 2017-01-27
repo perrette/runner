@@ -24,7 +24,7 @@ defined. Here an example how to use custom file types:
 """
 import argparse
 from simtools import register
-from simtools.model import Model
+from simtools.model import Model, ARG_TEMPLATE, OUT_TEMPLATE
 from simtools.filetype import JsonDict, LineSeparator, LineTemplate, TemplateFile
 
 # model file type
@@ -93,15 +93,16 @@ def getfiletype(o):
 
 model = argparse.ArgumentParser(add_help=False, parents=[filetype])
 
-grp = model.add_argument_group('paramsio', 
-                               description='param passing job --> model')
+grp = model.add_argument_group('job --> model communication')
 #grp.add_argument('--io-params', choices=["arg", "file"], default='arg',
 #                 help='mode for passing parameters to model (default:%(default)s)')
 grp.add_argument('--param-file',
                       help='model input parameter file, relatively to {rundir}. \
                  If provided, param passing via file instead of command arg.\
                  Note this might be used in model arguments as "{paramfile}"')
-grp.add_argument('--param-arg', dest='arg_template', default='--{name} {value}',
+grp.add_argument('--param-arg', dest='arg_template', default=ARG_TEMPLATE,
+                      help='format for params as command-line args')
+grp.add_argument('--out-arg', dest='out_template', default=OUT_TEMPLATE,
                       help='format for params as command-line args')
 
 grp = model.add_argument_group('model configuration')

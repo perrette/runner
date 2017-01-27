@@ -1,4 +1,14 @@
-"""Model run
+"""Model ensemble run
+
+Examples
+--------
+
+>>> job run -x runscript.sh -p a=2,3,4 b=0,1 -- --out_dir {rundir}
+
+
+The command above run an ensemble of 6 model versions.
+The arguments after `--` are formatted with appropriate runtime variables and
+passed to the runscript as command line argument.
 """
 import argparse
 import tempfile
@@ -87,7 +97,7 @@ slurm sbatch --array syntax, e.g. `0,2,4` or `0-4:2` \
     or a combination of these, `0,2,4,5` <==> `0-4:2,5`')
 
 run = argparse.ArgumentParser(add_help=False, parents=[model, simu, submit, slurm],
-                              description='run model (single version or ensemble)')
+                              description=__doc__)
 
 
 # sub
@@ -169,4 +179,4 @@ def run_post(o):
     return
 
 
-register_job('run', run, run_post, help='ensemble run')
+register_job('run', run, run_post, help='run model (single version or ensemble)')
