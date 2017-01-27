@@ -53,6 +53,7 @@ def write_config(cfg, file, defaults=None, diff=False, name=None):
 # prepare parser
 job = argparse.ArgumentParser(parents=[], description=__doc__, 
                               formatter_class=argparse.RawTextHelpFormatter)
+
 job.add_argument('-v','--version', action='version', version=__version__)
 job.add_argument('-m','--module', nargs='+',
                  help='load python module(s) that contain custom file type or model definitions (see simtools.register)')
@@ -67,6 +68,8 @@ job.add_argument('--show', action="store_true", help='show config and exit')
 
 
 def main(argv=None):
+    
+    top = argparse.ArgumentParser(parents=[job], conflict_handler='resolve')
 
     # add subcommands
     subp = job.add_subparsers(dest='cmd')
@@ -93,8 +96,13 @@ def main(argv=None):
     o = job.parse_args(argv)
     parser = parsers[o.cmd]
     func = postprocs[o.cmd]
-
     o.extras = extras
+
+    # now make sure subparse does not interfer
+    i = argv.index(o.cmd)
+    topargs = argv[:i]
+    cmdargs = argv[i+1:]
+    o = top.parse_args(topargs)  # no subcommands
 
     if o.module:
         for m in o.module:
@@ -109,8 +117,8 @@ def main(argv=None):
 
         parser.set_defaults(**js["defaults"])
 
-        update, unknown = parser.parse_known_args(argv)  
-        o.__dict__.update(update.__dict__)
+    # now subparser 
+    cmdo = parser.parse_args(cmdargs)
 
     if o.update_config:
         o.saveas = o.config_file
@@ -118,8 +126,8 @@ def main(argv=None):
     # save to file?
     if o.saveas or o.show:
         #saveable = _filter(o.__dict__, global_defaults, diff=False, include_none=False)
-        saveable = _filter(o.__dict__, _parser_defaults(parser), diff=False, include_none=False)
-        string = json_config(saveable, name=o.cmd)
+        saveable = _filter(cmdo.__dict__, _parser_defaults(parser), diff=False, include_none=False)
+        string = json_config(saveable, name=o.cmdo)
         if o.saveas:
             with open(o.saveas, 'w') as f:
                 f.write(string)
@@ -127,7 +135,7 @@ def main(argv=None):
             print(string)
         return
 
-    return func(o)
+    return func(cmdo)
 
 if __name__ == '__main__':
     main()

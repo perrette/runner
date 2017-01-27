@@ -93,7 +93,7 @@ def getfiletype(o):
 
 model = argparse.ArgumentParser(add_help=False, parents=[filetype])
 
-grp = model.add_argument_group('job --> model communication')
+grp = model.add_argument_group('interface', description='job to model communication')
 #grp.add_argument('--io-params', choices=["arg", "file"], default='arg',
 #                 help='mode for passing parameters to model (default:%(default)s)')
 grp.add_argument('--param-file',
