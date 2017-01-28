@@ -129,15 +129,12 @@ grp.add_argument('--default-file', help='default param file, required for certai
 
 def getdefaultparams(o, filetype=None, module=None):
     " default model parameters "
-
     if o.default_file:
         if filetype is None:
             model_parser.error('need to provide filetype along with default_file')
         params = filetype.load(open(o.default_file))
-
     else:
         params = []
-
     return params
 
 
@@ -147,14 +144,15 @@ def getmodel(o):
     filetype = getfiletype(o)
     params = getdefaultparams(o, filetype)
 
-    kw = {a.dest:getattr(o, a.dest) for a in model_parser._actions 
-            if o.dest != 'default_file'}
+    modelargs = register.model.copy() # command, setup, getvar
 
-    model = Model(executable=o.executable, args=o.args, params=params, 
+    modelargs.update( dict(executable=o.executable, args=o.args, params=params, 
                  filetype=filetype, filename=o.file_name,
                  arg_out_prefix=o.arg_out_prefix, arg_param_prefix=o.arg_param_prefix, 
                  env_out=o.env_out, env_prefix=o.env_prefix,
-                 init_dir=o.init_dir)
+                 init_dir=o.init_dir) )
+
+    model = CustomModel(**modelargs)
 
     return model
 

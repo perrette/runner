@@ -237,12 +237,13 @@ class CustomModel(Model):
     def setup(self, rundir):
         if self._setup is None:
             return super(CustomModel, self).setup(rundir)
-        self._setup(rundir, *self._format_args(rundir), **self.params_as_dict())
+        #self._setup(rundir, *self._format_args(rundir), **self.params_as_dict())
+        return self._setup(rundir, self.executable, *self._format_args(rundir), **self.params_as_dict())
 
     def command(self, rundir):
         if self._command is None:
             return super(CustomModel, self).command(rundir)
-        return self._command(rundir, *self._format_args(rundir), **self.params_as_dict())
+        return self._command(rundir, self.executable, *self._format_args(rundir), **self.params_as_dict())
 
     def getvar(self, name, rundir):
         if self._getvar is None:
