@@ -22,11 +22,13 @@ product = argparse.ArgumentParser(add_help=False,
 product.add_argument('factors',
                  type=DiscreteParam.parse,
                  metavar="NAME=VAL1[,VAL2 ...]",
-                 nargs='+')
+                 nargs='*')
 product.add_argument('-o','--out', help="output parameter file")
 
 
 def product_post(o):
+    if not o.factors:
+        product.error("must provide at least one parameter")
     xparams = Prior(o.factors).product()
     return _return_params(xparams, o.out)
 
@@ -42,7 +44,7 @@ grp.add_argument('dist',
                  type=GenericParam.parse,
                  help=GenericParam.parse.__doc__,
                  metavar="NAME=DIST",
-                 nargs='+')
+                 nargs='*')
 
 lhs = argparse.ArgumentParser(add_help=False)
 grp = lhs.add_argument_group("Latin hypercube sampling")
@@ -65,9 +67,11 @@ sample.add_argument('--method', choices=['montecarlo','lhs'], default='lhs',
                     help="sampling method (default=%(default)s)")
 
 def sample_post(o):
-    prior = Prior(o.dist)
     if not o.size:
         sample.error("argument -N/--size is required")
+    if not o.dist:
+        sample.error("must provide at least one parameter")
+    prior = Prior(o.dist)
     xparams = prior.sample(o.size, seed=o.seed, 
                            method=o.method,
                            criterion=o.lhs_criterion,

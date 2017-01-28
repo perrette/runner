@@ -45,6 +45,16 @@ def write_config(cfg, file, defaults=None, diff=False, name=None):
     with open(file, 'w') as f:
         f.write(string)
 
+def load_config(file, parser):
+    " the parser type must be used"
+    js = json.load(open(file))["defaults"]
+    for a in parser._actions:
+        if a.dest in js and a.type is not None:
+            if isinstance(js[a.dest], list):
+                js[a.dest] = [a.type(e) for e in js[a.dest]]
+            else:
+                js[a.dest] = a.type(js[a.dest])
+    return js
 
 
 # pull main job together
@@ -68,6 +78,7 @@ def main(argv=None):
     job.add_argument('--show', action="store_true", help='show config and exit')
     
     top = argparse.ArgumentParser(parents=[job], conflict_handler='resolve')
+    tops = top.add_subparsers(dest='cmd') # just for the command
 
     # add subcommands
     subp = job.add_subparsers(dest='cmd')
@@ -76,6 +87,7 @@ def main(argv=None):
 
     for j in register.jobs:
         subp.add_parser(j.name, parents=[j.parser], help=j.help)
+        tops.add_parser(j.name, help=j.help)
         parsers[j.name] = j.parser
         postprocs[j.name] = j.postproc
 
@@ -89,7 +101,7 @@ def main(argv=None):
 
     # now make sure subparse does not interfer
     i = argv.index(o.cmd)
-    topargs = argv[:i]
+    topargs = argv[:i+1] # include subcommand
     cmdargs = argv[i+1:]
     o = top.parse_args(topargs)  # no subcommands
 
@@ -102,12 +114,8 @@ def main(argv=None):
 
     # read config file?
     if o.config_file:
-
-        js = json.load(open(o.config_file))
-        if js["name"] != o.cmd:
-            warnings.warn("config file created from another command")
-
-        defaults.update(js["defaults"])
+        js = load_config(o.config_file, parser)
+        defaults.update(js)
         
     parser.set_defaults(**defaults)
 
@@ -121,7 +129,7 @@ def main(argv=None):
     if o.saveas or o.show:
         #saveable = _filter(o.__dict__, global_defaults, diff=False, include_none=False)
         saveable = _filter(cmdo.__dict__, _parser_defaults(parser), diff=False, include_none=False)
-        string = json_config(saveable, name=o.cmdo)
+        string = json_config(saveable, name=o.cmd)
         if o.saveas:
             with open(o.saveas, 'w') as f:
                 f.write(string)
