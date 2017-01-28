@@ -8,8 +8,6 @@ It takes subclassing `ParamsFile.dumps`, and if needed `ParamsFile.loads`.
 """
 from simtools.model import ParamsFile, Param
 from simtools.tools import parse_val
-from simtools.register import register_filetype as register
-
 
 class FileTypeWrapper(ParamsFile):
     """take dict loads/dumps (json like), and make it work on params

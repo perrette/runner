@@ -5,9 +5,8 @@ import sys
 from importlib import import_module
 import argparse
 import warnings
-from simtools import __version__
 from simtools import register
-from .config import json_config, load_config
+from .config import json_config, load_config, __version__
 
 
 
@@ -82,7 +81,7 @@ def main(argv=None):
 
     # save to file?
     if o.saveas or o.show:
-        js = json_config(cmdo.__dict__, parser)
+        string = json_config(cmdo.__dict__, parser)
         if o.saveas:
             with open(o.saveas, 'w') as f:
                 f.write(string)

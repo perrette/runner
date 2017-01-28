@@ -1,5 +1,6 @@
 import datetime
 import json
+from simtools import __version__
 
 # job config I/O
 # ==============
@@ -24,9 +25,12 @@ def _filter(kw, after, diff=False, include_none=True):
 
 
 def json_config(cfg, parser=None, diff=False, name=None):
+    if parser is None:
+        defaults = cfg
+    else:
+        defaults = _filter(cfg, _parser_defaults(parser), diff, include_none=False)
     js = {
-        'defaults': _filter(cfg, _parser_defaults(defaults), diff)  \ 
-             if parser is not None else cfg,
+        'defaults': defaults,
         'version':__version__,
         'date':str(datetime.date.today()),
         'name':name,  # just as metadata

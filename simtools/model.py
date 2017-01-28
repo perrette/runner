@@ -114,7 +114,7 @@ class Model(object):
         self.context = dict(filename=filename, executable=executable) # for formatting args and environment variable etc.
         self.init_dir = init_dir
 
-        self.strict = len(self.params > 0)
+        self.strict = len(self.params) > 0
 
         # check !
         if filename:
@@ -160,14 +160,12 @@ class Model(object):
             #TODO: have model params as a dictionary
             self.filetype.dump(self.params, open(self.filename, 'w'))
 
-    @staticmethod
-    def _command_out(rundir):
+    def _command_out(self, rundir):
         if self.arg_out_prefix is None:
             return []
         return (self.arg_out_prefix + rundir).split() 
 
-    @staticmethod
-    def _command_param(name, value, **kwargs):
+    def _command_param(self, name, value, **kwargs):
         if self.arg_param_prefix is None:
             return []
         prefix = self.arg_param_prefix.format(name, name=name, **kwargs)
@@ -181,11 +179,11 @@ class Model(object):
             raise ValueError("model requires an executable")
         args = [self.executable] 
         args += self._command_out(rundir)
-        args += self._format_args(rundir, **self.context)
+        args += self._format_args(rundir)
 
         # prepare modified command-line arguments with appropriate format
         for p in self.params:
-            args += self._command_param(p.name, p.value, **p.__dict__)
+            args += self._command_param(**p.__dict__)
 
         return args
 
@@ -205,7 +203,7 @@ class Model(object):
         context.update(self.params_as_dict())
 
         # format them with appropriate prefix
-        update = {self.env_prefix.upper()+k.upper():context[k] 
+        update = {self.env_prefix.upper()+k.upper():str(context[k])
                for k in context if context[k] is not None}
 
         # update base environment
