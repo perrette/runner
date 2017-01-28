@@ -7,12 +7,13 @@ from simtools.tools import parse_val
 from simtools.submit import submit_job
 #from simtools.model.generic import get_or_make_filetype
 
-ARG_TEMPLATE = "--{name} {value}" # by default 
-OUT_TEMPLATE = "--out {rundir}" # by default 
-
+# default values
+ARG_OUT_PREFIX = ""
+ARG_PARAM_PREFIX = "--{}"
 ENV_PREFIX = "SIMTOOLS_"
-ENV_RUNDIR = "RUNDIR"
-
+ENV_OUT = "RUNDIR"
+FILENAME = None
+FILETYPE = None
 
 
 class Param(object):
@@ -67,13 +68,18 @@ class ParamsFile(object):
 # Model instance
 # ==============
 class Model(object):
-    def __init__(self, executable=None, args=None, params=None, filetype=None, filename=None, out_template=OUT_TEMPLATE, arg_template=ARG_TEMPLATE, env_out=ENV_RUNDIR, env_prefix=ENV_PREFIX):
+    def __init__(self, executable=None, args=None, params=None, 
+                 filetype=FILETYPE, filename=FILENAME, 
+                 arg_out_prefix=ARG_OUT_PREFIX, arg_param_prefix=ARG_PARAM_PREFIX, 
+                 env_out=ENV_OUT, env_prefix=ENV_PREFIX,
+                 init_dir=None,
+                 ):
         """
         * executable : runscript
         * args : [str] or str, optional
             list of command arguments to pass to executable. They may contain
             formattable patterns {rundir}, {runid}, {runtag}. Typically run directory
-            or input parameter file. Prefer out_template for output directory.
+            or input parameter file. Prefer arg_out for output directory.
         * params : [Param], optional
             list of model parameters to be updated with modified params
             If params is provided, strict checking of param names is performed during 
@@ -81,15 +87,18 @@ class Model(object):
         * filetype : ParamsFile instance or anything with `dump` method, optional
         * filename : relative path to rundir, optional
             filename for parameter passing to model (also needs filetype)
-        * out_template : str, optional
-            command-line passing of output dir, e.g. "--out {}" or "{}"
-        * arg_template : str, optional
-            command-line passing of one parameter, e.g. "--{} {}" (name, value)
+        * arg_out_prefix : str, optional
+            prefix for command-line passing of output dir (e.g. "" or "--out ")
+        * arg_param_prefix : str, optional
+            prefix for command-line passing of one parameter, e.g. "--{}"
         * env_out : str, optional
             environment variable name for output directory (to be appended to prefix)
         * env_prefix : str, optional
             environment passing of parameters, e.g. "SIMTOOLS_" to be completed
             with parameter name or RUNDIR for model output directory.
+        * init_dir: str, optional
+            directory to start the model from
+            by default from the current directory
         """
         self.executable = executable
         if isinstance(args, basestring):
@@ -98,11 +107,12 @@ class Model(object):
         self.params = params or []
         self.filetype = filetype
         self.filename = filename
-        self.out_template = out_template or ""
-        self.arg_template = arg_template or ""
+        self.arg_out_prefix = arg_out_prefix or ""
+        self.arg_param_prefix = arg_param_prefix or ""
         self.env_prefix = env_prefix or ""
         self.env_out = env_out or ""
         self.context = dict(filename=filename, executable=executable) # for formatting args and environment variable etc.
+        self.init_dir = init_dir
 
         self.strict = len(self.params > 0)
 
@@ -152,11 +162,12 @@ class Model(object):
 
     @staticmethod
     def _command_out(rundir):
-        return self.out_template.format(rundir, rundir=rundir).split()
+        return (self.arg_out_prefix + rundir).split()
 
     @staticmethod
     def _command_param(name, value, **kwargs):
-        return self.arg_template.format(name, value, name=name, value=value, **kwargs).split()
+        prefix = self.arg_param_prefix.format(name, name=name, **kwargs)
+        return (prefix + str(value)).split()
 
     def _format_args(self, rundir):
         return [arg.format(rundir, rundir=rundir, **self.context) for arg in self.args]
@@ -198,14 +209,14 @@ class Model(object):
         env = os.environ.copy()
         env.update( self.environ(rundir) )
         args = self.command(rundir)
-        return subprocess.Popen(args, env=env, **kwargs)
+        return subprocess.Popen(args, env=env, cwd=self.init_dir, **kwargs)
 
     def submit(self, rundir, **kwargs):
         """Submit job to slurm or whatever is specified via **kwargs
         """
         env = self.environ(rundir)
         args = self.command(rundir)
-        return submit_job(" ".join(args), env=env, **kwargs)
+        return submit_job(" ".join(args), env=env, workdir=self.init_dir, **kwargs)
 
     def getvar(self, name, rundir):
         """get state variable by name given run directory

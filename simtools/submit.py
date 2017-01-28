@@ -105,7 +105,7 @@ class SlurmProcess(object):
 
 
 def submit_job(commands, manager=MANAGER, jobfile=None, 
-               output=None, error=None, **kwargs):
+               output=None, error=None, workdir=None, **kwargs):
     """Write a series of command to file and execute them
 
     commands : [str] or str
@@ -116,15 +116,19 @@ def submit_job(commands, manager=MANAGER, jobfile=None,
     output, error : log files (str)
     **kwargs : other, manager-specific arguments
     """
+    opt = {}  # to be passed on submit
+
     if manager is None:
         # make it behave more like SLURM
-        if "output" in kwargs:
-            kwargs["stdout"] = kwargs.pop("output")
-        if "error" in kwargs:
-            kwargs["stderr"] = kwargs.pop("error")
+        if output: kwargs["stdout"] = output
+        if error: kwargs["stderr"] = error
+        if workdir: 
+            kwargs["cwd"] = workdir
         job = JobScript(commands, **kwargs)
 
     elif manager == "slurm":
+        if workdir: 
+            opt["workdir"] = workdir
         job = Slurm(commands, **kwargs)
 
     else:
@@ -137,6 +141,6 @@ def submit_job(commands, manager=MANAGER, jobfile=None,
     with open(jobfile, "w") as f:
         f.write(job.script)
 
-    p = job.submit(jobfile)
+    p = job.submit(jobfile, **opt)
 
     return p
