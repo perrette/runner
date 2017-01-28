@@ -172,38 +172,38 @@ def getmodel(o):
     """return model
     """
     # generic model
-    if o.module:
+    if getattr(o,'module',None):
         model = getcustommodel(o)
     else:
         model = getgenericmodel(o)
     return model
 
 
-install = argparse.ArgumentParser(add_help=False, description=__doc__, parents=[model_parser])
-install.add_argument('-m','--module', default='model', help='new module to be created')
-install.add_argument('-f','--force', action='store_true', help='overwrite any existing module')
-install.add_argument('-p', '--default-params', nargs='+', metavar="NAME=VALUE", type=Param.parse)
-
-
-def install_post(o):
-    from simtools.templates.render import render_module
-
-    modulefile = o.module.replace('/','.') + '.py'
-    if os.path.exists(modulefile) and not o.force:
-        install.error("module file already exists:"+modulefile)
-
-    model = getgenericmodel(o)
-    modulesource = render_module(model)
-
-    try:
-        with open(modulefile, 'w') as f:
-            f.write(modulesource)
-    except:
-        print(modulesource)
-        raise
-    os.system('chmod +x '+modulefile)
-
-    print(modulefile,'created')
-
-register.register_job('install', install, install_post, 
-                      help='generate model script that works with job')
+#install = argparse.ArgumentParser(add_help=False, description=__doc__, parents=[model_parser])
+#install.add_argument('-m','--module', default='model', help='new module to be created')
+#install.add_argument('-f','--force', action='store_true', help='overwrite any existing module')
+#install.add_argument('-p', '--default-params', nargs='+', metavar="NAME=VALUE", type=Param.parse)
+#
+#
+#def install_post(o):
+#    from simtools.templates.render import render_module
+#
+#    modulefile = o.module.replace('/','.') + '.py'
+#    if os.path.exists(modulefile) and not o.force:
+#        install.error("module file already exists:"+modulefile)
+#
+#    model = getgenericmodel(o)
+#    modulesource = render_module(model)
+#
+#    try:
+#        with open(modulefile, 'w') as f:
+#            f.write(modulesource)
+#    except:
+#        print(modulesource)
+#        raise
+#    os.system('chmod +x '+modulefile)
+#
+#    print(modulefile,'created')
+#
+#register.register_job('install', install, install_post, 
+#                      help='generate model script that works with job')
