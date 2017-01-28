@@ -10,6 +10,24 @@ from simtools.model import ParamsFile, Param
 from simtools.tools import parse_val
 from simtools.register import register_filetype as register
 
+
+class FileTypeWrapper(ParamsFile):
+    """take dict loads/dumps (json like), and make it work on params
+    """
+    def __init__(self, dumps=None, loads=None):
+        self._loads = loads
+        self._dumps = dumps
+
+    def dumps(self, params):
+        assert self._dumps is not None
+        self._dumps({p.name:p.value for p in params})
+
+    def loads(self, string):
+        assert self._loads is not None
+        kw = self._loads(string)
+        return [Param(k, kw[k]) for k in kw]
+
+
 # Json file types
 # ===============
 
@@ -119,17 +137,3 @@ class LineSeparatorFix(LineSeparator):
         string = string.lstrip(self.prefix).rstrip(self.suffix)
         return LineSeparator.loads(self, string)
 
-
-
-class FileTypeWrapper(ParamsFile):
-    """take a param type that works on dictionary, and make it work on params
-    """
-    def __init__(self, filetype_kw):
-        self.filetype_kw = filetype_kw
-
-    def dumps(self, params):
-        self.filetype_kw.dumps({p.name:p.value for p in params})
-
-    def loads(self, string):
-        kw = self.filetype_kw.loads(string)
-        return [Param(k, kw[k]) for k in kw]

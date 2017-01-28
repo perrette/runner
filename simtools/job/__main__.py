@@ -98,7 +98,7 @@ def main(argv=None):
             import_module(m)
 
     # parse again with updated defaults
-    defaults = register.defaults[o.cmd].copy()  # --module
+    defaults = register._defaults[o.cmd].copy()  # --module
 
     # read config file?
     if o.config_file:

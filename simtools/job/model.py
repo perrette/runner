@@ -21,7 +21,8 @@ import simtools
 from simtools import register
 import simtools.model as mod
 from simtools.model import Param, Model, CustomModel, ParamsFile
-from simtools.filetype import JsonDict, LineSeparator, LineTemplate, TemplateFile
+from simtools.filetype import (JsonDict, LineSeparator, LineTemplate, 
+                               TemplateFile, FileTypeWrapper)
 
 
 # model file type
@@ -145,8 +146,11 @@ def getmodel(o):
     # check register first
     modelargs = register.model.copy() # command, setup, getvar, filetype
 
-    filetype = modelargs.pop('filetype')
-    if not filetype:
+    loads = modelargs.pop('loads')
+    dumps = modelargs.pop('dumps')
+    if loads or dumps:
+        filetype = FileTypeWrapper(dumps, loads)
+    else:
         filetype = getfiletype(o)
 
     params = getdefaultparams(o, filetype)
@@ -160,4 +164,3 @@ def getmodel(o):
     model = CustomModel(**modelargs)
 
     return model
-
