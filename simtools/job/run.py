@@ -145,6 +145,7 @@ def run_post(o):
         o.include_default = True
 
     xrun = XRun(model, xparams)
+    xrun.setup(os.join.path(o.expdir, 'params.txt'))
     
     if o.runid:
         indices = parse_slurm_array_indices(o.runid)
