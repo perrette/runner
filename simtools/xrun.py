@@ -169,21 +169,21 @@ class XRun(object):
 
         # update model parameters, setup directory
         model = copy.deepcopy(self.model) 
-        model.update(params)
+        model.update(params, context)
 
         if dry_run:
-            print(model.command(rundir, context))
+            print(model.command(rundir))
             return
 
         model.setup(rundir)
 
         if submit:
             assert 'array' not in kwargs, "batch command for --array"
-            p = model.submit(rundir, context, output=output, error=error,
+            p = model.submit(rundir, output=output, error=error,
                          jobfile=os.path.join(rundir, 'submit.sh'), **kwargs)
 
         else:
-            p = model.run(rundir, context=context, stdout=stdout, stderr=stderr)
+            p = model.run(rundir, stdout=stdout, stderr=stderr)
 
         if not background:
             ret = p.wait()

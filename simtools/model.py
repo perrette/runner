@@ -10,6 +10,10 @@ from simtools.submit import submit_job
 ARG_TEMPLATE = "--{name} {value}" # by default 
 OUT_TEMPLATE = "--out {rundir}" # by default 
 
+ENV_PREFIX = "SIMTOOLS_"
+ENV_RUNDIR = "RUNDIR"
+
+
 
 class Param(object):
     """default parameter --> useful to specify custom I/O formats
@@ -63,37 +67,54 @@ class ParamsFile(object):
 # Model instance
 # ==============
 class Model(object):
-    def __init__(self, executable=None, args=None, params=None, filetype=None):
+    def __init__(self, executable=None, args=None, params=None, filetype=None, filename=None, out_template=OUT_TEMPLATE, arg_template=ARG_TEMPLATE, env_out=ENV_RUNDIR, env_prefix=ENV_PREFIX):
+        """
+        * executable : runscript
+        * args : [str] or str, optional
+            list of command arguments to pass to executable. They may contain
+            formattable patterns {rundir}, {runid}, {runtag}. Typically run directory
+            or input parameter file. Prefer out_template for output directory.
+        * params : [Param], optional
+            list of model parameters to be updated with modified params
+            If params is provided, strict checking of param names is performed during 
+            update, with informative error message.
+        * filetype : ParamsFile instance or anything with `dump` method, optional
+        * filename : relative path to rundir, optional
+            filename for parameter passing to model (also needs filetype)
+        * out_template : str, optional
+            command-line passing of output dir, e.g. "--out {}" or "{}"
+        * arg_template : str, optional
+            command-line passing of one parameter, e.g. "--{} {}" (name, value)
+        * env_out : str, optional
+            environment variable name for output directory (to be appended to prefix)
+        * env_prefix : str, optional
+            environment passing of parameters, e.g. "SIMTOOLS_" to be completed
+            with parameter name or RUNDIR for model output directory.
+        """
         self.executable = executable
-        self.args = args
+        if isinstance(args, basestring):
+            args = args.split()
+        self.args = args or []
         self.params = params or []
         self.filetype = filetype
+        self.filename = filename
+        self.out_template = out_template or ""
+        self.arg_template = arg_template or ""
+        self.env_prefix = env_prefix or ""
+        self.env_out = env_out or ""
+        self.context = dict(filename=filename, executable=executable) # for formatting args and environment variable etc.
+
         self.strict = len(self.params > 0)
 
-    def setup(self, rundir, context=None):
-        pass
-        #raise NotImplementedError("setup")
-
-    def command(self, rundir, context=None):
-        raise NotImplementedError("command")
-
-    def run(self, rundir, context=None, **kwargs):
-        """Popen(Model.command(context), **kwargs)
-        """
-        args = self.command(rundir, context)
-        return subprocess.Popen(args, **kwargs)
-
-    def submit(self, rundir, context=None, **kwargs):
-        """Slurm(Model.command(context), **kwargs)
-        """
-        args = self.command(rundir, context)
-        return submit_job(" ".join(args), **kwargs)
-
-    def getvar(self, name, rundir):
-        raise NotImplementedError("getvar")
+        # check !
+        if filename:
+            if filetype is None: 
+                raise ValueError("need to provide FileType with filename")
+            if not hasattr(filetype, "dumps"):
+                raise TypeError("invalid filetype: no `dumps` method: "+repr(filetype))
 
 
-    def update(self, params_kw):
+    def update(self, params_kw, context=None):
         """Update parameter from ensemble
         """
         names = [p.name for p in self.params]
@@ -117,151 +138,100 @@ class Model(object):
                 else:
                     self.params.append(Param(name, value=value))
 
+        self.context.update(context or {})
+
+
+    def setup(self, rundir):
+        """create run directory and write parameters to file
+        """
+        if not os.path.exists(rundir):
+            os.makedirs(rundir)
+        if self.filetype and self.filename:
+            #TODO: have model params as a dictionary
+            self.filetype.dump(self.params, open(self.filename, 'w'))
+
+    @staticmethod
+    def _command_out(rundir):
+        return self.out_template.format(rundir, rundir=rundir).split()
+
+    @staticmethod
+    def _command_param(name, value, **kwargs):
+        return self.arg_template.format(name, value, name=name, value=value, **kwargs).split()
+
+    def _format_args(self, rundir):
+        return [arg.format(rundir, rundir=rundir, **self.context) for arg in self.args]
+
+    def command(self, rundir):
+        if self.executable is None:
+            raise ValueError("model requires an executable")
+        args = [self.executable] 
+        args += self._command_out(rundir)
+        args += self._format_args(rundir, **self.context)
+
+        # prepare modified command-line arguments with appropriate format
+        for p in self.params:
+            args += self._command_param(p.name, p.value, **p.__dict__)
+
+        return args
 
     def params_as_dict(self):
         return {p.name:p.value for p in self.params}
 
-
-
-class GenericModel(Model):
-    """Generic model configuration
-    """
-    def __init__(self, executable, args=None, params=None, 
-                 arg_template=ARG_TEMPLATE, out_template=OUT_TEMPLATE, 
-                 filename=None, filetype=None, setenviron=False):
+    def environ(self, rundir):
+        """define environment variables to pass to model
         """
-        executable : runscript
-        args : [str] or str, optional
-            list of command arguments to pass to executable. They may contain
-            formattable patterns {rundir}, {runid}, {runtag}. Typically run directory
-            or input parameter file.
-        params : [Param], optional
-            list of model parameters to be updated with modified params
-            If params is provided, strict checking of param names is performed during 
-            update, with informative error message.
-        arg_template : str, optional
-            Indicate parameter format for command-line with placeholders `{name}` and 
-            `{value}`, or empty placeholders {} in this order. 
-            By default `--{name} {value}`, but note that any field
-            in parameter definition can be used. Set to None or empty list to avoid
-            passing parameters via the command-line.
-        out_template : str, optional
-            template to pass  the output directory to the model, use {} or {rundir}
-        filename : str, optional
-            By default parameters are provided as command-line arguments but if file
-            name is provided they will be written to file. Path is relative to rundir.
-        filetype : ParamsFile instance or anything with `dump` method, optional
-        setenviron : bool, optional
-            if True, define parameter values as environment variables
-        """
-        self.executable = executable
-        if isinstance(args, basestring):
-            args = args.split()
-        self.args = args or []
-        self.params = params or []
-        self.strict = len(self.params) > 0  
-        if isinstance(arg_template, list):
-            arg_template = " ".join(arg_template)
-        assert isinstance(arg_template, basestring)
-        self.arg_template = arg_template
-        if isinstance(out_template, list):
-            out_template = " ".join(out_template)
-        assert isinstance(out_template, basestring)
-        self.out_template = out_template 
-        self.filename = filename 
-        self.filetype = filetype
-        self.setenviron = setenviron
+        # prepare variables to pass to environment
+        context = self.context.copy()
+        if self.env_out:
+            context[self.env_out] = rundir 
+        context.update(self.params_as_dict())
 
-        if filename:
-            if filetype is None: 
-                raise ValueError("need to provide FileType with filename")
-            if not hasattr(filetype, "dumps"):
-                raise TypeError("invalid filetype: no `dumps` method: "+repr(filetype))
-
-
-
-    def setup(self, rundir):
-        """Write param file to rundir if necessary
-        """
-        if not os.path.exists(rundir):
-            os.makedirs(rundir)
-        if self.filename:
-            fname = os.path.join(rundir, self.filename)
-            with open(fname, "w") as f:
-                self.filetype.dump(self.params, f)
-
-
-    def command(self, rundir=None, context=None):
-        """
-        context : dict of experiment variables such as `rundir` and `runid`, which 
-            maybe used to format some of the commands before passing to Popen.
-        """
-        if self.executable is None:
-            raise ValueError("model requires an executable")
-        args = [self.executable] + [self.out_template.format(rundir, rundir=rundir)] + self.args
-
-        # prepare modified command-line arguments with appropriate format
-        for p in self.params:
-            string = self.arg_template.format(p.name, p.value, **p.__dict__)
-            args.extend(string.split())
-
-        # replace patterns such as {runid} in command
-        for i, arg in enumerate(args):
-            args[i] = arg.format(rundir=rundir, **context)
-
-        return args
-
-    def getenv(self, rundir, context=None):
-        env = makenv(context or {})
-        env.update(self.params_as_dict())
-        env.update({'rundir':rundir})
+        # format them with appropriate prefix
+        env = {self.env_prefix.upper()+k.upper():context[k] 
+               for k in context if context[k] is not None}
         return env
 
-    def run(self, rundir, context=None, **kwargs):
-        """Popen(Model.command(context), **kwargs)
+
+    def run(self, rundir, **kwargs):
+        """open subprocess
         """
-        if self.setenviron:
-            env = os.environ.copy()
-            env.update(self.getenv(rundir, context))
-            kwargs['env'] = env
-        super(GenericModel, self).run(rundir, context, **kwargs)
+        env = os.environ.copy()
+        env.update( self.environ(rundir) )
+        args = self.command(rundir)
+        return subprocess.Popen(args, env=env, **kwargs)
 
-    def submit(self, rundir, context=None, **kwargs):
-        if self.setenviron:
-            kwargs['env'] = self.getenv(rundir, context)
-        super(GenericModel, self).submit(rundir, context, **kwargs)
+    def submit(self, rundir, **kwargs):
+        """Submit job to slurm or whatever is specified via **kwargs
+        """
+        env = self.environ(rundir)
+        args = self.command(rundir)
+        return submit_job(" ".join(args), env=env, **kwargs)
 
+    def getvar(self, name, rundir):
+        """get state variable by name given run directory
+        """
+        raise NotImplementedError("getvar")
 
-ENVPREFIX = "SIMTOOLS_"
-
-def makenv(context, env=None):
-    env = env or {}
-    for k in context:
-        if context[k] is not None:
-            env[ENVPREFIX+k.upper()] = context[k]
-    return env
 
 
 class CustomModel(Model):
     """User-provided model (e.g. via job install)
     """
-    def __init__(self, executable=None, command=None, setup=None, getvar=None, args=None, params=None, filetype=None):
+    def __init__(self, command=None, setup=None, getvar=None, **kwargs):
         self._command = command
         self._setup = setup
         self._getvar = getvar
-        super(CustomModel, self).__init__(executable, args, params, filetype=filetype)
+        super(CustomModel, self).__init__(**kwargs)
 
-    def setup(self, rundir, context=None):
+    def setup(self, rundir):
         if self._setup is None:
-            return  # no setup ...
-        self._setup(rundir)
+            return super(CustomModel, self).setup(rundir)
+        self._setup(rundir, *self._format_args(rundir), **self.params_as_dict())
 
-    def command(self, rundir, context=None):
+    def command(self, rundir):
         if self._command is None:
-            raise ValueError("no make_command function provided")
-        return self._command(rundir, 
-                             self.args, 
-                             **{p.name:p.value for p in self.params})
+            return super(CustomModel, self).command(rundir)
+        return self._command(rundir, *self._format_args(rundir), **self.params_as_dict())
 
     def getvar(self, name, rundir):
         if self._getvar is None:
