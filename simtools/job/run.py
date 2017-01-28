@@ -36,6 +36,7 @@ from simtools.xrun import XParams, XRun
 from simtools import register
 from simtools.job.model import model_parser as model, getmodel
 import simtools.job.stats  # register !
+from simtools.job.config_file import write_config
 
 # prepare job
 # ===========
@@ -124,7 +125,6 @@ run = argparse.ArgumentParser(add_help=False, parents=[model, simu, submit, slur
 
 # sub
 _slurmarray = argparse.ArgumentParser(add_help=False, parents=[model, simu])
-_slurmarray_defaults = {a.dest:a.default for a in _slurmarray._actions}  # default arguments
 
 
 def _autodir(params):
@@ -176,8 +176,7 @@ def run_post(o):
 
         # write command based on namespace state
         file = tempfile.mktemp(dir=o.expdir, prefix='job.run-array.', suffix='.json')
-        from .__main__ import write_config
-        write_config(cfg, file, defaults=_slurmarray_defaults, diff=True, name="run")
+        write_config(cfg, file, parser=_slurmarray)
         template = "{job} -c {config_file} run --id $SLURM_ARRAY_TASK_ID --params-file {params_file}"
         command = template.format(job="job", config_file=file, params_file=params_file) 
         #FIXME: job may be a full path `/path/to/job run` or called via `[/path/to/]python job run`

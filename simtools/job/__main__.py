@@ -5,56 +5,11 @@ import sys
 from importlib import import_module
 import argparse
 import warnings
-import json
 from simtools import __version__
 from simtools import register
-
-# job config I/O
-# ==============
-def _parser_defaults(parser):
-    " parser default values "
-    return {a.dest: a.default for a in parser._actions}
+from .config import json_config, load_config
 
 
-def _modified(kw, defaults):
-    """return key-words that are different from default parser values
-    """
-    return {k:kw[k] for k in kw if k in defaults and kw[k] != defaults[k]}
-
-def _filter(kw, after, diff=False, include_none=True):
-    if diff:
-        filtered = _modified(kw, after)
-    else:
-        filtered = {k:kw[k] for k in kw if k in after}
-    if not include_none:
-        filtered = {k:filtered[k] for k in filtered if filtered[k] is not None}
-    return filtered
-
-def json_config(cfg, defaults=None, diff=False, name=None):
-    import datetime
-    js = {
-        'defaults': _filter(cfg, defaults, diff) if defaults is not None else cfg,
-        'version':__version__,
-        'date':str(datetime.date.today()),
-        'name':name,  # just as metadata
-    }
-    return json.dumps(js, indent=2, sort_keys=True, default=lambda x: str(x))
-
-def write_config(cfg, file, defaults=None, diff=False, name=None):
-    string = json_config(cfg, defaults, diff, name)
-    with open(file, 'w') as f:
-        f.write(string)
-
-def load_config(file, parser):
-    " the parser type must be used"
-    js = json.load(open(file))["defaults"]
-    for a in parser._actions:
-        if a.dest in js and a.type is not None:
-            if isinstance(js[a.dest], list):
-                js[a.dest] = [a.type(e) for e in js[a.dest]]
-            else:
-                js[a.dest] = a.type(js[a.dest])
-    return js
 
 
 # pull main job together
@@ -127,9 +82,7 @@ def main(argv=None):
 
     # save to file?
     if o.saveas or o.show:
-        #saveable = _filter(o.__dict__, global_defaults, diff=False, include_none=False)
-        saveable = _filter(cmdo.__dict__, _parser_defaults(parser), diff=False, include_none=False)
-        string = json_config(saveable, name=o.cmd)
+        js = json_config(cmdo.__dict__, parser)
         if o.saveas:
             with open(o.saveas, 'w') as f:
                 f.write(string)
