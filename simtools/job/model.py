@@ -107,7 +107,6 @@ grp.add_argument('--executable','-x', default='echo',
                       help='model executable (e.g. runscript etc)')
 grp.add_argument('--args', 
                  help='model arguments (quoted).\
-can also be passed after "--" separator. \
 allowed tags filled by job: \
     {expdir} (super folder), \
     {rundir} (ensemble member folder), \
@@ -125,7 +124,7 @@ def getdefaultparams(o, filetype=None, module=None):
 
     _default_params = getattr(module, '_default_params', None)
 
-    if o.default_params:
+    if getattr(o,'default_params', None):
         params = o.default_params
 
     elif o.default_file:

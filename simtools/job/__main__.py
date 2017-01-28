@@ -49,25 +49,23 @@ def write_config(cfg, file, defaults=None, diff=False, name=None):
 
 # pull main job together
 # ======================
-
-# prepare parser
-job = argparse.ArgumentParser(parents=[], description=__doc__, 
-                              formatter_class=argparse.RawTextHelpFormatter)
-
-job.add_argument('-v','--version', action='version', version=__version__)
-job.add_argument('-m','--module', nargs='+',
-                 help='load python module(s) that contain custom file type or model definitions (see simtools.register)')
-job.add_argument('-c','--config-file', 
-                    help='load defaults from configuration file')
-x = job.add_mutually_exclusive_group()
-x.add_argument('-s','--saveas', action="store_true", 
-               help='save selected defaults to config file and exit')
-x.add_argument('-u', '--update-config', action="store_true", 
-                    help='-uc FILE is an alias for -c FILE -s FILE')
-job.add_argument('--show', action="store_true", help='show config and exit')
-
-
 def main(argv=None):
+
+    # prepare parser
+    job = argparse.ArgumentParser(parents=[], description=__doc__, 
+                                  formatter_class=argparse.RawTextHelpFormatter)
+
+    job.add_argument('-v','--version', action='version', version=__version__)
+    job.add_argument('-m','--module', nargs='+',
+                     help='load python module(s) that contain custom file type or model definitions (see simtools.register)')
+    job.add_argument('-c','--config-file', 
+                        help='load defaults from configuration file')
+    x = job.add_mutually_exclusive_group()
+    x.add_argument('-s','--saveas', action="store_true", 
+                   help='save selected defaults to config file and exit')
+    x.add_argument('-u', '--update-config', action="store_true", 
+                        help='-uc FILE is an alias for -c FILE -s FILE')
+    job.add_argument('--show', action="store_true", help='show config and exit')
     
     top = argparse.ArgumentParser(parents=[job], conflict_handler='resolve')
 
@@ -84,19 +82,10 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
 
-    # pass anything after -- to extras
-    if '--' in argv:
-        i = argv.index('--')
-        extras = argv[i+1:]
-        argv = argv[:i]
-    else:
-        extras = None
-
     # parse arguments and select sub-parser
     o = job.parse_args(argv)
     parser = parsers[o.cmd]
     func = postprocs[o.cmd]
-    o.args = (getattr(o, 'args', None) or []) + (extras or [])
 
     # now make sure subparse does not interfer
     i = argv.index(o.cmd)

@@ -176,6 +176,7 @@ def run_post(o):
 
         # write command based on namespace state
         file = tempfile.mktemp(dir=o.expdir, prefix='job.run-array.', suffix='.json')
+        from .__main__ import write_config
         write_config(cfg, file, defaults=_slurmarray_defaults, diff=True, name="run")
         template = "{job} -c {config_file} run --id $SLURM_ARRAY_TASK_ID --params-file {params_file}"
         command = template.format(job="job", config_file=file, params_file=params_file) 

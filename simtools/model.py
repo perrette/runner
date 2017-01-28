@@ -162,9 +162,11 @@ class GenericModel(Model):
         self.strict = len(self.params) > 0  
         if isinstance(arg_template, list):
             arg_template = " ".join(arg_template)
+        assert isinstance(arg_template, basestring)
         self.arg_template = arg_template
         if isinstance(out_template, list):
             out_template = " ".join(out_template)
+        assert isinstance(out_template, basestring)
         self.out_template = out_template 
         self.filename = filename 
         self.filetype = filetype
@@ -189,7 +191,7 @@ class GenericModel(Model):
                 self.filetype.dump(self.params, f)
 
 
-    def command(self, rundir=None, **context):
+    def command(self, rundir=None, context=None):
         """
         context : dict of experiment variables such as `rundir` and `runid`, which 
             maybe used to format some of the commands before passing to Popen.
@@ -201,7 +203,7 @@ class GenericModel(Model):
         # prepare modified command-line arguments with appropriate format
         for p in self.params:
             string = self.arg_template.format(p.name, p.value, **p.__dict__)
-            args.append(string.split())
+            args.extend(string.split())
 
         # replace patterns such as {runid} in command
         for i, arg in enumerate(args):
