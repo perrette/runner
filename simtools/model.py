@@ -246,7 +246,6 @@ class CustomModel(Model):
     def setup(self, rundir):
         if self._setup is None:
             return super(CustomModel, self).setup(rundir)
-        #self._setup(rundir, *self._format_args(rundir), **self.params_as_dict())
         return self._setup(rundir, self.executable, *self._format_args(rundir), **self.params_as_dict())
 
     def command(self, rundir):
@@ -256,5 +255,5 @@ class CustomModel(Model):
 
     def getvar(self, name, rundir):
         if self._getvar is None:
-            raise ValueError("no getvar function provided")
-        return self._getvar(name, rundir)
+            return super(CustomModel, self).getvar(name, rundir)
+        return self._getvar(name, rundir, self.executable, *self._format_args(rundir), **self.params_as_dict())
