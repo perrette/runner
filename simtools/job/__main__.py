@@ -97,6 +97,9 @@ def main(argv=None):
         for m in o.module:
             import_module(m)
 
+    # parse again with updated defaults
+    defaults = register.defaults[o.cmd].copy()  # --module
+
     # read config file?
     if o.config_file:
 
@@ -104,7 +107,9 @@ def main(argv=None):
         if js["name"] != o.cmd:
             warnings.warn("config file created from another command")
 
-        parser.set_defaults(**js["defaults"])
+        defaults.update(js["defaults"])
+        
+    parser.set_defaults(**defaults)
 
     # now subparser 
     cmdo = parser.parse_args(cmdargs)

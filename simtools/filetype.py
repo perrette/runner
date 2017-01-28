@@ -118,3 +118,18 @@ class LineSeparatorFix(LineSeparator):
     def loads(self, string):
         string = string.lstrip(self.prefix).rstrip(self.suffix)
         return LineSeparator.loads(self, string)
+
+
+
+class FileTypeWrapper(ParamsFile):
+    """take a param type that works on dictionary, and make it work on params
+    """
+    def __init__(self, filetype_kw):
+        self.filetype_kw = filetype_kw
+
+    def dumps(self, params):
+        self.filetype_kw.dumps({p.name:p.value for p in params})
+
+    def loads(self, string):
+        kw = self.filetype_kw.loads(string)
+        return [Param(k, kw[k]) for k in kw]
