@@ -1,4 +1,10 @@
 """Param type factory
+
+Helper function to define your own file type.
+Also take a look at simtools.ext
+
+For more complex formats you may want to define your own class. 
+It takes subclassing `ParamsFile.dumps`, and if needed `ParamsFile.loads`.
 """
 from simtools.model import ParamsFile, Param
 from simtools.tools import parse_val
@@ -57,6 +63,9 @@ class TemplateFile(ParamsFile):
 
 class LineTemplate(ParamsFile):
     """Generic class with {name} and {value} placeholders (`dumps` ONLY !)
+
+    Example:
+    >>> filetype = LineTemplate("{name:>10}:{value:24}"))
     """
     def __init__(self,  line):
         self.line = line
@@ -73,10 +82,14 @@ class LineSeparator(LineTemplate):
     """
     def __init__(self, sep=None, reverse=False):
         self.sep = sep or " "
-        self.line = "{name}"+self.sep+"{value}"
         self.reverse = reverse
+
+    @property
+    def line(self):
+        line = "{name}"+self.sep+"{value}"
         if reverse:
-            self.line = self.line.format(name="{value}", value="{name}")
+            line = line.format(name="{value}", value="{name}")
+        return line
 
     def loads(self, string):
         lines = string.splitlines()
@@ -96,7 +109,11 @@ class LineSeparatorFix(LineSeparator):
         LineSeparator.__init__(self, sep, reverse)
         self.prefix = prefix
         self.suffix = suffix
-        self.line = self.prefix + self.line + self.suffix
+
+    @property
+    def line(self):
+        line = super(LineSeparatorFix, self)
+        return self.prefix + line + self.suffix
 
     def loads(self, string):
         string = string.lstrip(self.prefix).rstrip(self.suffix)

@@ -3,32 +3,29 @@
 Examples
 --------
 
-Job-model interface
-
 >>> job run -x runscript.sh -p a=2,3,4 b=0,1
 
 The command above run an ensemble of 6 model versions.
 
 By default runscript.sh is called with command line arguments for parameters
 and run directory, as specified by --param-arg and --out-arg arguments, which 
-are templates formatted at run-time with appropriate values.
+are templates formatted at run-time with appropriate values. 
+For more complex settings, it might be better to generate your own script, 
+and edit it if necessary:
 
->>> job --saveas run.json run -x runscript.sh --param-arg "--{name} {value}" --out-arg "--out {rundir}" --qos short --account megarun
+>>> job install -m model -x runscript.sh --param-arg "--{name} {value}" --out-arg "--out {rundir}"
+>>> job run -m model -p a=2,3,4 b=0,1
 
-Save arguments to `run.json` file to be used as default arguments in subsequent calls.
+Additionally any command may be saved (here to run.json):
+
+>>> job --saveas run.json run -m model --qos short --account megarun
+
+to be reused subsequently:
 
 >>> job -c run.json run -p a=2,3,4 b=0,1
 
-Load run.json as default argument, and perform ensemble simulation. 
 
->>> job -m model.py run -p a=2,3,4 b=0,1
-
-Use custom filetype and model definition.
-
->>> job run -c run.json -- --years 100
-
-The arguments after `--` are formatted with appropriate runtime variables and
-passed to the runscript as command line argument.
+Use custom filetype and model definition (see job install)
 """
 import argparse
 import tempfile
@@ -37,7 +34,7 @@ from simtools.prior import Prior, DiscreteParam
 #from simtools.xparams import XParams
 from simtools.xrun import XParams, XRun
 from simtools import register
-from simtools.job.model import model, getmodel
+from simtools.job.model import model_parser as model, getmodel
 import simtools.job.stats  # register !
 
 # prepare job

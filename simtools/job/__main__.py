@@ -96,7 +96,7 @@ def main(argv=None):
     o = job.parse_args(argv)
     parser = parsers[o.cmd]
     func = postprocs[o.cmd]
-    o.extras = extras
+    o.args = (getattr(o, 'args', None) or []) + (extras or [])
 
     # now make sure subparse does not interfer
     i = argv.index(o.cmd)

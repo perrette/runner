@@ -25,19 +25,14 @@ class Namelist(ParamsFile):
         return format_nml(pars)
 
     def loads(self, string):
-        params = []
-        for p in parse_nml(string):
+        params = parse_nml(string)
+        for p in params:
             p.short = p.name
             p.name = self.name_fmt.format(**p.__dict__)
-            params.append(Param(**p.__dict__))
         return params
 
-    @classmethod
-    def read(cls, file):
-        default_params = parse_nml(open(file).read())
-        return cls(default_params)
 
-register_filetype("namelist", Namelist)
+register_filetype("namelist", Namelist())
 
 
 def parse_nml(string, ignore_comments=False):
@@ -93,7 +88,7 @@ def parse_nml(string, ignore_comments=False):
         for line in group_lines:
             name, value, comment = _parse_line(line)
 
-            param = Param(name=name, value=value, help=comment, group=group_name)
+            param = Param(name, value, help=comment, group=group_name)
 
             # group[variable_name] = parsed_value
             params.append(param)

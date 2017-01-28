@@ -19,24 +19,7 @@ EMPTYCONFIG = "empty.json" # todo path
 # Ensemble Xperiment
 # ==================
 
-# Environment I/O to communicate with model
-# =========================================
-
-# prefix for environ variables
-ENVPREFIX = "SIMTOOLS_"
-
-def getenv(name, *failobj):
-    " for runner to set environment variables" 
-    return os.environ.get(ENVPREFIX+name.upper(), *failobj)
-
-def makenv(context, env=None):
-    env = env or {}
-    for k in context:
-        if context[k] is not None:
-            env[ENVPREFIX+k.upper()] = context[k]
-    return env
-
-
+## prefix for environ variables
 
 def _create_dirtree(a,chunksize=2):
     """create a directory tree from a single, long name
@@ -127,15 +110,6 @@ class XRun(object):
         self.model = model
         self.params = params  # XParams class
  
-    #@classmethod
-    #def read(cls, expdir):
-    #    """read from existing experiment
-    #    """
-    #    o = XDir(expdir) # dir structure
-    #    model = Model.read(o.path("config.json"))
-    #    params = XParams.read(o.path("params.txt"))
-    #    return cls(model, params)
-
     def setup(self, expdir, force=False):
         """Write experiment params and default model to directory
         """
@@ -182,15 +156,14 @@ class XRun(object):
         if background:
             stdout = open(output, 'w')
             stderr = open(error, 'w')
-            popenargs = dict(stdout=stdout, stderr=stderr)
         else:
-            popenargs = dict()
+            stdout = None
+            stderr = None
 
         # environment variables to define and tag fillers
         context = dict(
             runid = runid,
             runtag = runtag,
-            rundir = rundir,
             expdir = expdir,
         )
 
@@ -199,19 +172,18 @@ class XRun(object):
         model.update(params)
 
         if dry_run:
-            print(model.command(context))
+            print(model.command(rundir, context))
             return
 
         model.setup(rundir)
 
         if submit:
             assert 'array' not in kwargs, "batch command for --array"
-            p = model.submit(context, output=output, error=error, env=makenv(context),
+            p = model.submit(rundir, context, output=output, error=error,
                          jobfile=os.path.join(rundir, 'submit.sh'), **kwargs)
 
         else:
-            env = makenv(context, os.environ.copy())
-            p = model.run(context=context, **popenargs) #, stdout=stdout, stderr=stderr)
+            p = model.run(rundir, context=context, stdout=stdout, stderr=stderr)
 
         if not background:
             ret = p.wait()
@@ -258,78 +230,3 @@ class MultiProcess(object):
 
     def wait(self):
         return self.apply_many("wait")
-
-
-    #def array(self, indices=None, expdir="./", wait=True, **kwargs):
-    #    """like batch, but using slurm sbatch --array -->faster
-    #    """
-
-    #    self.setup(force=True)  # things are up to date
-
-    #    # batch command
-    #    if array is None:
-    #        # all params by default
-    #        array = "{}-{}".format(0, N-1) 
-
-    #    # submit job to slurm (the default)
-    #    print("Submit job array batch to SLURM")
-    #    jobfile = os.path.join(expdir, "batch.sh")
-
-    #    logdir = x.logdir()
-    #    logout = kwargs.pop("output", x.logout("%a"))
-    #    logerr = kwargs.pop("error", x.logerr("%a"))
-
-    #    # log-files
-    #    if not os.path.exists(logdir): 
-    #        os.makedirs(logdir) # needs to be created before
-
-    #    # actual command
-    #    pycmd = ["from "+__name__+" import XRun", 
-    #             "XRun.run(runid=$SLURM_ARRAY_TASK_ID, expdir='{expdir}')"]
-
-    #    pycmds = "; ".join(pycmd).format( expdir=expdir )
-
-    #    cmds = '{} -c "{}"'.format(sys.executable, pycmds)
-    #    jobfile = kwargs.pop("jobfile", os.path.join(expdir, 'submit.sh'))
-
-    #    p = submit_job(cmds, output=logout, error=logerr, jobfile=jobfile **kwargs)
-
-    #    if wait:
-    #        p.wait()
-
-    #    return p
-
-
-
-
-#class Runtime(object):
-#    """Interface between model and simtools, to be imported by model at runtime
-#    """
-#    def __init__(self):
-#        """ Communicate with environment variable to derive default parameters
-#        """
-#        expdir = getenv("expdir", None)
-#        runid = getenv("runid", None)
-#        self.runid = int(runid) if runid else None
-#
-#        if expdir is not None:
-#            xrun = XRun.read(expdir)
-#            self._xrun = xrun
-#            self.params = xrun.params.pset_as_dict(self.runid)
-#            self.rundir = xrun.rundir(self.runid)
-#        else:
-#            self._xrun = None
-#            self.params = {}
-#            self.rundir = None
-#
-#    def getpar(self, name, *failval):
-#        """Retrieve experiment parameters
-#        """
-#        return self.params.copy().pop(name, *failval)
-#
-#    def setvar(self, name, value):
-#        """Set experiment variables
-#        """
-#        if self._xrun is None:
-#            return  # simtools is not active, do nothing
-#        self._xrun.write_state_var(name, value)
