@@ -61,7 +61,7 @@ def main(argv=None):
     job.add_argument('-c','--config-file', 
                         help='load defaults from configuration file')
     x = job.add_mutually_exclusive_group()
-    x.add_argument('-s','--saveas', action="store_true", 
+    x.add_argument('-s','--saveas', 
                    help='save selected defaults to config file and exit')
     x.add_argument('-u', '--update-config', action="store_true", 
                         help='-uc FILE is an alias for -c FILE -s FILE')

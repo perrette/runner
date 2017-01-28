@@ -57,7 +57,7 @@ sample = argparse.ArgumentParser(description="Sample prior parameter distributio
                                  add_help=False, parents=[prior, lhs])
 sample.add_argument('-o', '--out', help="output parameter file")
 
-sample.add_argument('-N', '--size',type=int, required=True, 
+sample.add_argument('-N', '--size',type=int, 
                   help="Sample size")
 sample.add_argument('--seed', type=int, 
                   help="random seed, for reproducible results (default to None)")
@@ -66,6 +66,8 @@ sample.add_argument('--method', choices=['montecarlo','lhs'], default='lhs',
 
 def sample_post(o):
     prior = Prior(o.dist)
+    if not o.size:
+        sample.error("argument -N/--size is required")
     xparams = prior.sample(o.size, seed=o.seed, 
                            method=o.method,
                            criterion=o.lhs_criterion,
