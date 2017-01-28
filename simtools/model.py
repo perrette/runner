@@ -8,9 +8,9 @@ from simtools.submit import submit_job
 #from simtools.model.generic import get_or_make_filetype
 
 # default values
-ARG_OUT_PREFIX = ""
-ARG_PARAM_PREFIX = "--{}"
-ENV_PREFIX = "SIMTOOLS_"
+ARG_OUT_PREFIX = None
+ARG_PARAM_PREFIX = None
+ENV_PREFIX = None
 ENV_OUT = "RUNDIR"
 FILENAME = None
 FILETYPE = None
@@ -92,7 +92,7 @@ class Model(object):
         * arg_param_prefix : str, optional
             prefix for command-line passing of one parameter, e.g. "--{}"
         * env_out : str, optional
-            environment variable name for output directory (to be appended to prefix)
+            environment variable name for output directory
         * env_prefix : str, optional
             environment passing of parameters, e.g. "SIMTOOLS_" to be completed
             with parameter name or RUNDIR for model output directory.
@@ -162,10 +162,14 @@ class Model(object):
 
     @staticmethod
     def _command_out(rundir):
-        return (self.arg_out_prefix + rundir).split()
+        if self.arg_out_prefix is None:
+            return []
+        return (self.arg_out_prefix + rundir).split() 
 
     @staticmethod
     def _command_param(name, value, **kwargs):
+        if self.arg_param_prefix is None:
+            return []
         prefix = self.arg_param_prefix.format(name, name=name, **kwargs)
         return (prefix + str(value)).split()
 
@@ -188,26 +192,33 @@ class Model(object):
     def params_as_dict(self):
         return {p.name:p.value for p in self.params}
 
-    def environ(self, rundir):
+    def environ(self, rundir, env=None):
         """define environment variables to pass to model
         """
+        if self.env_prefix is None:
+            raise None
+
         # prepare variables to pass to environment
         context = self.context.copy()
-        if self.env_out:
+        if self.env_out is not None:
             context[self.env_out] = rundir 
         context.update(self.params_as_dict())
 
         # format them with appropriate prefix
-        env = {self.env_prefix.upper()+k.upper():context[k] 
+        update = {self.env_prefix.upper()+k.upper():context[k] 
                for k in context if context[k] is not None}
+
+        # update base environment
+        env = env or {}
+        env.update(update)
+
         return env
 
 
     def run(self, rundir, **kwargs):
         """open subprocess
         """
-        env = os.environ.copy()
-        env.update( self.environ(rundir) )
+        env = self.environ(rundir, env=os.environ.copy()) 
         args = self.command(rundir)
         return subprocess.Popen(args, env=env, cwd=self.init_dir, **kwargs)
 

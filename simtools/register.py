@@ -101,4 +101,4 @@ class Model(object):
 for cmd in ["command", "setup", "getvar", "dumps", "loads"]:
     setattr(Model, cmd, property(lambda self: Model(cmd)))
 
-define = ModelDeco()
+define = Model()
