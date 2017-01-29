@@ -24,6 +24,13 @@ def _filter(kw, after, diff=False, include_none=True):
     return filtered
 
 
+def filtervars(namespace, parser):
+    """like vars(namespace), but just taking arguments from one parser
+    """
+    return {a.dest:getattr(namespace, a.dest) 
+            for a in parser._actions if hasattr(namespace, a.dest)}
+
+
 def json_config(cfg, parser=None, diff=False, name=None, include_none=True):
     if parser is None:
         defaults = cfg
