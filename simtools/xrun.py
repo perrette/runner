@@ -120,7 +120,7 @@ class XRun(object):
         self.params.write(x.path(XPARAM))
         self.model.setup(x.path("default")) # default model setup
 
-    def _get_rundir(self, runid, expdir):
+    def get_rundir(self, runid, expdir):
         x = XDir(expdir)
         if self.autodir:
             params = self.params.pset_as_dict(runid)
@@ -129,7 +129,7 @@ class XRun(object):
             rundir = x.rundir(runid)
         return rundir
 
-    def _get_model(self, runid):
+    def get_model(self, runid):
         """return model
         **context : rundir, used to fill tags in model
         """
@@ -139,18 +139,11 @@ class XRun(object):
         model.update(params, context={'runid':runid})
         return model
 
-    def get_member(self, runid, expdir='./'):
-        " return model, rundir pair "
-        rundir = self._get_rundir(runid, expdir)
-        model = self._get_model(runid)
-        return model, rundir
-
 
     def run(self, indices=None, expdir="./", submit=False, include_default=False, **kwargs):
         """Run ensemble
         """
         N = self.params.size
-
         if indices is None:
             indices = xrange(self.params.size)
 
@@ -163,7 +156,8 @@ class XRun(object):
         print("Submit" if submit else "Run",len(indices),"out of",N,"simulations",*bla)
         processes = []
         for runid in indices:
-            model, rundir = self.get_member(runid, expdir)
+            model = self.get_model(runid)
+            rundir = self.get_rundir(runid, expdir)
             if submit:
                 p = model.submit(rundir, **kwargs)
             else:
@@ -172,33 +166,47 @@ class XRun(object):
         return MultiProcess(processes) # has a `wait` command
 
 
-    def _getvar(self, name, runid=None, expdir='./'):
-        """get scalar state variable for one model instance
+    def apply(self, func, expdir=None, shp=()):
+        """Apply a function on all ensemble members 
+        
+        * func: callable ( model, rundir ) --> scalar or ndarray
+        * expdir : experiment directory
+        * shp : shape of the result, by default scalar
+
+        Returns a numpy array with first dimension N (number of models)
         """
-        rundir = self._get_rundir(runid, expdir)
-        return self.model.getvar(name, rundir)
-
-
-    def getstate(self, names, expdir='./', indices=None):
-        """return one state variable
-        """
-        if indices is None:
-            indices = np.arange(self.params.size)
-
-        values = np.empty((self.params.size, len(names)))
+        N = self.params.size
+        values = np.empty((N,) + shp)
         values.fill(np.nan)
 
-        for i in xrange(self.params.size):
-            for j, name in enumerate(names):
-                try:
-                    var = self._getvar(name, i, expdir)
-                except NotImplementedError:
-                    raise
-                except ValueError:
-                    continue
-                values[i,j] = var
+        for i in xrange(N):
+            model = self.get_model(i)
+            rundir = self.get_rundir(i, expdir)
+            try:
+                res = func(model, rundir)
+            except NotImplementedError:
+                raise
+            except ValueError:
+                continue
+            values[i] = res
+        return values
 
+
+    def getvar(self, name, expdir='./'):
+        " return one state variable "
+        func = lambda model, rundir : model.getvar(name, rundir)
+        return self.apply(func, expdir)
+
+    def getstate(self, names, expdir='./'):
+        " return many state variable "
+        func = lambda model, rundir : [model.getvar(name, rundir) for name in names]
+        values = self.apply(func, expdir, shp=(len(names),))
         return XState(values, names)
+
+    def getcost(self, expdir='./'):
+        " return cost function "
+        func = lambda model, rundir : model.getcost(rundir)
+        return self.apply(func, expdir)
 
 
 class XState(XParams):
