@@ -158,7 +158,7 @@ class DataFrame(object):
     def df(self):
         " convert to pandas dataframe "
         import pandas as pd
-        return pd.DataFrame(self.values, self.names)
+        return pd.DataFrame(self.values, columns=self.names)
 
     @classmethod 
     def read(cls, pfile):
