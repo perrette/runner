@@ -241,27 +241,47 @@ class Model(object):
         return env
 
 
-    def run(self, rundir, **kwargs):
-        """open subprocess
+    def run(self, rundir, background=True):
+        """open subprocess and return Popen instance 
         """
+        self.setup(rundir)
         env = self.environ(rundir, env=os.environ.copy()) 
         args = self.command(rundir)
+
+        if background:
+            stdout = open('log.out', 'w')
+            stderr = open('log.err', 'w')
+        else:
+            stdout = None
+            stderr = None
+
         try:
-            return subprocess.Popen(args, env=env, cwd=self.work_dir, **kwargs)
+            p = subprocess.Popen(args, env=env, cwd=self.work_dir)
         except:
             if os.path.isfile(args[0]) and not args[0].startswith('.'):
                 print("Check executable name (use leading . or bash)")
             raise
 
+        if not background:
+            ret = p.wait()
+
+        return p
 
 
-    def submit(self, rundir, **kwargs):
+    def submit(self, rundir, jobfile=None, output=None, error=None, **kwargs):
         """Submit job to slurm or whatever is specified via **kwargs
         """
+        self.setup(rundir)
         env = self.environ(rundir)
         args = self.command(rundir)
-        return submit_job(" ".join(args), env=env, workdir=self.work_dir, **kwargs)
+        output = output or os.path.join(rundir, "log.out")
+        error = error or os.path.join(rundir, "log.err")
+        jobfile = jobfile or os.path.join(rundir, 'submit.sh')
+        return submit_job(" ".join(args), env=env, workdir=self.work_dir, 
+                          output=output, error=error, jobfile=jobfile, **kwargs)
 
+
+    # POST-processing
     def getvar(self, name, rundir):
         """get state variable by name given run directory
         """

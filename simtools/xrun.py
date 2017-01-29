@@ -139,63 +139,20 @@ class XRun(object):
         model.update(params, context={'runid':runid})
         return model
 
-
-    def run(self, runid=None, background=False, submit=False, dry_run=False, 
-            expdir='./', output=None, error=None, **kwargs):
-        """Run one model instance
-
-        runid : which model instance
-
-        Returns
-        -------
-        Popen instance (or equivalent if submit)
-        """
+    def get_member(self, runid, expdir='./'):
+        " return model, rundir pair "
         rundir = self._get_rundir(runid, expdir)
         model = self._get_model(runid)
-
-        # determine log file names
-        logdir = os.path.join(expdir, 'logs')
-        if not os.path.exists(logdir): 
-            os.makedirs(logdir) # needs to be created before
-        output = output or os.path.join(logdir, '{runid}.out').format(runid=runid)
-        error = error or os.path.join(logdir, '{runid}.err').format(runid=runid)
-
-        # open files for Popen (not used if `submit`)
-        if background:
-            stdout = open(output, 'w')
-            stderr = open(error, 'w')
-        else:
-            stdout = None
-            stderr = None
-
-        if dry_run:
-            print("Dry-run:")
-            print(" ".join(model.command(rundir)))
-            return
-
-        model.setup(rundir)
-
-        if submit:
-            assert 'array' not in kwargs, "batch command for --array"
-            p = model.submit(rundir, output=output, error=error,
-                         jobfile=os.path.join(rundir, 'submit.sh'), **kwargs)
-
-        else:
-            p = model.run(rundir, stdout=stdout, stderr=stderr)
-
-        if not background:
-            ret = p.wait()
-
-        return p
+        return model, rundir
 
 
-    def batch(self, indices=None, expdir="./", submit=True, include_default=False, **kwargs):
+    def run(self, indices=None, expdir="./", submit=False, include_default=False, **kwargs):
         """Run ensemble
         """
         N = self.params.size
 
         if indices is None:
-            indices = np.arange(self.params.size).tolist()
+            indices = xrange(self.params.size)
 
         if include_default:
             indices = [None] + np.asarray(indices).tolist()
@@ -205,9 +162,12 @@ class XRun(object):
 
         print("Submit" if submit else "Run",len(indices),"out of",N,"simulations",*bla)
         processes = []
-
         for runid in indices:
-            p = self.run(runid=runid, expdir=expdir, submit=submit, background=True, **kwargs)
+            model, rundir = self.get_member(runid, expdir)
+            if submit:
+                p = model.submit(rundir, **kwargs)
+            else:
+                p = model.run(rundir, background=True)
             processes.append(p)
         return MultiProcess(processes) # has a `wait` command
 

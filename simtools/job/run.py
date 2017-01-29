@@ -93,11 +93,11 @@ grp = submit.add_argument_group("simulation mode (submit, background...)")
 grp.add_argument('-s', '--submit', action='store_true', help='submit job to slurm')
 grp.add_argument('-t', '--test', action='store_true', 
                help='test mode: print to screen instead of log, run sequentially')
+grp.add_argument('--echo', action='store_true', 
+               help='echo test mode: --test and replace executable with echo')
 grp.add_argument('-w','--wait', action='store_true', help='wait for job to end')
 grp.add_argument('-b', '--array', action='store_true', 
                  help='submit using sbatch --array (faster!), EXPERIMENTAL)')
-grp.add_argument('--dry-run', action='store_true', 
-                 help='print model command, do not setup. Try -x echo to test writing of parameter files etc.')
 grp.add_argument('-f', '--force', action='store_true', 
                  help='perform run even in an existing directory')
 grp.add_argument('--save-wrapper', 
@@ -173,13 +173,15 @@ def run_post(o):
     else:
         indices = np.arange(xparams.size)
 
+    if o.echo:
+        xrun.model.executable = 'echo'
+        o.test = True
+
     # test: run everything serially
     if o.test:
-        for i in indices:
-            xrun.run(runid=i, expdir=o.expdir, background=False, dry_run=o.dry_run)
-        if o.include_default:
-            xrun.run(expdir=o.expdir, background=False, dry_run=o.dry_run)
-        o.wait = False
+        for i in [np.asarray(indices).tolist() + [None]*o.include_default]:
+            model, rundir = xrun.get_member(i, o.expdir)
+            model.run(rundir, background=False)
 
     # array: create a parameterized "job" command [SLURM]
     elif o.array:
@@ -207,18 +209,15 @@ def run_post(o):
         slurm_opt = {a.dest:a.default for a in slurm._actions if a.default is not None}
         slurm_opt["array"] = o.runid or "{}-{}".format(0, xparams.size-1)
 
-        if o.dry_run:
-            print(slurm_opt)
-            print(command)
-            return
-
         p = submit_job(command, **slurm_opt)
 
     # the default
     else:
-        p = xrun.batch(indices=indices, submit=o.submit, 
-                   expdir=o.expdir, autodir=o.auto_dir, dry_run=o.dry_run,
-                       include_default=o.include_default) #, output=o.log_out, error=o.log_err)
+        slurm_opt = {a.dest:getattr(o, a.dest) for a in slurm._actions}
+        assert not slurm_opt.pop('array', False), 'missed if then else --array????'
+        p = xrun.run(indices=indices, submit=o.submit, 
+                     expdir=o.expdir, include_default=o.include_default, 
+                     **slurm_opt)
 
     if o.wait:
         p.wait()
