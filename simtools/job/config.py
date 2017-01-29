@@ -24,11 +24,11 @@ def _filter(kw, after, diff=False, include_none=True):
     return filtered
 
 
-def json_config(cfg, parser=None, diff=False, name=None):
+def json_config(cfg, parser=None, diff=False, name=None, include_none=True):
     if parser is None:
         defaults = cfg
     else:
-        defaults = _filter(cfg, _parser_defaults(parser), diff, include_none=False)
+        defaults = _filter(cfg, _parser_defaults(parser), diff, include_none=include_none)
     js = {
         'defaults': defaults,
         'version':__version__,
@@ -37,8 +37,8 @@ def json_config(cfg, parser=None, diff=False, name=None):
     }
     return json.dumps(js, indent=2, sort_keys=True, default=lambda x: str(x))
 
-def write_config(cfg, file, parser=None, diff=False, name=None):
-    string = json_config(cfg, parser, diff, name)
+def write_config(cfg, file, parser=None, diff=False, name=None, include_none=True):
+    string = json_config(cfg, parser, diff, name, include_none=include_none)
     with open(file, 'w') as f:
         f.write(string)
 

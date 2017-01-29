@@ -36,7 +36,7 @@ from simtools.xrun import XParams, XRun, XPARAM
 from simtools import register
 from simtools.job.model import model_parser as model, modelwrapper, getmodel, modelconfig
 import simtools.job.stats  # register !
-from simtools.job.config import write_config
+from simtools.job.config import write_config, json_config
 import os
 
 

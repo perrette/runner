@@ -52,7 +52,8 @@ class XDir(object):
     def runtag(self, runid=None):
         "provide a tag with same length accross the ensemble"
         digit = self.digit or len(str(self.size()-1))
-        fmt = "{:0>"+str(self.digit)+"}"
+        #fmt = "{:0>"+str(self.digit)+"}"
+        fmt = "{}" # just use integers
         return fmt.format(runid) if runid is not None else "default"
 
     def rundir(self, runid=None):

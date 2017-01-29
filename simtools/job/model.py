@@ -161,7 +161,9 @@ def getmodel(o, post_only=False):
     dumps = modelargs.pop('dumps')
     if loads or dumps:
         filetype = FileTypeWrapper(dumps, loads)
-    elif not post_only:
+    elif post_only:
+        filetype = None
+    else:
         filetype = getfiletype(o)
 
     params = getdefaultparams(o, filetype)

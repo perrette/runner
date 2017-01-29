@@ -22,7 +22,7 @@ from collections import OrderedDict as odict
 from simtools.register import register_job
 from simtools.prior import PriorParam
 from simtools.xrun import XParams, XRun, XState
-from simtools.job.config import _parser_defaults
+from simtools.job.config import load_config
 from simtools.job.model import model_parser, modelconfig, custommodel, \
     CustomModel, getmodel
 from simtools.job.run import parse_slurm_array_indices, _typechecker, run
@@ -49,7 +49,7 @@ writestate_parser = argparse.ArgumentParser(add_help=False,
                                             parents=[state, likelihood, custommodel],
                                             description='Derive state variables.\
                                             of a previous experiment.')
-writestate_parser.add_argument('exp_dir', default=EXPDIR, 
+writestate_parser.add_argument('expdir', default=EXPDIR, 
                                help='experiment directory (state will be written there)')
 #writestate_parser.add_argument('--state-file', 
 #                               help='default to state.txt under the experiment dir')
@@ -59,9 +59,10 @@ def getxrunanalysis(o):
     """
     paramsfile = os.path.join(o.expdir, XPARAM)
     cfg = load_config(os.path.join(o.expdir, EXPCONFIG))
+    cfg.update(vars(o))
     model = getmodel(argparse.Namespace(**cfg), post_only=True) 
     xparams = XParams.read(paramsfile) # for the size & autodir
-    return XRun(model, xparams, autodir=o.auto_dir)
+    return XRun(model, xparams, autodir=cfg["auto_dir"])
 
 
 def writestate(o):
