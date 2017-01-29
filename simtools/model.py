@@ -312,8 +312,9 @@ class CustomModel(Model):
         super(CustomModel, self).__init__(**kwargs)
 
     def setup(self, rundir):
+        return super(CustomModel, self).setup(rundir)  # write metadata
         if self._setup is None:
-            return super(CustomModel, self).setup(rundir)
+            return
         return self._setup(rundir, self.executable, *self._format_args(rundir), **self.params_as_dict())
 
     def command(self, rundir):

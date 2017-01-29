@@ -17,7 +17,7 @@ from .config import json_config, load_config, __version__
 def main(argv=None):
 
     # prepare parser
-    job = argparse.ArgumentParser(parents=[], description=__doc__, 
+    job = argparse.ArgumentParser(parents=[], description=__doc__,
                                   formatter_class=argparse.RawTextHelpFormatter)
 
     job.add_argument('-v','--version', action='version', version=__version__)

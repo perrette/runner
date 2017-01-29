@@ -53,22 +53,18 @@ def set_model(key, func):
 
 def define_model(command=None, setup=None, getvar=None, getobs=None, getcost=None, dumps=None, loads=None, defaults=None):
     """
-    - setup : callable ( rundir, executable, *args, **params )
-        prepare run directory (e.g. write param file)
-    - command : callable ( rundir, executable, *args, **params ) --> list of args
-        make run command given output directory and parameters
-    - getvar : callable ( name, rundir, executable, *args ) --> state variable (scalar)
-    - getobs : callable ( name, executable, *args ) --> obs (scalar)
-    - getcost : callable (rundir, executable, *args ) --> cost (scalar)
-    - loads : callable ( file content ) --> params dict {name:value}
-    - dumps : callable ( params dict ) --> file content (string)
-    **kwargs : will be used to set parser defaults with job run (e.g. executable etc)
+    * setup : callable ( rundir, executable, *args, **params )
+            prepare run directory (e.g. write param file)
+    * command : callable ( rundir, executable, *args, **params ) --> list of args
+            make run command given output directory and parameters
+    * getvar : callable ( name, rundir, executable, *args ) --> state variable (scalar)
+    * getobs : callable ( name, executable, *args ) --> obs (scalar)
+    * getcost : callable (rundir, executable, *args ) --> cost (scalar)
+    * loads : callable ( file content ) --> params dict {name:value}
+    * dumps : callable ( params dict ) --> file content (string)
+    * defaults : will be used to set parser defaults with job run (e.g. executable etc)
         NOTE: this will only affects already registered job, so for the defaults
         to affect all commands, make sure to import job module
-    
-    >>> import simtools.job   # job is defined and all commands registered
-    >>> from simtools.register import define_model
-    >>> define_model(executable=...)
     """
     if command: set_model("command", command)
     if setup: set_model("setup", setup)
@@ -77,7 +73,7 @@ def define_model(command=None, setup=None, getvar=None, getobs=None, getcost=Non
     if getcost: set_model("getcost", getcost)
     if dumps: set_model("dumps", dumps)
     if loads: set_model("loads", loads)
-    if defaults: set_defaults(defaults)
+    if defaults: set_defaults(**defaults)
 
 
 # decorator:
@@ -109,6 +105,7 @@ class Model(object):
     @property
     def getcost(self):
         return Model('getcost')
+
 # to access as @define.command, @define.setup
 #for cmd in ["command", "setup", "getvar", "dumps", "loads"]:
 #    setattr(Model, cmd, property(lambda self: Model(cmd)))
