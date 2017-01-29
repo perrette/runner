@@ -21,8 +21,6 @@ def main(argv=None):
                                   formatter_class=argparse.RawTextHelpFormatter)
 
     job.add_argument('-v','--version', action='version', version=__version__)
-    job.add_argument('-m','--module', 
-                     help='load python module that contain custom file type or model definitions (see simtools.register)')
     job.add_argument('-c','--config-file', 
                         help='load defaults from configuration file')
     x = job.add_mutually_exclusive_group()
@@ -59,10 +57,6 @@ def main(argv=None):
     topargs = argv[:i+1] # include subcommand
     cmdargs = argv[i+1:]
     o = top.parse_args(topargs)  # no subcommands
-
-    if o.module:
-        sys.path.insert(0, os.getcwd())
-        import_module(o.module)
 
     # parse again with updated defaults
     defaults = register._defaults[o.cmd].copy()  # --module

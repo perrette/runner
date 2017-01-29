@@ -42,9 +42,14 @@ def write_config(cfg, file, parser=None, diff=False, name=None):
     with open(file, 'w') as f:
         f.write(string)
 
-def load_config(file, parser):
-    " the parser type must be used"
+def load_config(file, parser=None):
+    "parser needed to cast variable types"
     js = json.load(open(file))["defaults"]
+
+    if parser is None:
+        return js
+
+    # cast type:
     for a in parser._actions:
         if a.dest in js and a.type is not None:
             if isinstance(js[a.dest], list):

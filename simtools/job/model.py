@@ -14,7 +14,7 @@ Check out the formats already defined in simtools.filetype and simtools.ext
 """
 from __future__ import absolute_import, print_function
 import argparse
-import os
+import os, sys
 import json
 from importlib import import_module
 import simtools
@@ -106,8 +106,6 @@ grp.add_argument('--env-prefix', default=mod.ENV_PREFIX,
                  help='prefix for environment variables (default:%(default)s)')
 grp.add_argument('--env-out', default=mod.ENV_OUT,
                  help='environment variable for output (after prefix) (default:%(default)s)')
-grp.add_argument('--init-dir', default=None, 
-                 help='where to execute the model from, by default current directory')
 
 modelconfig = argparse.ArgumentParser(add_help=False, parents=[])
 grp = modelconfig.add_argument_group('model configuration')
@@ -125,13 +123,14 @@ tags can also be formatted according to python rules, \
 e.g. {runid:0>6} to prefix runid with zeroes, total 6 digits')
 
 grp.add_argument('--default-file', help='default param file, required for certain file types (e.g. namelist)')
+#grp.add_argument('--module', help='module where custom model is defined')
+grp.add_argument('-m','--user-module', 
+                 help='user-defined python module that contains custom file type or model definitions (see simtools.register)')
+grp.add_argument('--work-dir', default=None, 
+                 help='where to execute the model from, by default current directory')
 
 model_parser = argparse.ArgumentParser(add_help=False, 
                                        parents=[modelcommand, modelconfig])
-
-#grp = model_parser.add_argument_group('user-defined module')
-#grp.add_argument('--module-file', help='')
-
 
 def getdefaultparams(o, filetype=None, module=None):
     " default model parameters "
@@ -144,26 +143,42 @@ def getdefaultparams(o, filetype=None, module=None):
     return params
 
 
-def getmodel(o):
+def getmodel(o, post_only=False):
     """return model
+
+    post_only: if True, only process arguments useful for post-processing
     """
-    # check register first
+    if o.user_module:
+        sys.path.insert(0, os.getcwd())
+        import_module(o.user_module)
+
+    # check register first (from import module above)
     modelargs = register.model.copy() # command, setup, getvar, filetype
 
     loads = modelargs.pop('loads')
     dumps = modelargs.pop('dumps')
     if loads or dumps:
         filetype = FileTypeWrapper(dumps, loads)
-    else:
+    elif not post_only:
         filetype = getfiletype(o)
 
     params = getdefaultparams(o, filetype)
 
-    modelargs.update( dict(executable=o.executable, args=o.args, params=params, 
+    # basic model configuration
+    modelargs.update( dict(executable=o.executable, 
+                           args=o.args, 
+                           params=params, 
+                           work_dir=o.work_dir, 
+                           ) )
+
+    if post_only:
+        return CustomModel(**modelargs)
+
+    # model command, not needed for post-run analysis
+    modelargs.update( dict(
                  filetype=filetype, filename=o.file_name,
                  arg_out_prefix=o.arg_out_prefix, arg_param_prefix=o.arg_param_prefix, 
-                 env_out=o.env_out, env_prefix=o.env_prefix,
-                 init_dir=o.init_dir) )
+                 env_out=o.env_out, env_prefix=o.env_prefix) )
 
     model = CustomModel(**modelargs)
 

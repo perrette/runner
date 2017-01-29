@@ -32,12 +32,17 @@ import tempfile
 import numpy as np
 from simtools.prior import Prior, DiscreteParam
 #from simtools.xparams import XParams
-from simtools.xrun import XParams, XRun
+from simtools.xrun import XParams, XRun, XPARAM
 from simtools import register
-from simtools.job.model import model_parser as model, getmodel
+from simtools.job.model import model_parser as model, getmodel, modelconfig
 import simtools.job.stats  # register !
 from simtools.job.config import write_config
 import os
+
+
+EXPCONFIG = 'experiment.json'
+EXPDIR = 'out'
+
 
 # prepare job
 # ===========
@@ -98,7 +103,7 @@ grp.add_argument('--dry-run', action='store_true',
 
 simu = argparse.ArgumentParser(add_help=False)
 grp = simu.add_argument_group("simulation settings")
-simu.add_argument('-o','--out-dir', default='out', dest='expdir',
+simu.add_argument('-o','--out-dir', default=EXPDIR, dest='expdir',
                   help='experiment directory \
                   (params.txt and logs/ will be created, and possibly individual model output directories (each as {rundir})')
 simu.add_argument('-a','--auto-dir', action='store_true', 
@@ -124,13 +129,12 @@ run = argparse.ArgumentParser(add_help=False, parents=[model, simu, submit, slur
                               description=__doc__)
 
 
-# sub
+# keep group of params for later
+experiment = argparse.ArgumentParser(add_help=False, parents=[modelconfig])
+experiment.add_argument('-a','--auto-dir', action='store_true')
+
+# ...only when --array is invoked
 _slurmarray = argparse.ArgumentParser(add_help=False, parents=[model, simu])
-
-
-def _autodir(params):
-    " create automatic directory based on list of Param instances"
-    raise NotImplementedError()
 
 
 def run_post(o):
@@ -147,7 +151,9 @@ def run_post(o):
         o.include_default = True
 
     xrun = XRun(model, xparams, autodir=o.auto_dir)
-    xrun.setup(os.path.join(o.expdir, 'params.txt'))
+    # create dir, write params.txt file, as well as experiment configuration
+    xrun.setup(o.expdir)  
+    write_config(vars(o), os.path.join(o.expdir, EXPCONFIG), parser=experiment)
     
     if o.runid:
         indices = parse_slurm_array_indices(o.runid)
@@ -167,7 +173,7 @@ def run_post(o):
         # input via params file
         if not os.path.exists(o.expdir):
             os.makedirs(o.expdir)
-        params_file = os.path.join(o.expdir, 'params.txt')
+        params_file = os.path.join(o.expdir, XPARAM)
         xrun.params.write(params_file)
 
         # prepare job command: runid and params passed by slurm
@@ -178,7 +184,7 @@ def run_post(o):
 
         # write command based on namespace state
         file = tempfile.mktemp(dir=o.expdir, prefix='job.run-array.', suffix='.json')
-        write_config(cfg, file, parser=_slurmarray)
+        write_config(vars(o), file, parser=_slurmarray)
         template = "{job} -c {config_file} run --id $SLURM_ARRAY_TASK_ID --params-file {params_file}"
         command = template.format(job="job", config_file=file, params_file=params_file) 
         #FIXME: job may be a full path `/path/to/job run` or called via `[/path/to/]python job run`

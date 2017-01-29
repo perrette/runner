@@ -2,9 +2,12 @@ from __future__ import print_function, absolute_import
 import difflib
 import subprocess
 import os
+import sys
 import json
+import datetime
 from simtools.tools import parse_val
 from simtools.submit import submit_job
+from simtools import __version__
 #from simtools.model.generic import get_or_make_filetype
 
 # default values
@@ -14,6 +17,8 @@ ENV_PREFIX = None
 ENV_OUT = "RUNDIR"
 FILENAME = None
 FILETYPE = None
+
+MODELSETUP = 'setup.json'
 
 
 class Param(object):
@@ -72,7 +77,7 @@ class Model(object):
                  filetype=FILETYPE, filename=FILENAME, 
                  arg_out_prefix=ARG_OUT_PREFIX, arg_param_prefix=ARG_PARAM_PREFIX, 
                  env_out=ENV_OUT, env_prefix=ENV_PREFIX,
-                 init_dir=None,
+                 work_dir=None,
                  ):
         """
         * executable : runscript
@@ -96,8 +101,8 @@ class Model(object):
         * env_prefix : str, optional
             environment passing of parameters, e.g. "SIMTOOLS_" to be completed
             with parameter name or RUNDIR for model output directory.
-        * init_dir: str, optional
-            directory to start the model from
+        * work_dir: str, optional
+            directory to start the model from (work directory)
             by default from the current directory
         """
         self.executable = executable
@@ -111,8 +116,12 @@ class Model(object):
         self.arg_param_prefix = arg_param_prefix or ""
         self.env_prefix = env_prefix or ""
         self.env_out = env_out or ""
-        self.context = dict(filename=filename, executable=executable) # for formatting args and environment variable etc.
-        self.init_dir = init_dir
+        self.context = dict(filename=filename, 
+                            executable=executable,
+                            runid = '{runid}',
+                            expdir = '{expdir}',
+                            ) # for formatting args and environment variable etc.
+        self.work_dir = work_dir
 
         self.strict = len(self.params) > 0
 
@@ -156,6 +165,21 @@ class Model(object):
         """
         if not os.path.exists(rundir):
             os.makedirs(rundir)
+        
+        # for diagnostics
+        cfg = {
+            'time': str(datetime.datetime.now()),
+            'version': __version__,
+            'params': {p.name:p.value for p in self.params},
+            'workdir': os.getcwd(),
+            'executable': self.executable,
+            'args': self._format_args(rundir),
+            'sys.argv': sys.argv,
+        }
+        json.dump(open(os.path.join(rundir, MODELSETUP), 'w'), 
+                  sort_keys=True, indent=2)
+
+        # for communication with the model
         if self.filetype and self.filename:
             #TODO: have model params as a dictionary
             self.filetype.dump(self.params, open(self.filename, 'w'))
@@ -218,14 +242,14 @@ class Model(object):
         """
         env = self.environ(rundir, env=os.environ.copy()) 
         args = self.command(rundir)
-        return subprocess.Popen(args, env=env, cwd=self.init_dir, **kwargs)
+        return subprocess.Popen(args, env=env, cwd=self.work_dir, **kwargs)
 
     def submit(self, rundir, **kwargs):
         """Submit job to slurm or whatever is specified via **kwargs
         """
         env = self.environ(rundir)
         args = self.command(rundir)
-        return submit_job(" ".join(args), env=env, workdir=self.init_dir, **kwargs)
+        return submit_job(" ".join(args), env=env, workdir=self.work_dir, **kwargs)
 
     def getvar(self, name, rundir):
         """get state variable by name given run directory

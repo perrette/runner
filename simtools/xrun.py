@@ -13,7 +13,7 @@ from simtools.submit import submit_job
 from simtools.xparams import XParams
 
 DIGIT = 4  # number of digits for output folders
-EMPTYCONFIG = "empty.json" # todo path
+XPARAM = 'params.txt'
 
 
 # Ensemble Xperiment
@@ -101,7 +101,7 @@ class XDir(object):
             os.system("cd "+self.expdir+" && ln -s "+os.path.abspath(top))
 
     def size(self):
-        return XParams.read(self.path("params.txt")).size
+        return XParams.read(self.path(XPARAM)).size
 
 
 class XRun(object):
@@ -116,7 +116,7 @@ class XRun(object):
         """
         x = XDir(expdir)
         x.create_expdir(force)
-        self.params.write(x.path("params.txt"))
+        self.params.write(x.path(XPARAM))
         self.model.setup(x.path("default")) # default model setup
 
     def _get_rundir(self, runid, expdir):

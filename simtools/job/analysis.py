@@ -21,41 +21,14 @@ from collections import OrderedDict as odict
 #from simtools.xrun import XRun
 from simtools.register import register_job
 from simtools.prior import PriorParam
-from simtools.xrun import XParams, XRun, XDir
+from simtools.xrun import XParams, XRun, XState
 from simtools.job.config import _parser_defaults
 from simtools.job.model import model_parser, modelconfig, CustomModel, getmodel
 from simtools.job.run import parse_slurm_array_indices, _typechecker, run
+from simtools.job.run import XPARAM, EXPDIR, EXPCONFIG
 
-# light version of job run 's simu group, to get to the output directory
-simulight = argparse.ArgumentParser(add_help=False)
-grp = simulight.add_argument_group("simulation settings")
-grp.add_argument('-o', '--out-dir', dest='expdir',
-                  help='experiment directory')
-grp.add_argument('-a','--auto-dir', action='store_true', 
-                 help='must match `job run` settings')
+XSTATE = "state.txt"
 
-grp.add_argument('-i','--params-file', 
-                  help='ensemble parameters file (only for size), \
-                 by default look for params.txt in the experiment directory')
-#grp.add_argument('-j','--id', 
-#                  type=_typechecker(parse_slurm_array_indices), dest='runid', 
-#                 metavar="I,J...,START-STOP:STEP,...", 
-#                  help='same as job run, by default take all')
-#grp.add_argument('--include-default', 
-#                  action='store_true', 
-#                  help='also analyze default model version')
-
-# also include all default values from run, for getmodel etc. to work
-defs = _parser_defaults(run)
-simulight.set_defaults(**defs)
-
-## add other parameters but hide them, so that we can use getmodel()
-#defined = [a.dest for a in simulight._actions]
-#for a in modelparser._actions:
-#    if a.dest not in defined:
-#        a2 = copy.copy(a)  # need copy otherwise affects modelparser
-#        a2.help = argparse.SUPPRESS
-#        simulight._add_action(a2)
 
 state = argparse.ArgumentParser(add_help=False, parents=[])
 grp = state.add_argument_group("model state")
@@ -73,10 +46,23 @@ grp.add_argument('-l', '--likelihood',
                  nargs='+')
 
 writestate_parser = argparse.ArgumentParser(add_help=False, 
-                                            parents=[simulight, state, likelihood],
-                                            description='derive state variables')
-writestate_parser.add_argument('--state-file', 
-                               help='default to state.txt under teh experiment dir')
+                                            parents=[state, likelihood],
+                                            description='Derive state variables.\
+                                            of a previous experiment.')
+writestate_parser.add_argument('exp_dir', default=EXPDIR, 
+                               help='experiment directory (state will be written there)')
+#writestate_parser.add_argument('--state-file', 
+#                               help='default to state.txt under the experiment dir')
+
+def getxrunanalysis(o):
+    """get XRun instance for post-run analysis
+    """
+    paramsfile = os.path.join(o.expdir, XPARAM)
+    cfg = load_config(os.path.join(o.expdir, EXPCONFIG))
+    model = getmodel(argparse.Namespace(**cfg), post_only=True) 
+    xparams = XParams.read(paramsfile) # for the size & autodir
+    return XRun(model, xparams, autodir=o.auto_dir)
+
 
 def writestate(o):
 
@@ -87,18 +73,20 @@ def writestate(o):
     names = o.state_variables + [l.name for l in o.likelihood 
                                  if l.name not in o.state_variables]
 
-    paramsfile = o.params_file or os.path.join(o.expdir, 'params.txt')
-    statefile = o.state_file or os.path.join(o.expdir, 'state.txt')
+    xrun = getxrunanalysis(o)
 
-    model = getmodel(o) 
-    # qui peut le plus peut le moins
-    xparams = XParams.read(paramsfile) # for the size & autodir
-    xrun = XRun(model, xparams, autodir=o.auto_dir)
     xstate = xrun.getstate(names, o.expdir)
+    statefile = os.path.join(o.expdir, XSTATE)
     print("Write state variables to",statefile)
     xstate.write(statefile)
 
-register_job('state', writestate_parser, writestate, help=writestate_parser.description)
+
+register_job('state', writestate_parser, writestate, help="derive state variables")
+
+
+def getstate(o):
+    statefile = os.path.join(o.expdir, XSTATE)
+    return XState.read(statefile)
 
 #grp.add_argument('-m', '--module', 
 #                 help='module file where ')
