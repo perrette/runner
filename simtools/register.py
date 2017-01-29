@@ -9,6 +9,8 @@ model = {
     'command': None,
     'setup': None,
     'getvar': None,
+    'getobs': None,
+    'getcost': None,
     'loads': None,
     'dumps': None,
 }
@@ -43,12 +45,10 @@ def register_filetype(name, filetype):
     filetypes[name] = filetype
 
 
-def _check_free(key):
+def set_model(key, func):
     if model[key]:
         warnings.warn(key + ' was already registered : overwrite')
-        return False
-    else:
-        return True
+    model[key] = func
 
 
 def define_model(command=None, setup=None, getvar=None, getobs=None, getcost=None, dumps=None, loads=None, defaults=None):
@@ -70,29 +70,14 @@ def define_model(command=None, setup=None, getvar=None, getobs=None, getcost=Non
     >>> from simtools.register import define_model
     >>> define_model(executable=...)
     """
-    if setup or _check_free("setup"):
-        model["setup"] = setup
-
-    if command or _check_free("command"):
-        model["command"] = command
-
-    if getvar or _check_free("getvar"):
-        model["getvar"] = getvar
-
-    if getobs or _check_free("getobs"):
-        model["getobs"] = getobs
-
-    if getcost or _check_free("getcost"):
-        model["getcost"] = getcost
-
-    if dumps or _check_free("dumps"):
-        model["dumps"] = dumps
-
-    if loads or _check_free("loads"):
-        model["loads"] = loads
-
-    if defaults:
-        set_defaults(defaults)
+    if command: set_model("command", command)
+    if setup: set_model("setup", setup)
+    if getvar: set_model("getvar", getvar)
+    if getobs: set_model("getobs", getobs)
+    if getcost: set_model("getcost", getcost)
+    if dumps: set_model("dumps", dumps)
+    if loads: set_model("loads", loads)
+    if defaults: set_defaults(defaults)
 
 
 # decorator:
