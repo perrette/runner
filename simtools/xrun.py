@@ -18,8 +18,8 @@ XPARAM = 'params.txt'
 # Ensemble Xperiment
 # ==================
 
-class XState(XParams):
-    " store model state "
+class XData(XParams):
+    " store model state and other data"
     pass
 
 
@@ -137,7 +137,7 @@ class XRun(object):
         " return many state variable "
         func = lambda model, rundir : [model.getvar(name, rundir) for name in names]
         values = self.apply_get(func, expdir, shp=(len(names),))
-        return XState(values, names)
+        return XData(values, names)
 
     def getcost(self, expdir='./'):
         " return cost function "

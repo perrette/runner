@@ -22,7 +22,7 @@ from scipy.stats import norm
 #from simtools.xrun import XRun
 from simtools.register import register_job
 from simtools.prior import PriorParam
-from simtools.xrun import XParams, XRun, XState, DataFrame
+from simtools.xrun import XRun, XData
 from simtools.job.config import load_config
 from simtools.job.model import model_parser, modelconfig, custommodel, \
     CustomModel, getmodel
@@ -43,7 +43,7 @@ class Obs(object):
 
     @classmethod
     def parse(cls, string):
-        "observation error in absolute (NAME=STD) or relative (NAME=STD%) term"
+        "observation error in absolute (NAME=STD) or relative (NAME=STD%%) term"
         name, spec = string.split('=')
         if spec.endswith('%'):
             err = float(spec[:-1])
@@ -93,7 +93,7 @@ def getxrunanalysis(o):
     cfg = load_config(os.path.join(o.expdir, EXPCONFIG))
     cfg.update(vars(o))
     model = getmodel(argparse.Namespace(**cfg), post_only=True) 
-    xparams = XParams.read(paramsfile) # for the size & autodir
+    xparams = XData.read(paramsfile) # for the size & autodir
     return XRun(model, xparams, autodir=cfg["auto_dir"])
 
 
@@ -158,7 +158,7 @@ def customlikelihood_post(o):
         weights = np.exp(-0.5*cost)
         file = o.weights_file or os.path.join(o.expdir, XWEIGHT)
         print('write weights to', file)
-        np.savetxt(weights, file)
+        np.savetxt(file, weights)
         likelihood.exit(0)
 
 def likelihood_post(o):
@@ -168,7 +168,7 @@ def likelihood_post(o):
 
     # read state from file
     statefile = o.state_file or os.path.join(o.expdir, XSTATE)
-    state = XState.read(statefile)
+    state = XData.read(statefile)
 
     # direct distributions
     constraints = [l for l in o.likelihood]
@@ -188,18 +188,19 @@ def likelihood_post(o):
 
     for j, l in enumerate(constraints):
         jj = state.names.index(l.name)
-        loglik[:, j] = l.logpdf(state.values[:,jj])
+        loglik[:, j] = l.dist.logpdf(state.values[:,jj])
 
     loglik[np.isnan(loglik)] = -np.inf
 
-    xloglik = DataFrame(loglik, [l.name for l in constraints])
+    xloglik = XData(loglik, [l.name for l in constraints])
     file = o.loglik_file or os.path.join(o.expdir, XLOGLIK)
     print('write loglik to', file)
+    xloglik.write(file)
 
     weights = np.exp(loglik.sum(axis=1))
     file = o.weights_file or os.path.join(o.expdir, XWEIGHT)
     print('write weights to', file)
-    np.savetxt(weights, file)
+    np.savetxt(file, weights)
 
 
 register_job('likelihood', likelihood, likelihood_post, 
@@ -210,7 +211,7 @@ register_job('likelihood', likelihood, likelihood_post,
 # Now all in one
 
 analysis = argparse.ArgumentParser(add_help=False, 
-                                   parents=[writestate, likelihood],
+                                   parents=[likelihood],
                                    description='short for state + likelihood')
 
 def analysis_post(o):

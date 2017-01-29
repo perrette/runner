@@ -249,14 +249,15 @@ class Model(object):
         args = self.command(rundir)
 
         if background:
-            stdout = open('log.out', 'w')
-            stderr = open('log.err', 'w')
+            stdout = open(os.path.join(rundir, 'log.out'), 'w')
+            stderr = open(os.path.join(rundir, 'log.err'), 'w')
         else:
             stdout = None
             stderr = None
 
         try:
-            p = subprocess.Popen(args, env=env, cwd=self.work_dir)
+            p = subprocess.Popen(args, env=env, cwd=self.work_dir, 
+                                 stdout=stdout, stderr=stderr)
         except:
             if os.path.isfile(args[0]) and not args[0].startswith('.'):
                 print("Check executable name (use leading . or bash)")

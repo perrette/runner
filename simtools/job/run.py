@@ -183,7 +183,7 @@ def run_post(o):
     if o.include_default:
         indices = list(indices) + [None]
 
-    slurm_opt = filterargs(slurm)
+    slurm_opt = filtervars(o, slurm)
 
     # test: run everything serially
     if o.test:
