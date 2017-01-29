@@ -34,7 +34,7 @@ from simtools.prior import Prior, DiscreteParam
 #from simtools.xparams import XParams
 from simtools.xrun import XParams, XRun, XPARAM
 from simtools import register
-from simtools.job.model import model_parser as model, getmodel, modelconfig
+from simtools.job.model import model_parser as model, modelwrapper, getmodel, modelconfig
 import simtools.job.stats  # register !
 from simtools.job.config import write_config
 import os
@@ -97,7 +97,11 @@ grp.add_argument('-w','--wait', action='store_true', help='wait for job to end')
 grp.add_argument('-b', '--array', action='store_true', 
                  help='submit using sbatch --array (faster!), EXPERIMENTAL)')
 grp.add_argument('--dry-run', action='store_true', 
-                 help='might write a few files, but do not run')
+                 help='print model command, do not setup. Try -x echo to test writing of parameter files etc.')
+grp.add_argument('-f', '--force', action='store_true', 
+                 help='perform run even in an existing directory')
+grp.add_argument('--save-wrapper', 
+                 help='save model wrapper config to a file, for later reuse')
 #x.add_argument('--background', 
 #                 action='store_true', help='run in the background, do not wait for executation to end')
 
@@ -152,8 +156,17 @@ def run_post(o):
 
     xrun = XRun(model, xparams, autodir=o.auto_dir)
     # create dir, write params.txt file, as well as experiment configuration
-    xrun.setup(o.expdir)  
+    try:
+        xrun.setup(o.expdir, force=o.force)  
+    except RuntimeError as error:
+        print("ERROR :: "+error.message)
+        print("Use -f/--force to bypass this check")
+        run.exit(1)
+
     write_config(vars(o), os.path.join(o.expdir, EXPCONFIG), parser=experiment)
+
+    if o.save_wrapper:
+        write_config(vars(o), o.save_wrapper, parser=modelwrappper)
     
     if o.runid:
         indices = parse_slurm_array_indices(o.runid)
@@ -204,7 +217,7 @@ def run_post(o):
     # the default
     else:
         p = xrun.batch(indices=indices, submit=o.submit, 
-                   expdir=o.expdir, autodir=o.auto_dir, 
+                   expdir=o.expdir, autodir=o.auto_dir, dry_run=o.dry_run,
                        include_default=o.include_default) #, output=o.log_out, error=o.log_err)
 
     if o.wait:

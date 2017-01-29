@@ -82,9 +82,10 @@ class Model(object):
         """
         * executable : runscript
         * args : [str] or str, optional
-            list of command arguments to pass to executable. They may contain
-            formattable patterns {rundir}, {runid}, {runtag}. Typically run directory
-            or input parameter file. Prefer arg_out for output directory.
+            list of command arguments to pass to executable as general model
+            configuration. Any {rundir} tag will be replaced by its value at run time
+            but prefer `arg_out_prefix` for output directory.
+            The {runid} tag may also be used (experimental).
         * params : [Param], optional
             list of model parameters to be updated with modified params
             If params is provided, strict checking of param names is performed during 
@@ -112,14 +113,13 @@ class Model(object):
         self.params = params or []
         self.filetype = filetype
         self.filename = filename
-        self.arg_out_prefix = arg_out_prefix or ""
-        self.arg_param_prefix = arg_param_prefix or ""
-        self.env_prefix = env_prefix or ""
-        self.env_out = env_out or ""
+        self.arg_out_prefix = arg_out_prefix
+        self.arg_param_prefix = arg_param_prefix
+        self.env_prefix = env_prefix
+        self.env_out = env_out
         self.context = dict(filename=filename, 
                             executable=executable,
                             runid = '{runid}',
-                            expdir = '{expdir}',
                             ) # for formatting args and environment variable etc.
         self.work_dir = work_dir
 
@@ -176,7 +176,7 @@ class Model(object):
             'args': self._format_args(rundir),
             'sys.argv': sys.argv,
         }
-        json.dump(open(os.path.join(rundir, MODELSETUP), 'w'), 
+        json.dump(cfg, open(os.path.join(rundir, MODELSETUP), 'w'), 
                   sort_keys=True, indent=2)
 
         # for communication with the model
@@ -199,9 +199,13 @@ class Model(object):
         return [arg.format(rundir, rundir=rundir, **self.context) for arg in self.args]
 
     def command(self, rundir):
-        if self.executable is None:
+        exe = self.executable
+        if exe is None:
             raise ValueError("model requires an executable")
-        args = [self.executable] 
+        elif os.path.isfile(exe):
+            if not os.access(exe, os.X_OK):
+                raise ValueError("model executable is not : check permissions")
+        args = [exe] 
         args += self._command_out(rundir)
         args += self._format_args(rundir)
 
@@ -218,7 +222,7 @@ class Model(object):
         """define environment variables to pass to model
         """
         if self.env_prefix is None:
-            raise None
+            return None
 
         # prepare variables to pass to environment
         context = self.context.copy()
@@ -242,7 +246,14 @@ class Model(object):
         """
         env = self.environ(rundir, env=os.environ.copy()) 
         args = self.command(rundir)
-        return subprocess.Popen(args, env=env, cwd=self.work_dir, **kwargs)
+        try:
+            return subprocess.Popen(args, env=env, cwd=self.work_dir, **kwargs)
+        except:
+            if os.path.isfile(args[0]) and not args[0].startswith('.'):
+                print("Check executable name (use leading . or bash)")
+            raise
+
+
 
     def submit(self, rundir, **kwargs):
         """Submit job to slurm or whatever is specified via **kwargs

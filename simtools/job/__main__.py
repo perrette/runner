@@ -29,6 +29,9 @@ def main(argv=None):
     x.add_argument('-u', '--update-config', action="store_true", 
                         help='-uc FILE is an alias for -c FILE -s FILE')
     job.add_argument('--show', action="store_true", help='show config and exit')
+    job.add_argument('--full', action='store_false', dest='diff',
+                   help='save/show full config, not only differences from default')
+    job.add_argument('--debug', action="store_true", help='print full traceback')
     
     top = argparse.ArgumentParser(parents=[job], conflict_handler='resolve')
     tops = top.add_subparsers(dest='cmd') # just for the command
@@ -76,7 +79,7 @@ def main(argv=None):
 
     # save to file?
     if o.saveas or o.show:
-        string = json_config(cmdo.__dict__, parser)
+        string = json_config(cmdo.__dict__, parser, diff=o.diff)
         if o.saveas:
             with open(o.saveas, 'w') as f:
                 f.write(string)
@@ -84,7 +87,15 @@ def main(argv=None):
             print(string)
         return
 
-    return func(cmdo)
+    try:
+        func(cmdo)
+    except ValueError as error:
+        if o.debug:
+            raise
+        else:
+            print("ERROR: "+error.message)
+            print("ERROR: use --debug to print full traceback")
+            job.exit(1)
 
 if __name__ == '__main__':
     main()

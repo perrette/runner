@@ -76,9 +76,9 @@ class XDir(object):
             os.makedirs(self.expdir)
 
         elif not force:
-            print("error :: directory already exists: "+repr(self.expdir))
-            print("     set  '--force' option to bypass this check")
-            raise ValueError(self.expdir+" already exists")
+            #print("error :: directory already exists: "+repr(self.expdir))
+            #print("     set  'force' option to bypass this check")
+            raise RuntimeError(repr(self.expdir)+" experiment directory already exists")
 
     def top_rundirs(self, indices):
         """top rundir directories for linking
@@ -128,15 +128,14 @@ class XRun(object):
             rundir = x.rundir(runid)
         return rundir
 
-    def _get_model(self, runid, **context):
+    def _get_model(self, runid):
         """return model
         **context : rundir, used to fill tags in model
         """
         params = self.params.pset_as_dict(runid)
         # update model parameters, setup directory
         model = copy.deepcopy(self.model) 
-        context["runid"] = runid
-        model.update(params, context)
+        model.update(params, context={'runid':runid})
         return model
 
 
@@ -151,7 +150,7 @@ class XRun(object):
         Popen instance (or equivalent if submit)
         """
         rundir = self._get_rundir(runid, expdir)
-        model = self._get_model(runid, rundir=rundir, expdir=expdir)
+        model = self._get_model(runid)
 
         # determine log file names
         logdir = os.path.join(expdir, 'logs')
@@ -169,7 +168,8 @@ class XRun(object):
             stderr = None
 
         if dry_run:
-            print(model.command(rundir))
+            print("Dry-run:")
+            print(" ".join(model.command(rundir)))
             return
 
         model.setup(rundir)
@@ -197,7 +197,7 @@ class XRun(object):
             indices = np.arange(self.params.size).tolist()
 
         if include_default:
-            indices = indices + [None]
+            indices = [None] + np.asarray(indices).tolist()
             bla = ('+ default',)
         else:
             bla = ()

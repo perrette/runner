@@ -89,9 +89,9 @@ def getfiletype(o):
 # model runs
 # ==========
 
-modelcommand = argparse.ArgumentParser(add_help=False, parents=[filetype])
+modelwrapper = argparse.ArgumentParser(add_help=False, parents=[filetype])
 
-grp = modelcommand.add_argument_group('interface', description='job to model communication')
+grp = modelwrapper.add_argument_group('interface', description='job to model communication')
 #grp.add_argument('--io-params', choices=["arg", "file"], default='arg',
 #                 help='mode for passing parameters to model (default:%(default)s)')
 grp.add_argument('--file-name', default=mod.FILENAME, 
@@ -128,14 +128,11 @@ tags can also be formatted according to python rules, \
 e.g. {runid:0>6} to prefix runid with zeroes, total 6 digits')
 
 grp.add_argument('--default-file', help='default param file, required for certain file types (e.g. namelist)')
-#grp.add_argument('--module', help='module where custom model is defined')
-grp.add_argument('-m','--user-module', 
-                 help='user-defined python module that contains custom file type or model definitions (see simtools.register)')
 grp.add_argument('--work-dir', default=None, 
                  help='where to execute the model from, by default current directory')
 
 model_parser = argparse.ArgumentParser(add_help=False, 
-                                       parents=[modelcommand, modelconfig])
+                                       parents=[modelwrapper, modelconfig])
 
 def getdefaultparams(o, filetype=None, module=None):
     " default model parameters "
