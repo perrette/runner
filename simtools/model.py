@@ -267,15 +267,27 @@ class Model(object):
         """
         raise NotImplementedError("getvar")
 
+    def getobs(self, name):
+        """get observation corresponding to getvar
+        """
+        raise NotImplementedError("getobs")
+
+    def getcost(self, rundir):
+        """get cost-function for one member (==> weight = exp(-0.5*cost))
+        """
+        raise NotImplementedError("getcost")
+
 
 
 class CustomModel(Model):
     """User-provided model (e.g. via job install)
     """
-    def __init__(self, command=None, setup=None, getvar=None, **kwargs):
+    def __init__(self, command=None, setup=None, getvar=None, getobs=None, getcost=None, **kwargs):
         self._command = command
         self._setup = setup
         self._getvar = getvar
+        self._getobs = getobs
+        self._getcost = getcost
         super(CustomModel, self).__init__(**kwargs)
 
     def setup(self, rundir):
@@ -297,3 +309,22 @@ class CustomModel(Model):
         except TypeError:
             # in case the function was written only with the two basic arguments
             return self._getvar(name, rundir)
+
+    def getobs(self, name):
+        if self._getobs is None:
+            return super(CustomModel, self).getobs(name)
+        try:
+            # for experiment-dependent variables, provide the context
+            return self._getobs(name, self.executable, *self.args)
+        except TypeError:
+            # in case the function was written only with the two basic arguments
+            return self._getobs(name)
+
+    def getcost(self, rundir):
+        if self._getcost is None:
+            return super(CustomModel, self).getcost(rundir)
+        try:
+            return self._getcost(rundir, self.executable, *self._format_args(rundir))
+        except TypeError:
+            return self._getcost(rundir)
+

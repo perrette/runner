@@ -51,13 +51,15 @@ def _check_free(key):
         return True
 
 
-def define_model(command=None, setup=None, getvar=None, dumps=None, loads=None, defaults=None):
+def define_model(command=None, setup=None, getvar=None, getobs=None, getcost=None, dumps=None, loads=None, defaults=None):
     """
     - setup : callable ( rundir, executable, *args, **params )
         prepare run directory (e.g. write param file)
     - command : callable ( rundir, executable, *args, **params ) --> list of args
         make run command given output directory and parameters
     - getvar : callable ( name, rundir, executable, *args ) --> state variable (scalar)
+    - getobs : callable ( name, executable, *args ) --> obs (scalar)
+    - getcost : callable (rundir, executable, *args ) --> cost (scalar)
     - loads : callable ( file content ) --> params dict {name:value}
     - dumps : callable ( params dict ) --> file content (string)
     **kwargs : will be used to set parser defaults with job run (e.g. executable etc)
@@ -76,6 +78,12 @@ def define_model(command=None, setup=None, getvar=None, dumps=None, loads=None, 
 
     if getvar or _check_free("getvar"):
         model["getvar"] = getvar
+
+    if getobs or _check_free("getobs"):
+        model["getobs"] = getobs
+
+    if getcost or _check_free("getcost"):
+        model["getcost"] = getcost
 
     if dumps or _check_free("dumps"):
         model["dumps"] = dumps
@@ -98,8 +106,24 @@ class Model(object):
         return func
 
     @property
+    def setup(self):
+        return Model('setup')
+
+    @property
+    def command(self):
+        return Model('command')
+
+    @property
     def getvar(self):
         return Model('getvar')
+
+    @property
+    def getobs(self):
+        return Model('getobs')
+
+    @property
+    def getcost(self):
+        return Model('getcost')
 # to access as @define.command, @define.setup
 #for cmd in ["command", "setup", "getvar", "dumps", "loads"]:
 #    setattr(Model, cmd, property(lambda self: Model(cmd)))

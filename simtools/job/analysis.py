@@ -1,7 +1,7 @@
 #!/usr/bin/env python2.7
 """Play around with glacier model
 """
-from __future__ import print_function, absolute_import
+from __future__ import print_function, absolute_import, division
 import argparse
 import numpy as np
 import json
@@ -11,6 +11,7 @@ import os
 import sys
 import subprocess
 from collections import OrderedDict as odict
+from scipy.stats import norm
 
 #from glaciermodel import GlacierModel
 #from simtools.modelrun import run_command, parse_slurm_array_indices
@@ -38,17 +39,8 @@ grp.add_argument("-v", "--state-variables", nargs='+', default=[],
                  help='list of state variables, at least including the constraints \
                  (default is to stick to constraint variables, if provided)')
 
-likelihood = argparse.ArgumentParser(add_help=False, parents=[])
-grp = likelihood.add_argument_group("likehood from obs constraints")
-grp.add_argument('-l', '--likelihood',
-                 type=PriorParam.parse,
-                 help=PriorParam.parse.__doc__,
-                 metavar="NAME=DIST",
-                 default = [],
-                 nargs='+')
-
 writestate_parser = argparse.ArgumentParser(add_help=False, 
-                                            parents=[state, likelihood, custommodel],
+                                            parents=[state, custommodel],
                                             description='Derive state variables.\
                                             of a previous experiment.')
 writestate_parser.add_argument('expdir', default=EXPDIR, 
@@ -71,11 +63,10 @@ def getxrunanalysis(o):
 def writestate(o):
 
     # determine name of state variables to consider
-    if not o.state_variables and not o.likelihood:
-        writestate_parser.error("need to provide either state variables or likelihood")
+    assert o.state_variables, \
+        writestate_parser.error("requires state variables -v/--state-variables")
 
-    names = o.state_variables + [l.name for l in o.likelihood 
-                                 if l.name not in o.state_variables]
+    names = o.state_variables 
 
     xrun = getxrunanalysis(o)
 
@@ -92,10 +83,62 @@ likelihood_parser = argparse.ArgumentParser(add_help=False,
                                             parents=[writestate_parser],
                                             description='Compute likelihood.')
 
+grp = likelihood_parser.add_argument_group("likehood from obs constraints")
+grp.add_argument('-l', '--likelihood',
+                 type=PriorParam.parse,
+                 help=PriorParam.parse.__doc__,
+                 metavar="NAME=DIST",
+                 default = [],
+                 nargs='+')
+
+
+class Obs(object):
+    " error as normal dist around obs "
+    def __init__(self, name, err, pct=False):
+        self.name = name
+        self.err = err
+        self.pct = pct
+
+    @classmethod
+    def parse(cls, string):
+        "observation error in absolute (NAME=STD) or relative (NAME=STD%) term"
+        name, spec = string.split('=')
+        if spec.endswith('%'):
+            err = float(spec[:-1])
+            pct = True
+        else:
+            err = float(spec)
+            pct = False
+        return cls(name, err, pct)
+
+    def __str__(self):
+        if self.pct:
+            pattern = "{}={}%"
+        else:
+            pattern = "{}={}"
+        return pattern.format(self.name, self.err)
+
+    def get_dist(self, mean):
+        " return Likelihood type given mean"
+        if self.pct:
+            dist = norm(mean, self.err*self.pct/100.)
+        else:
+            dist = norm(mean, self.err)
+        return PriorParam(self.name, dist)
+
+
+grp.add_argument('--obs-error',
+                 type=Obs.parse,
+                 help=Obs.parse.__doc__,
+                 metavar="NAME=ERR",
+                 default = [],
+                 nargs='+')
+
+
 likelihood_parser.add_argument('--weights-file', 
                                help='final likelihood default to '+XWEIGHT+' under the experiment dir')
 likelihood_parser.add_argument('--loglik-file', 
-                               help='log-like matrix of individual constraints, default to'+XLOGLIK, 'under exp dir')
+                               help='log-like matrix of individual constraints, default to '+XLOGLIK+' under exp dir')
 
 #analyze_parser.add_argument()
 
@@ -106,16 +149,30 @@ def getstate(o):
 
 def likelihood_post(o):
     state = getstate(o)
-    assert o.likelihood, 'requires -l/--likelihood'
-    loglik = np.empty((state.size, len(o.likelihood)))
 
-    for j, l in enumerate(o.likelihood):
+    # direct distributions
+    likelihood = [l for l in o.likelihood]
+
+    # build likelihood from obs-errors (requires getobs)
+    if o.obs_error:
+        # qui peut le plus peut le moins
+        model = getxrunanalysis(o).model
+        # TODO: add fromjson to Model class, to avoid messing global variables
+        for err in o.obs_error:
+            mean = model.getobs(err.name)
+            like = Obs.get_dist(mean)
+            likelihood.append(like)
+
+    assert likelihood, 'requires -l/--likelihood OR --obs-error'
+    loglik = np.empty((state.size, len(likelihood)))
+
+    for j, l in enumerate(likelihood):
         jj = state.names.index(l.name)
         loglik[:, j] = l.logpdf(state.values[:,jj])
 
     loglik[np.isnan(loglik)] = -np.inf
 
-    xloglik = DataFrame(loglik, [l.name for l in o.likelihood])
+    xloglik = DataFrame(loglik, [l.name for l in likelihood])
     file = o.weights_file or os.path.join(o.expdir, XLOGLIK)
     print('write loglik to', file)
 
