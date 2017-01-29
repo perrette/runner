@@ -160,63 +160,10 @@ class DataFrame(object):
         import pandas as pd
         return pd.DataFrame(self.values, columns=self.names)
 
-    def scatter_matrix(self, **kwargs):
-        " call to pandas.scatter_matrix "
-        import pandas as pd
-        return pd.scatter_matrix(self.df, **kwargs)
-
-    def parallel_coordinates(self, name=None, colormap=None, alpha=0.5, 
-                             add_cb=True, cb_axes=[0.05, 0, 0.9, 0.05], 
-                             normalize=True, 
-                             cb_orientation='horizontal', **kwargs):
-        """Call to pandas.parallel_coordinates + customization
-        
-        * name : variable name along which to sort values
-        * normalize : True by default
-        * colormap : e.g. viridis, inferno, plasma, magma
-		    http://matplotlib.org/examples/color/colormaps_reference.html
-        * add_cb : add a colorbar
-		    http://matplotlib.org/examples/api/colorbar_only.html
-        * cb_axes : tuned for horizontal cb with 5 variables
-        * cb_orientation : horizontal or vertical
-        """
-        import matplotlib as mpl
-        import matplotlib.pyplot as plt
-        import pandas as pd
-        df = self.df.dropna()
-        if normalize:
-            delta = (df - df.mean()) / df.std()  # normalize
-        else:
-            delta = df
-
-        if name is None:
-            name = self.names[0]
-
-        # insert class variable as new variable
-        cls = df[[name]].rename(columns={name:'cls'})
-        full = pd.concat([cls, delta], axis=1).sort_values('cls')
-
-        # http://matplotlib.org/examples/api/colorbar_only.html
-        # http://matplotlib.org/examples/color/colormaps_reference.html
-        cmap = colormap or mpl.cm.viridis
-        axes = pd.tools.plotting.parallel_coordinates(full, 'cls', alpha=alpha, 
-                                                      colormap=cmap, ax=ax)
-        axes.legend().remove()  # remove the legend
-        axes.set_ylabel('normalized')
-
-        # add colorbar axis (since no mappable is easily found...)
-        if not add_cb:
-            return axes
-
-        fig = plt.gcf()
-        if add_cb:
-            ax1 = fig.add_axes(cb_axes)
-        norm = mpl.colors.Normalize(vmin=cls.values.min(), vmax=cls.values.max())
-        cb1 = mpl.colorbar.ColorbarBase(ax1, cmap=cmap,
-                                        norm=norm, 
-                                        orientation=cb_orientation)
-        cb1.set_label(name)
-        return axes
+    @property
+    def plot(self):
+        " convert to pandas dataframe "
+        return self.df.plot
 
     @classmethod 
     def read(cls, pfile):
