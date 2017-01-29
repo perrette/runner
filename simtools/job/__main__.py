@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """Jobs for numerical experiments
 """
-import sys
+from __future__ import absolute_import
+import sys, os
 from importlib import import_module
 import argparse
 import warnings
@@ -20,8 +21,8 @@ def main(argv=None):
                                   formatter_class=argparse.RawTextHelpFormatter)
 
     job.add_argument('-v','--version', action='version', version=__version__)
-    job.add_argument('-m','--module', nargs='+',
-                     help='load python module(s) that contain custom file type or model definitions (see simtools.register)')
+    job.add_argument('-m','--module', 
+                     help='load python module that contain custom file type or model definitions (see simtools.register)')
     job.add_argument('-c','--config-file', 
                         help='load defaults from configuration file')
     x = job.add_mutually_exclusive_group()
@@ -60,8 +61,8 @@ def main(argv=None):
     o = top.parse_args(topargs)  # no subcommands
 
     if o.module:
-        for m in o.module:
-            import_module(m)
+        sys.path.insert(0, os.getcwd())
+        import_module(o.module)
 
     # parse again with updated defaults
     defaults = register._defaults[o.cmd].copy()  # --module

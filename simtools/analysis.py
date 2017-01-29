@@ -9,6 +9,8 @@ import numpy as np
 import scipy.stats
 from scipy.stats import norm, lognorm, uniform, multivariate_normal
 from simtools.xrun import XRun, XDir
+from simtools.tools import parse_dist, dist_to_str
+from simtools.prior import PriorParam
 
 
 def parse_scipy(spec):

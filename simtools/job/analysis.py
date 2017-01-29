@@ -23,19 +23,19 @@ from simtools.register import register_job
 from simtools.prior import PriorParam
 from simtools.xrun import XParams, XRun, XDir
 from simtools.job.config import _parser_defaults
-from simtools.job.model import modelparser, modelconfig, CustomModel, getmodel
+from simtools.job.model import model_parser, modelconfig, CustomModel, getmodel
 from simtools.job.run import parse_slurm_array_indices, _typechecker, run
 
 # light version of job run 's simu group, to get to the output directory
 simulight = argparse.ArgumentParser(add_help=False)
 grp = simulight.add_argument_group("simulation settings")
-grp.add_argument('--exp-dir', dest='expdir',
+grp.add_argument('-o', '--out-dir', dest='expdir',
                   help='experiment directory')
 grp.add_argument('-a','--auto-dir', action='store_true', 
                  help='must match `job run` settings')
 
 grp.add_argument('-i','--params-file', 
-                  help='ensemble parameters file (only for size), 
+                  help='ensemble parameters file (only for size), \
                  by default look for params.txt in the experiment directory')
 #grp.add_argument('-j','--id', 
 #                  type=_typechecker(parse_slurm_array_indices), dest='runid', 
@@ -47,7 +47,7 @@ grp.add_argument('-i','--params-file',
 
 # also include all default values from run, for getmodel etc. to work
 defs = _parser_defaults(run)
-simulight.set_defaults(defs)
+simulight.set_defaults(**defs)
 
 ## add other parameters but hide them, so that we can use getmodel()
 #defined = [a.dest for a in simulight._actions]
@@ -58,7 +58,7 @@ simulight.set_defaults(defs)
 #        simulight._add_action(a2)
 
 state = argparse.ArgumentParser(add_help=False, parents=[])
-grp = likelihood.add_argument_group("model state")
+grp = state.add_argument_group("model state")
 grp.add_argument("-v", "--state-variables", nargs='+', default=[],
                  help='list of state variables, at least including the constraints \
                  (default is to stick to constraint variables, if provided)')
@@ -92,13 +92,13 @@ def writestate(o):
 
     model = getmodel(o) 
     # qui peut le plus peut le moins
-    xparams = Xparams.read(paramsfile) # for the size & autodir
-    xrun = XRun(model, xparams, autodir=o.autodir)
+    xparams = XParams.read(paramsfile) # for the size & autodir
+    xrun = XRun(model, xparams, autodir=o.auto_dir)
     xstate = xrun.getstate(names, o.expdir)
     print("Write state variables to",statefile)
     xstate.write(statefile)
 
-register_job('state', writestate_parser, writestate, help=writestate_parser.__doc__)
+register_job('state', writestate_parser, writestate, help=writestate_parser.description)
 
 #grp.add_argument('-m', '--module', 
 #                 help='module file where ')

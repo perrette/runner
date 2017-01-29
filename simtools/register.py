@@ -94,11 +94,14 @@ class Model(object):
         self.cmd = cmd
 
     def __call__(self, func):
-        define_model(**{self.cmd:self.cmd})
+        define_model(**{self.cmd:func})
         return func
 
+    @property
+    def getvar(self):
+        return Model('getvar')
 # to access as @define.command, @define.setup
-for cmd in ["command", "setup", "getvar", "dumps", "loads"]:
-    setattr(Model, cmd, property(lambda self: Model(cmd)))
+#for cmd in ["command", "setup", "getvar", "dumps", "loads"]:
+#    setattr(Model, cmd, property(lambda self: Model(cmd)))
 
 define = Model()

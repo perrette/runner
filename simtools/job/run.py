@@ -37,6 +37,7 @@ from simtools import register
 from simtools.job.model import model_parser as model, getmodel
 import simtools.job.stats  # register !
 from simtools.job.config import write_config
+import os
 
 # prepare job
 # ===========
@@ -145,8 +146,8 @@ def run_post(o):
         xparams = XParams(np.empty((0,0)), names=[])
         o.include_default = True
 
-    xrun = XRun(model, xparams, autodir=o.autodir)
-    xrun.setup(os.join.path(o.expdir, 'params.txt'))
+    xrun = XRun(model, xparams, autodir=o.auto_dir)
+    xrun.setup(os.path.join(o.expdir, 'params.txt'))
     
     if o.runid:
         indices = parse_slurm_array_indices(o.runid)

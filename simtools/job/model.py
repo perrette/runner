@@ -127,7 +127,7 @@ e.g. {runid:0>6} to prefix runid with zeroes, total 6 digits')
 grp.add_argument('--default-file', help='default param file, required for certain file types (e.g. namelist)')
 
 model_parser = argparse.ArgumentParser(add_help=False, 
-                                       parents=[modelcommand, modeconfig])
+                                       parents=[modelcommand, modelconfig])
 
 #grp = model_parser.add_argument_group('user-defined module')
 #grp.add_argument('--module-file', help='')

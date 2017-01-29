@@ -224,10 +224,10 @@ class XRun(object):
         if indices is None:
             indices = np.arange(self.params.size)
 
-        values = np.empty(self.params.size)
+        values = np.empty((self.params.size, len(names)))
         values.fill(np.nan)
 
-        for i in xrange(xparams.size):
+        for i in xrange(self.params.size):
             for j, name in enumerate(names):
                 try:
                     var = self._getvar(name, i, expdir)
