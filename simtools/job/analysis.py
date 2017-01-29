@@ -21,7 +21,7 @@ from collections import OrderedDict as odict
 #from simtools.xrun import XRun
 from simtools.register import register_job
 from simtools.prior import PriorParam
-from simtools.xrun import XParams, XRun, XState
+from simtools.xrun import XParams, XRun, XState, DataFrame
 from simtools.job.config import load_config
 from simtools.job.model import model_parser, modelconfig, custommodel, \
     CustomModel, getmodel
@@ -29,6 +29,8 @@ from simtools.job.run import parse_slurm_array_indices, _typechecker, run
 from simtools.job.run import XPARAM, EXPDIR, EXPCONFIG
 
 XSTATE = "state.txt"
+XLOGLIK = "loglik.txt" # log-likelihood for various variables
+XWEIGHT = "weights.txt"
 
 state = argparse.ArgumentParser(add_help=False, parents=[])
 grp = state.add_argument_group("model state")
@@ -51,8 +53,9 @@ writestate_parser = argparse.ArgumentParser(add_help=False,
                                             of a previous experiment.')
 writestate_parser.add_argument('expdir', default=EXPDIR, 
                                help='experiment directory (state will be written there)')
-#writestate_parser.add_argument('--state-file', 
-#                               help='default to state.txt under the experiment dir')
+writestate_parser.add_argument('--state-file', 
+                               help='default to '+XSTATE+' under the experiment dir')
+
 
 def getxrunanalysis(o):
     """get XRun instance for post-run analysis
@@ -77,7 +80,7 @@ def writestate(o):
     xrun = getxrunanalysis(o)
 
     xstate = xrun.getstate(names, o.expdir)
-    statefile = os.path.join(o.expdir, XSTATE)
+    statefile = o.state_file or os.path.join(o.expdir, XSTATE)
     print("Write state variables to",statefile)
     xstate.write(statefile)
 
@@ -85,9 +88,45 @@ def writestate(o):
 register_job('state', writestate_parser, writestate, help="derive state variables")
 
 
+likelihood_parser = argparse.ArgumentParser(add_help=False, 
+                                            parents=[writestate_parser],
+                                            description='Compute likelihood.')
+
+likelihood_parser.add_argument('--weights-file', 
+                               help='final likelihood default to '+XWEIGHT+' under the experiment dir')
+likelihood_parser.add_argument('--loglik-file', 
+                               help='log-like matrix of individual constraints, default to'+XLOGLIK, 'under exp dir')
+
+#analyze_parser.add_argument()
+
 def getstate(o):
-    statefile = os.path.join(o.expdir, XSTATE)
+    statefile = o.state_file or os.path.join(o.expdir, XSTATE)
     return XState.read(statefile)
+
+
+def likelihood_post(o):
+    state = getstate(o)
+    assert o.likelihood, 'requires -l/--likelihood'
+    loglik = np.empty((state.size, len(o.likelihood)))
+
+    for j, l in enumerate(o.likelihood):
+        jj = state.names.index(l.name)
+        loglik[:, j] = l.logpdf(state.values[:,jj])
+
+    loglik[np.isnan(loglik)] = -np.inf
+
+    xloglik = DataFrame(loglik, [l.name for l in o.likelihood])
+    file = o.weights_file or os.path.join(o.expdir, XLOGLIK)
+    print('write loglik to', file)
+
+    weights = np.exp(loglik.sum(axis=1))
+    file = o.loglik_file or os.path.join(o.expdir, XLOGLIK)
+    print('write weights to', file)
+    np.savetxt(weights, file)
+
+
+register_job('likelihood', likelihood_parser, likelihood_post, 
+             help="derive likelihood weights from constraints")
 
 #grp.add_argument('-m', '--module', 
 #                 help='module file where ')
