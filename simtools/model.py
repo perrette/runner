@@ -256,4 +256,9 @@ class CustomModel(Model):
     def getvar(self, name, rundir):
         if self._getvar is None:
             return super(CustomModel, self).getvar(name, rundir)
-        return self._getvar(name, rundir, self.executable, *self._format_args(rundir), **self.params_as_dict())
+        try:
+            # for experiment-dependent variables, provide the context
+            return self._getvar(name, rundir, self.executable, *self._format_args(rundir))
+        except TypeError:
+            # in case the function was written only with the two basic arguments
+            return self._getvar(name, rundir)

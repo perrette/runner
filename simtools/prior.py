@@ -134,6 +134,9 @@ class PriorParam(GenericParam):
 
     @classmethod
     def parse(cls, string):
+        """NAME=N?MEAN,STD or NAME=U?MIN,MAX or NAME=TYPE?ARG1[,ARG2 ...] where
+        TYPE is any scipy.stats distribution with *shp, loc, scale parameters.
+        """
         name, spec = string.split('=')
         if '!' in spec:
             spec, default = spec.split('!')

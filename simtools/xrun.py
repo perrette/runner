@@ -106,9 +106,10 @@ class XDir(object):
 
 class XRun(object):
 
-    def __init__(self, model, params):
+    def __init__(self, model, params, autodir=False):
         self.model = model
         self.params = params  # XParams class
+        self.autodir = autodir
  
     def setup(self, expdir, force=False):
         """Write experiment params and default model to directory
@@ -118,39 +119,46 @@ class XRun(object):
         self.params.write(x.path("params.txt"))
         self.model.setup(x.path("default")) # default model setup
 
+    def _get_rundir(self, runid, expdir):
+        x = XDir(expdir)
+        if self.autodir:
+            params = self.params.pset_as_dict(runid)
+            rundir = x.autodir([Param(name, params[name]) for name in self.params.names])
+        else:
+            rundir = x.rundir(runid)
+        return rundir
+
+    def _get_model(self, runid, **context):
+        """return model
+        **context : rundir, used to fill tags in model
+        """
+        params = self.params.pset_as_dict(runid)
+        # update model parameters, setup directory
+        model = copy.deepcopy(self.model) 
+        context["runid"] = runid
+        model.update(params, context)
+        return model
+
 
     def run(self, runid=None, background=False, submit=False, dry_run=False, 
-            expdir='./', rundir=None, output=None, error=None, **kwargs):
+            expdir='./', output=None, error=None, **kwargs):
         """Run one model instance
 
         runid : which model instance
-        rundir : None (--> runid) or a string containing any tag or '--auto'
 
         Returns
         -------
         Popen instance (or equivalent if submit)
         """
-        x = XDir(expdir)
-
-        params = self.params.pset_as_dict(runid)
-
-        # determine run directory and tag (basically the basename of rundir)
-        if rundir is None:
-            rundir = x.rundir(runid) # will be created upon run
-            runtag = x.runtag(runid)
-        elif rundir == '--auto':
-            rundir = x.autodir([Param(name, params[name]) for name in self.params.names])
-            runtag = os.path.basename(rundir)
-        else:
-            runtag = os.path.basename(rundir)
-            #rundir = os.path.join(expdir, rundir)
+        rundir = self._get_rundir(runid, expdir)
+        model = self._get_model(runid, rundir=rundir, expdir=expdir)
 
         # determine log file names
         logdir = os.path.join(expdir, 'logs')
         if not os.path.exists(logdir): 
             os.makedirs(logdir) # needs to be created before
-        output = output or os.path.join(logdir, '{runtag}.out').format(runtag=runtag)
-        error = error or os.path.join(logdir, '{runtag}.err').format(runtag=runtag)
+        output = output or os.path.join(logdir, '{runid}.out').format(runid=runid)
+        error = error or os.path.join(logdir, '{runid}.err').format(runid=runid)
 
         # open files for Popen (not used if `submit`)
         if background:
@@ -159,17 +167,6 @@ class XRun(object):
         else:
             stdout = None
             stderr = None
-
-        # environment variables to define and tag fillers
-        context = dict(
-            runid = runid,
-            runtag = runtag,
-            expdir = expdir,
-        )
-
-        # update model parameters, setup directory
-        model = copy.deepcopy(self.model) 
-        model.update(params, context)
 
         if dry_run:
             print(model.command(rundir))
@@ -191,12 +188,10 @@ class XRun(object):
         return p
 
 
-    def batch(self, indices=None, expdir="./", submit=True, autodir=False, include_default=False, **kwargs):
+    def batch(self, indices=None, expdir="./", submit=True, include_default=False, **kwargs):
         """Run ensemble
         """
         N = self.params.size
-        # write config to expdirectory
-        # self.setup(force=True)  # things are up to date
 
         if indices is None:
             indices = np.arange(self.params.size).tolist()
@@ -210,15 +205,44 @@ class XRun(object):
         print("Submit" if submit else "Run",len(indices),"out of",N,"simulations",*bla)
         processes = []
 
-        if autodir:
-            rundir='--auto'
-        else:
-            rundir=None
-
         for runid in indices:
-            p = self.run(runid=runid, expdir=expdir, submit=submit, background=True, rundir=rundir, **kwargs)
+            p = self.run(runid=runid, expdir=expdir, submit=submit, background=True, **kwargs)
             processes.append(p)
         return MultiProcess(processes) # has a `wait` command
+
+
+    def _getvar(self, name, runid=None, expdir='./'):
+        """get scalar state variable for one model instance
+        """
+        rundir = self._get_rundir(runid, expdir)
+        return self.model.getvar(name, rundir)
+
+
+    def getstate(self, names, expdir='./', indices=None):
+        """return one state variable
+        """
+        if indices is None:
+            indices = np.arange(self.params.size)
+
+        values = np.empty(self.params.size)
+        values.fill(np.nan)
+
+        for i in xrange(xparams.size):
+            for j, name in enumerate(names):
+                try:
+                    var = self._getvar(name, i, expdir)
+                except NotImplementedError:
+                    raise
+                except ValueError:
+                    continue
+                values[i,j] = var
+
+        return XState(values, names)
+
+
+class XState(XParams):
+    " store model state "
+    pass
 
 
 class MultiProcess(object):

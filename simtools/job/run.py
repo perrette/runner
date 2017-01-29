@@ -131,6 +131,7 @@ def _autodir(params):
     " create automatic directory based on list of Param instances"
     raise NotImplementedError()
 
+
 def run_post(o):
     model = getmodel(o)  # default model
 
@@ -144,7 +145,7 @@ def run_post(o):
         xparams = XParams(np.empty((0,0)), names=[])
         o.include_default = True
 
-    xrun = XRun(model, xparams)
+    xrun = XRun(model, xparams, autodir=o.autodir)
     xrun.setup(os.join.path(o.expdir, 'params.txt'))
     
     if o.runid:
@@ -154,11 +155,10 @@ def run_post(o):
 
     # test: run everything serially
     if o.test:
-        rundir = '--auto' if o.auto_dir else None
         for i in indices:
-            xrun.run(runid=i, expdir=o.expdir, background=False, rundir=rundir, dry_run=o.dry_run)
+            xrun.run(runid=i, expdir=o.expdir, background=False, dry_run=o.dry_run)
         if o.include_default:
-            xrun.run(expdir=o.expdir, background=False, rundir=rundir, dry_run=o.dry_run)
+            xrun.run(expdir=o.expdir, background=False, dry_run=o.dry_run)
         o.wait = False
 
     # array: create a parameterized "job" command [SLURM]

@@ -89,9 +89,9 @@ def getfiletype(o):
 # model runs
 # ==========
 
-model_parser = argparse.ArgumentParser(add_help=False, parents=[filetype])
+modelcommand = argparse.ArgumentParser(add_help=False, parents=[filetype])
 
-grp = model_parser.add_argument_group('interface', description='job to model communication')
+grp = modelcommand.add_argument_group('interface', description='job to model communication')
 #grp.add_argument('--io-params', choices=["arg", "file"], default='arg',
 #                 help='mode for passing parameters to model (default:%(default)s)')
 grp.add_argument('--file-name', default=mod.FILENAME, 
@@ -109,7 +109,8 @@ grp.add_argument('--env-out', default=mod.ENV_OUT,
 grp.add_argument('--init-dir', default=None, 
                  help='where to execute the model from, by default current directory')
 
-grp = model_parser.add_argument_group('model configuration')
+modelconfig = argparse.ArgumentParser(add_help=False, parents=[])
+grp = modelconfig.add_argument_group('model configuration')
 grp.add_argument('--executable','-x', default='echo',
                       help='model executable (e.g. runscript etc)')
 grp.add_argument('--args', 
@@ -124,6 +125,9 @@ tags can also be formatted according to python rules, \
 e.g. {runid:0>6} to prefix runid with zeroes, total 6 digits')
 
 grp.add_argument('--default-file', help='default param file, required for certain file types (e.g. namelist)')
+
+model_parser = argparse.ArgumentParser(add_help=False, 
+                                       parents=[modelcommand, modeconfig])
 
 #grp = model_parser.add_argument_group('user-defined module')
 #grp.add_argument('--module-file', help='')

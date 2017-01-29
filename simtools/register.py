@@ -57,7 +57,7 @@ def define_model(command=None, setup=None, getvar=None, dumps=None, loads=None, 
         prepare run directory (e.g. write param file)
     - command : callable ( rundir, executable, *args, **params ) --> list of args
         make run command given output directory and parameters
-    - getvar : callable ( name, rundir, executable, *args, **params ) --> state variable (scalar)
+    - getvar : callable ( name, rundir, executable, *args ) --> state variable (scalar)
     - loads : callable ( file content ) --> params dict {name:value}
     - dumps : callable ( params dict ) --> file content (string)
     **kwargs : will be used to set parser defaults with job run (e.g. executable etc)
