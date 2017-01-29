@@ -107,7 +107,12 @@ grp.add_argument('--env-prefix', default=mod.ENV_PREFIX,
 grp.add_argument('--env-out', default=mod.ENV_OUT,
                  help='environment variable for output (after prefix) (default:%(default)s)')
 
-modelconfig = argparse.ArgumentParser(add_help=False, parents=[])
+custommodel = argparse.ArgumentParser(add_help=False, parents=[])
+grp = custommodel.add_argument_group('user-customed model')
+grp.add_argument('-m','--user-module', 
+                 help='user-defined python module that contains custom file type, model definitions, necessary for postprocessing (see `simtools.register.define`)')
+
+modelconfig = argparse.ArgumentParser(add_help=False, parents=[custommodel])
 grp = modelconfig.add_argument_group('model configuration')
 grp.add_argument('--executable','-x', default='echo',
                       help='model executable (e.g. runscript etc)')

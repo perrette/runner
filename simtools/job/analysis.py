@@ -23,12 +23,12 @@ from simtools.register import register_job
 from simtools.prior import PriorParam
 from simtools.xrun import XParams, XRun, XState
 from simtools.job.config import _parser_defaults
-from simtools.job.model import model_parser, modelconfig, CustomModel, getmodel
+from simtools.job.model import model_parser, modelconfig, custommodel, \
+    CustomModel, getmodel
 from simtools.job.run import parse_slurm_array_indices, _typechecker, run
 from simtools.job.run import XPARAM, EXPDIR, EXPCONFIG
 
 XSTATE = "state.txt"
-
 
 state = argparse.ArgumentParser(add_help=False, parents=[])
 grp = state.add_argument_group("model state")
@@ -46,7 +46,7 @@ grp.add_argument('-l', '--likelihood',
                  nargs='+')
 
 writestate_parser = argparse.ArgumentParser(add_help=False, 
-                                            parents=[state, likelihood],
+                                            parents=[state, likelihood, custommodel],
                                             description='Derive state variables.\
                                             of a previous experiment.')
 writestate_parser.add_argument('exp_dir', default=EXPDIR, 
