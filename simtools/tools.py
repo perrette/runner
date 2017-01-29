@@ -203,3 +203,18 @@ class DataFrame(object):
     @property
     def index(self):
         return np.arange(self.size)
+
+
+
+def _create_dirtree(a,chunksize=2):
+    """create a directory tree from a single, long name
+
+    e.g. "12345" --> ["1", "23", "45"]
+    """
+    b = a[::-1]  # reverse
+    i = 0
+    l = []
+    while i < len(b):
+        l.append(b[i:i+chunksize])
+        i += chunksize
+    return [e[::-1] for e in l[::-1]]

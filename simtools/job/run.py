@@ -180,12 +180,16 @@ def run_post(o):
     else:
         indices = np.arange(xparams.size)
 
+    if o.include_default:
+        indices = list(indices) + [None]
+
     slurm_opt = filterargs(slurm)
 
     # test: run everything serially
     if o.test:
-        for i in [np.asarray(indices).tolist() + [None]*o.include_default]:
-            model, rundir = xrun.get_member(i, o.expdir)
+        for i in indices:
+            model = xrun.get_model(i)
+            rundir = xrun.get_rundir(i, o.expdir)
             model.run(rundir, background=False)
 
     # array: create a parameterized "job" command [SLURM]
@@ -201,9 +205,10 @@ def run_post(o):
     # the default
     else:
         assert not slurm_opt.pop('array', False), 'missed if then else --array????'
-        p = xrun.run(indices=indices, submit=o.submit, 
-                     expdir=o.expdir, include_default=o.include_default, 
-                     **slurm_opt)
+        if o.submit:
+            p = xrun.submit(indices=indices, expdir=o.expdir, **slurm_opt)
+        else:
+            p = xrun.run(indices=indices, expdir=o.expdir)
 
     if o.wait:
         p.wait()

@@ -231,6 +231,60 @@ register_job('analysis', analysis, analysis_post,
              help="short for state + likelihood: save state.txt, loglik.txt and weights.txt")
 
 
+#    @property
+#    def obs(self):
+#        return [c.mean for c in self.constraints]
+#
+#    @property
+#    def names(self):
+#        return [c.name for c in self.constraints]
+#
+#    def best(self):
+#        return self.state[np.argmax(self.loglik)]
+#
+#    def mean(self):
+#        return self.state[self.valid].mean(axis=0)
+#
+#    def std(self):
+#        return self.state[self.valid].std(axis=0)
+#
+#    def min(self):
+#        return self.state[self.valid].min(axis=0)
+#
+#    def max(self):
+#        return self.state[self.valid].max(axis=0)
+#
+#    def pct(self, p):
+#        return np.percentile(self.state[self.valid], p, axis=0)
+#
+#
+#    def stats(self, fmt="{:.2f}", sep=" "):
+#        """return statistics
+#        """
+#        #def stra(a):
+#        #    return sep.join([fmt.format(k) for k in a]) if a is not None else "--"
+#
+#        res = [
+#            ("obs", self.obs),
+#            ("best", self.best()),
+#            ("default", self.default),
+#            ("mean", self.mean()),
+#            ("std", self.std()),
+#            ("min", self.min()),
+#            ("p05", self.pct(5)),
+#            ("med", self.pct(50)),
+#            ("p95", self.pct(95)),
+#            ("max", self.max()),
+#        ]
+#
+#        index = [nm for nm,arr in res if arr is not None]
+#        values = [arr for nm,arr in res if arr is not None]
+#
+#        import pandas as pd
+#        df = pd.DataFrame(np.array(values), columns=self.names, index=index)
+#
+#        return str(df) #"\n".join(lines)
+
 #grp.add_argument('-m', '--module', 
 #                 help='module file where ')
 
