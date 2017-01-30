@@ -119,15 +119,14 @@ grp = resample.add_argument_group('output')
 grp.add_argument('-o', '--out', help="output parameter file (print to scree otherwise)")
 
 
-def _getweights(o):
-    w = np.loadtxt(o.weights_file)
-    if o.log:
-        w = np.exp(o.log)
-    return w
 
 
 def resample_post(o):
-    weights = _getweights(o)
+    weights = np.loadtxt(o.weights_file)
+    if o.log:
+        weights = np.exp(weights)
+    if np.all(weights == 0):
+        raise ValueError("all weights are zero")
     xpin = XParams.read(o.params_file)
     xparams = xpin.resample(weights, size=o.size, seed=o.seed,
                             method=o.method,

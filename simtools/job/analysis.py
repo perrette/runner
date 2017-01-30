@@ -25,7 +25,6 @@ from simtools.job.run import XPARAM, EXPDIR, EXPCONFIG
 XSTATE = "state.txt"
 XLOGLIK = "loglik.txt" # log(weight)
 LOGLIKS = "logliks.txt" # log-likelihood for various variables
-XWEIGHT = "weights.txt"
 
 
 class Obs(object):
@@ -64,7 +63,7 @@ class Obs(object):
 
 
 
-analyze= argparse.ArgumentParser(add_help=False, parents=[])
+analyze= argparse.ArgumentParser(add_help=False, parents=[modelconfig])
 analyze.add_argument('expdir', default=EXPDIR, 
                                help='experiment directory to analyze')
 analyze.add_argument('--out', default=None,
@@ -101,20 +100,21 @@ grp.add_argument('--custom-cost', action='store_true',
                                (see simtools.register.define)')
 
 
-def getxrunanalysis(o):
+def getxrunanalysis(o, expdir):
     """get XRun instance for post-run analysis
     """
-    paramsfile = os.path.join(o.expdir, XPARAM)
-    cfg = load_config(os.path.join(o.expdir, EXPCONFIG))
-    cfg.update(vars(o))
+    paramsfile = os.path.join(expdir, XPARAM)
+    cfg = load_config(os.path.join(expdir, EXPCONFIG))
+    cfg["user_module"] = o.user_module
     model = getmodel(argparse.Namespace(**cfg), post_only=True) 
+    assert model.executable is not None
     xparams = XData.read(paramsfile) # for the size & autodir
     return XRun(model, xparams, autodir=cfg["auto_dir"])
 
 
 def analyze_post(o):
 
-    xrun = getxrunanalysis(o)
+    xrun = getxrunanalysis(o, o.expdir)
 
     if not o.out:
         o.out = o.expdir
@@ -132,7 +132,7 @@ def analyze_post(o):
     else:
         xstate = None
 
-    if xstate:
+    if xstate is not None:
         statefile = os.path.join(o.out, XSTATE)
         print("Write state variables to",statefile)
         xstate.write(statefile)
@@ -168,13 +168,13 @@ def analyze_post(o):
 
     # Sum-up and apply custom distribution
     # ====================================
-    logliksum = loglik.sum(axis=1)
+    logliksum = logliks.sum(axis=1)
 
     if o.custom_cost:
         cost = xrun.getcost(o.out)
         logliksum += -0.5*cost
 
-    file = os.path.join(o.out, XWEIGHT)
+    file = os.path.join(o.out, "loglik.txt")
     print('write loglik (total) to', file)
     np.savetxt(file, logliksum)
 
@@ -184,14 +184,14 @@ def analyze_post(o):
         return
 
     valid = np.isfinite(logliksum)
-    ii = [xstate.name.index(c.mame) for c in constraints]
+    ii = [xstate.names.index(c.name) for c in constraints]
     state = xstate.values[:, ii] # sort !
     pct = lambda p: np.percentile(state[valid], p, axis=0)
 
     names = [c.name for c in constraints]
 
     res = [
-        ("obs", [c.mean for c in constraints]),
+        ("obs", [c.dist.mean() for c in constraints]),
         ("best", state[np.argmax(logliksum)]),
         ("mean", state[valid].mean(axis=0)),
         ("std", state[valid].std(axis=0)),
@@ -208,7 +208,7 @@ def analyze_post(o):
     import pandas as pd
     df = pd.DataFrame(np.array(values), columns=names, index=index)
 
-    with open(os.path.join(o.out, 'stats.txt')) as f:
+    with open(os.path.join(o.out, 'stats.txt'), 'w') as f:
         f.write(str(df))
 
     #assert constraints, 'requires -l/--likelihood OR --obs-error'
