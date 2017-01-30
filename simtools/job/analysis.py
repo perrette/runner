@@ -13,13 +13,6 @@ import subprocess
 from collections import OrderedDict as odict
 from scipy.stats import norm
 
-#from glaciermodel import GlacierModel
-#from simtools.modelrun import run_command, parse_slurm_array_indices
-#from simtools.params import XParams, PriorParam, PriorParams
-#from simtools.analysis import Likelihood, parse_constraint, Results
-#from simtools.tools import parse_keyval
-#from simtools.iis import IISExp
-#from simtools.xrun import XRun
 from simtools.register import register_job
 from simtools.prior import PriorParam
 from simtools.xrun import XRun, XData
@@ -30,7 +23,8 @@ from simtools.job.run import parse_slurm_array_indices, _typechecker, run
 from simtools.job.run import XPARAM, EXPDIR, EXPCONFIG
 
 XSTATE = "state.txt"
-XLOGLIK = "loglik.txt" # log-likelihood for various variables
+XLOGLIK = "loglik.txt" # log(weight)
+LOGLIKS = "logliks.txt" # log-likelihood for various variables
 XWEIGHT = "weights.txt"
 
 
@@ -70,58 +64,23 @@ class Obs(object):
 
 
 
-state = argparse.ArgumentParser(add_help=False, parents=[])
-grp = state.add_argument_group("model state")
+analyze= argparse.ArgumentParser(add_help=False, parents=[])
+analyze.add_argument('expdir', default=EXPDIR, 
+                               help='experiment directory to analyze')
+analyze.add_argument('--out', default=None,
+                               help='experiment directory to write the diagnostics to (by default same as expdir)')
+analyze.add_argument('-i', '--in-state', 
+                               help='input state file to consider (normally derived via custom getvar)')
+grp =analyze.add_argument_group("model state")
 grp.add_argument("-v", "--state-variables", nargs='+', default=[],
-                 help='list of state variables, at least including the constraints \
-                 (default is to stick to constraint variables, if provided)')
+                 help='list of state variables to include in state.txt, \
+                 does not necessarily enter in the likelihood')
+grp.add_argument('--stats', action='store_true', help='add statistics on model state')
 
-writestate = argparse.ArgumentParser(add_help=False, 
-                                            parents=[state, custommodel],
-                                            description='Derive state variables.\
-                                            of a previous experiment.')
-writestate.add_argument('expdir', default=EXPDIR, 
-                               help='experiment directory (state will be written there)')
-writestate.add_argument('--state-file', 
-                               help='default to '+XSTATE+' under the experiment dir')
+grp =analyze.add_argument_group(
+    "likelihood", 
+    description='likelihood can be entered either as a list of distributions (same convention as job sample), OR as a measurement error (provided a custom getobs function is defined to retrieve the mean) OR via a custom `getcost`')
 
-
-def getxrunanalysis(o):
-    """get XRun instance for post-run analysis
-    """
-    paramsfile = os.path.join(o.expdir, XPARAM)
-    cfg = load_config(os.path.join(o.expdir, EXPCONFIG))
-    cfg.update(vars(o))
-    model = getmodel(argparse.Namespace(**cfg), post_only=True) 
-    xparams = XData.read(paramsfile) # for the size & autodir
-    return XRun(model, xparams, autodir=cfg["auto_dir"])
-
-
-def writestate_post(o):
-
-    # determine name of state variables to consider
-    assert o.state_variables, \
-        writestate.error("requires state variables -v/--state-variables")
-
-    names = o.state_variables 
-
-    xrun = getxrunanalysis(o)
-
-    xstate = xrun.getstate(names, o.expdir)
-    statefile = o.state_file or os.path.join(o.expdir, XSTATE)
-    print("Write state variables to",statefile)
-    xstate.write(statefile)
-
-
-register_job('state', writestate, writestate_post, 
-             help="save array of state variables")
-
-
-likelihood = argparse.ArgumentParser(add_help=False, 
-                                            parents=[writestate],
-                                            description='Compute likelihood.')
-
-grp = likelihood.add_argument_group("likehood from obs constraints")
 grp.add_argument('-l', '--likelihood',
                  type=PriorParam.parse,
                  help=PriorParam.parse.__doc__,
@@ -138,185 +97,125 @@ grp.add_argument('--obs-error',
                  nargs='+')
 
 grp.add_argument('--custom-cost', action='store_true',
-                               help='use custom getcost function \
-                               (see simtools.register.define) \
-                               and bypass all the rest (state writing etc)')
+                               help='use custom getcost function (adds up) \
+                               (see simtools.register.define)')
 
-likelihood.add_argument('--weights-file', 
-                               help='final likelihood default to '+XWEIGHT+' under the experiment dir')
-likelihood.add_argument('--loglik-file', 
-                               help='log-like matrix of individual constraints, default to '+XLOGLIK+' under exp dir')
 
-#analyze_parser.add_argument()
-
-def customlikelihood_post(o):
-    """User-defined, custom cost-function, bypass all the rest
+def getxrunanalysis(o):
+    """get XRun instance for post-run analysis
     """
-    if o.custom_cost:
-        xrun = getxrunanalysis(o)
-        cost = xrun.getcost(o.expdir)
-        weights = np.exp(-0.5*cost)
-        file = o.weights_file or os.path.join(o.expdir, XWEIGHT)
-        print('write weights to', file)
-        np.savetxt(file, weights)
-        likelihood.exit(0)
+    paramsfile = os.path.join(o.expdir, XPARAM)
+    cfg = load_config(os.path.join(o.expdir, EXPCONFIG))
+    cfg.update(vars(o))
+    model = getmodel(argparse.Namespace(**cfg), post_only=True) 
+    xparams = XData.read(paramsfile) # for the size & autodir
+    return XRun(model, xparams, autodir=cfg["auto_dir"])
 
-def likelihood_post(o):
 
-    # exit if True
-    customlikelihood_post(o)
+def analyze_post(o):
 
-    # read state from file
-    statefile = o.state_file or os.path.join(o.expdir, XSTATE)
-    state = XData.read(statefile)
+    xrun = getxrunanalysis(o)
+
+    if not o.out:
+        o.out = o.expdir
+
+    # write state.txt
+    # ===============
+    names = o.state_variables + [x.name for x in o.likelihood + o.obs_error]
+
+    if o.in_state:
+        print("Read state variables from",o.in_state)
+        xstate = XData.read(o.in_state)
+    elif names:
+        print("Retrieve state variables from",o.expdir)
+        xstate = xrun.getstate(names, o.expdir)
+    else:
+        xstate = None
+
+    if xstate:
+        statefile = os.path.join(o.out, XSTATE)
+        print("Write state variables to",statefile)
+        xstate.write(statefile)
+
+    # Derive likelihoods
+    # ==================
 
     # direct distributions
     constraints = [l for l in o.likelihood]
 
     # build likelihood from obs-errors (requires getobs)
     if o.obs_error:
-        # qui peut le plus peut le moins
-        model = getxrunanalysis(o).model
         # TODO: add fromjson to Model class, to avoid messing global variables
         for err in o.obs_error:
-            mean = model.getobs(err.name)
+            mean = xrun.model.getobs(err.name)
             like = err.get_dist(mean)
             constraints.append(like)
 
-    assert constraints, 'requires -l/--likelihood OR --obs-error'
-    loglik = np.empty((state.size, len(constraints)))
+    # Apply constraints on state 
+    # ==========================
+    logliks = np.empty((xrun.params.size, len(constraints)))
 
     for j, l in enumerate(constraints):
-        jj = state.names.index(l.name)
-        loglik[:, j] = l.dist.logpdf(state.values[:,jj])
+        jj = xstate.names.index(l.name)
+        logliks[:, j] = l.dist.logpdf(xstate.values[:,jj])
 
-    loglik[np.isnan(loglik)] = -np.inf
+    logliks[np.isnan(logliks)] = -np.inf
+    xlogliks = XData(logliks, [l.name for l in constraints])
 
-    xloglik = XData(loglik, [l.name for l in constraints])
-    file = o.loglik_file or os.path.join(o.expdir, XLOGLIK)
-    print('write loglik to', file)
-    xloglik.write(file)
+    file = os.path.join(o.out, LOGLIKS)
+    print('write logliks to', file)
+    xlogliks.write(file)
 
-    weights = np.exp(loglik.sum(axis=1))
-    file = o.weights_file or os.path.join(o.expdir, XWEIGHT)
-    print('write weights to', file)
-    np.savetxt(file, weights)
+    # Sum-up and apply custom distribution
+    # ====================================
+    logliksum = loglik.sum(axis=1)
 
+    if o.custom_cost:
+        cost = xrun.getcost(o.out)
+        logliksum += -0.5*cost
 
-register_job('likelihood', likelihood, likelihood_post, 
-             help="derive likelihood weights from state file and constraints")
+    file = os.path.join(o.out, XWEIGHT)
+    print('write loglik (total) to', file)
+    np.savetxt(file, logliksum)
 
+    # Add statistics
+    # ==============
+    if not o.stats:
+        return
 
+    valid = np.isfinite(logliksum)
+    ii = [xstate.name.index(c.mame) for c in constraints]
+    state = xstate.values[:, ii] # sort !
+    pct = lambda p: np.percentile(state[valid], p, axis=0)
 
-# Now all in one
+    names = [c.name for c in constraints]
 
-analysis = argparse.ArgumentParser(add_help=False, 
-                                   parents=[likelihood],
-                                   description='short for state + likelihood')
+    res = [
+        ("obs", [c.mean for c in constraints]),
+        ("best", state[np.argmax(logliksum)]),
+        ("mean", state[valid].mean(axis=0)),
+        ("std", state[valid].std(axis=0)),
+        ("min", state[valid].min(axis=0)),
+        ("p05", pct(5)),
+        ("med", pct(50)),
+        ("p95", pct(95)),
+        ("max", state[valid].max(axis=0)),
+    ]
 
-def analysis_post(o):
-    if o.custom_cost and not o.state_variables:
-        customlikelihood_post(o) # do and exit
+    index = [nm for nm,arr in res if arr is not None]
+    values = [arr for nm,arr in res if arr is not None]
 
-    # extend state variables so that all constraints are covered
-    o.state_variables = o.state_variables \
-        + [l.name for l in o.likelihood + o.obs_error \
-           if l.name not in o.state_variables]
+    import pandas as pd
+    df = pd.DataFrame(np.array(values), columns=names, index=index)
 
-    writestate_post(o)
-    customlikelihood_post(o)
-    likelihood_post(o)
+    with open(os.path.join(o.out, 'stats.txt')) as f:
+        f.write(str(df))
 
+    #assert constraints, 'requires -l/--likelihood OR --obs-error'
 
-register_job('analysis', analysis, analysis_post, 
-             help="short for state + likelihood: save state.txt, loglik.txt and weights.txt")
+register_job('analyze',analyze, analyze_post, 
+             help="analyze ensemble (state + loglik + stats) for resampling")
 
-
-#    @property
-#    def obs(self):
-#        return [c.mean for c in self.constraints]
-#
-#    @property
-#    def names(self):
-#        return [c.name for c in self.constraints]
-#
-#    def best(self):
-#        return self.state[np.argmax(self.loglik)]
-#
-#    def mean(self):
-#        return self.state[self.valid].mean(axis=0)
-#
-#    def std(self):
-#        return self.state[self.valid].std(axis=0)
-#
-#    def min(self):
-#        return self.state[self.valid].min(axis=0)
-#
-#    def max(self):
-#        return self.state[self.valid].max(axis=0)
-#
-#    def pct(self, p):
-#        return np.percentile(self.state[self.valid], p, axis=0)
-#
-#
-#    def stats(self, fmt="{:.2f}", sep=" "):
-#        """return statistics
-#        """
-#        #def stra(a):
-#        #    return sep.join([fmt.format(k) for k in a]) if a is not None else "--"
-#
-#        res = [
-#            ("obs", self.obs),
-#            ("best", self.best()),
-#            ("default", self.default),
-#            ("mean", self.mean()),
-#            ("std", self.std()),
-#            ("min", self.min()),
-#            ("p05", self.pct(5)),
-#            ("med", self.pct(50)),
-#            ("p95", self.pct(95)),
-#            ("max", self.max()),
-#        ]
-#
-#        index = [nm for nm,arr in res if arr is not None]
-#        values = [arr for nm,arr in res if arr is not None]
-#
-#        import pandas as pd
-#        df = pd.DataFrame(np.array(values), columns=self.names, index=index)
-#
-#        return str(df) #"\n".join(lines)
-
-#grp.add_argument('-m', '--module', 
-#                 help='module file where ')
-
-#likelihood.add_argument('--')
-
-#def likelihood_post(o):
-
-
-#    def add_loglik(self):
-#        p =  self.subparsers.add_parser("loglik", 
-#                               help="return log-likelihood for one run")
-#        p.add_argument("expdir", help="experiment directory (need to setup first)")
-#        p.add_argument("--id", type=int, help='specify only on run')
-#        p.add_argument("-l", "--constraints-file", 
-#                       help="constraints to compute likelihood")
-#        return p
-#
-#    def add_constraints_group(self, subp):
-#        grp = subp.add_argument_group("obs constraints")
-#        grp.add_argument("--obs-file", help="obs constraints config file")
-#        grp.add_argument("--obs", nargs='*', default=[], help="list of obs constraints")
-#
-#    def add_analysis(self):
-#        """analysis for the full ensemble: state, loglik, etc...
-#        """
-#        subp = self.subparsers.add_parser("analysis", help=self.add_analysis.__doc__)
-#        subp.add_argument("expdir", help="experiment directory (need to setup first)")
-#        self.add_constraints_group(subp)
-#        subp.add_argument('-f', '--force', action='store_true',
-#                       help='force analysis even if loglik.txt already present')
-#        return subp
 #
 #    def add_iis(self):
 #        """run a number of iterations following IIS methodology

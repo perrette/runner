@@ -12,7 +12,7 @@ import subprocess
 from collections import OrderedDict as odict
 
 #from glaciermodel import GlacierModel
-from simtools.params import RESAMPLING_METHOD
+from simtools.xparams import RESAMPLING_METHOD
 from simtools.xrun import XRun, XParams
 
 
@@ -45,12 +45,16 @@ from simtools.xrun import XRun, XParams
 class IISExp(object):
     """Handle IIS experiment
     """
-    def __init__(self, initdir, constraints, iter=0, epsilon=None, resampling=RESAMPLING_METHOD):
+    def __init__(self, model, initdir, constraints, iter=0, epsilon=None, resampling=RESAMPLING_METHOD):
+        self.model = model
         self.initdir = initdir
         self.constraints = constraints
         self.iter = iter
         self.epsilon = epsilon
         self.resampling = resampling
+
+    def is_analyzed(self, iter=None):
+        return os.path.exists(self.path("loglik.txt", iter))
 
     def goto_last_iter(self):
         while self.is_analyzed():
@@ -61,13 +65,10 @@ class IISExp(object):
         return self.initdir + ('.'+str(iter)) if iter > 0 else ""
 
     def path(self, file, iter=None):
-        return XDir(self.expdir(iter)).path(file)
+        return os.path.join(self.expdir(iter), file)
 
     def xrun(self, iter=None):
-        return XRun.read(self.expdir(iter))
-
-    def is_analyzed(self, iter=None):
-        return os.path.exists(self.path("loglik.txt", iter))
+        return XRun(self.model, XParams.read(self.path("params.txt", iter)))
 
     def resample(self, iter, **kwargs):
         xrun = self.xrun(iter)
