@@ -2,6 +2,7 @@
 """
 from __future__ import print_function, absolute_import
 import numpy as np
+import logging
 import json
 import copy
 import os
@@ -46,7 +47,7 @@ class XRun(object):
         """Write experiment params and default model to directory
         """
         if not os.path.exists(expdir):
-            print("create directory",expdir)
+            logging.info("create directory",expdir)
             os.makedirs(expdir)
         elif not force:
             raise RuntimeError(repr(expdir)+" experiment directory already exists")
@@ -54,9 +55,9 @@ class XRun(object):
         try:
             self.model.setup(join(expdir, 'default'))
         except KeyError:
-            print("Failed to setup default model version",
-                  "probably because no default values have been specified",
-                  "and {NAME} syntax was used for command line arguments.",
+            logging.warn("Failed to setup default model version" +
+                  "probably because no default values have been specified" +
+                  "and {NAME} syntax was used for command line arguments." +
                   "Nevermind just skip this step.")
 
     def get_rundir(self, runid, expdir):
