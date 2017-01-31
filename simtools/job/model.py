@@ -117,15 +117,10 @@ grp = modelconfig.add_argument_group('model configuration')
 grp.add_argument('--executable','-x', default='echo',
                       help='model executable (e.g. runscript etc)')
 grp.add_argument('--args', 
-                 help='model arguments (quoted).\
-allowed tags filled by job: \
-    {expdir} (super folder), \
-    {rundir} (ensemble member folder), \
-    {runtag} (base name of {rundir}), \
-    {paramfile} (parameter set for one model), \
-    {runid} (simulation number in the ensemble). \
-tags can also be formatted according to python rules, \
-e.g. {runid:0>6} to prefix runid with zeroes, total 6 digits')
+                 help='model arguments, where `{}` and `{NAME}` will be replaced by \
+the run directory and corresponding parameter value, respectively. \
+                 See also --arg-out-prefix, --arg-param-prefix to let job add these \
+                 arguments.')
 
 grp.add_argument('--default-file', help='default param file, required for certain file types (e.g. namelist)')
 grp.add_argument('--work-dir', default=None, 

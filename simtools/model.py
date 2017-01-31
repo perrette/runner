@@ -82,10 +82,10 @@ class Model(object):
         """
         * executable : runscript
         * args : [str] or str, optional
-            list of command arguments to pass to executable as general model
-            configuration. Any {rundir} tag will be replaced by its value at run time
-            but prefer `arg_out_prefix` for output directory.
-            The {runid} tag may also be used (experimental).
+            List of command arguments to pass to executable as general model
+            configuration. This command may contain the `{}` tag for model run
+            directory, and any `{NAME}` for parameter names. Alternatively these
+            might be set with `arg_out_prefix` and `arg_param_prefix` options.
         * params : [Param], optional
             list of model parameters to be updated with modified params
             If params is provided, strict checking of param names is performed during 
@@ -196,7 +196,12 @@ class Model(object):
         return (prefix + str(value)).split()
 
     def _format_args(self, rundir):
-        return [arg.format(rundir, rundir=rundir, **self.context) for arg in self.args]
+        """two-pass formatting: first rundir and params with `{}` and `{NAME}`
+        then context `{{rundir}}` `{{runid}}`
+        """
+        paramskw = self.params_as_dict()
+        return [arg.format(rundir, **paramskw).format(rundir=rundir, **self.context) 
+                for arg in self.args]
 
     def command(self, rundir):
         exe = self.executable
