@@ -51,7 +51,13 @@ class XRun(object):
         elif not force:
             raise RuntimeError(repr(expdir)+" experiment directory already exists")
         self.params.write(join(expdir, XPARAM))
-        self.model.setup(join(expdir, 'default'))
+        try:
+            self.model.setup(join(expdir, 'default'))
+        except KeyError:
+            print("Failed to setup default model version",
+                  "probably because no default values have been specified",
+                  "and {NAME} syntax was used for command line arguments.",
+                  "Nevermind just skip this step.")
 
     def get_rundir(self, runid, expdir):
         if self.autodir:
