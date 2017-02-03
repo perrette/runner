@@ -117,6 +117,7 @@ class XRun(object):
         * shp : shape of the result, by default scalar
 
         Returns a numpy array with first dimension N (number of models)
+        RuntimeError are ignored, other are raised
         """
         N = self.params.size
         values = np.empty((N,) + shp)
@@ -127,10 +128,12 @@ class XRun(object):
             rundir = self.get_rundir(i, expdir)
             try:
                 res = func(model, rundir)
+            except RuntimeError:
+                continue
             except NotImplementedError:
                 raise
-            except ValueError:
-                continue
+            except:
+                raise
             values[i] = res
         return values
 
