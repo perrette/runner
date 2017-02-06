@@ -114,11 +114,12 @@ modelconfig = argparse.ArgumentParser(add_help=False, parents=[custommodel])
 grp = modelconfig.add_argument_group('model configuration')
 grp.add_argument('--executable','-x', default='echo',
                       help='model executable (e.g. runscript etc)')
-grp.add_argument('--args', 
+grp.add_argument('--args', default="",
                  help='model arguments, where `{}` and `{NAME}` will be replaced by \
 the run directory and corresponding parameter value, respectively. \
                  See also --arg-out-prefix, --arg-param-prefix to let job add these \
                  arguments.')
+grp.add_argument('--xargs', nargs=argparse.REMAINDER, default=[], help='same as (and appended to) args, but no quotes needed. Use as last argument of the command-line.')
 
 grp.add_argument('--default-file', help='default param file, required for certain file types (e.g. namelist)')
 grp.add_argument('--work-dir', default=None, 
@@ -163,7 +164,7 @@ def getmodel(o, post_only=False):
 
     # basic model configuration
     modelargs.update( dict(executable=o.executable, 
-                           args=o.args, 
+                           args=o.args.split() + o.xargs, 
                            params=params, 
                            work_dir=o.work_dir, 
                            ) )
