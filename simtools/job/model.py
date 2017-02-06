@@ -1,6 +1,4 @@
-"""Generate a customizable run script to work with your model.
-
-File formats to pass parameters from job to model
+"""File formats to pass parameters from job to model
 
 * None : (default) dict of {key : value} pairs written in json format
 * linesep : one parameter per line, {name}{sep}{value} -- by default sep=" "

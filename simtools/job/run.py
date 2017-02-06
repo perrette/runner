@@ -3,29 +3,44 @@
 Examples
 --------
 
->>> job run -x runscript.sh -p a=2,3,4 b=0,1
+>>> job run -p a=2,3,4 b=0,1 -o out -x echo --args "--a {a} --b {b} --out {}" --test
+--a 2 --b 0 --out out/0
+--a 2 --b 1 --out out/1
+--a 3 --b 0 --out out/2
+--a 3 --b 1 --out out/3
+--a 4 --b 0 --out out/4
+--a 4 --b 1 --out out/5
 
-The command above run an ensemble of 6 model versions.
+The command above run an ensemble of 6 model versions, by calling `echo` executable and with the arguments indicated in `--args`, where {a}, {b} and {} will
+be formatted using appropriate values. Without `--test`, the command would be run in the background, in parallel subprocesses.
 
-By default runscript.sh is called with command line arguments for parameters
-and run directory, as specified by --param-arg and --out-arg arguments, which 
-are templates formatted at run-time with appropriate values. 
-For more complex settings, it might be better to generate your own script, 
-and edit it if necessary:
+The same command could be achieved with --arg-param-prefix and --arg-out-prefix:
 
->>> job install -m model -x runscript.sh --param-arg "--{name} {value}" --out-arg "--out {rundir}"
->>> job run -m model -p a=2,3,4 b=0,1
+>>> job run -p a=2,3,4 b=0,1 -o out -x echo --arg-param-prefix "--{} " --arg-out-prefix "--out " --test
+--out out/0 --a 2 --b 0
+--out out/1 --a 2 --b 1
+--out out/2 --a 3 --b 0
+--out out/3 --a 3 --b 1
+--out out/4 --a 4 --b 0
+--out out/5 --a 4 --b 1
 
-Additionally any command may be saved (here to run.json):
+Parameters can also be passed via a file:
 
->>> job --saveas run.json run -m model --qos short --account megarun
+>>> job run -p a=2,3,4 b=0,1 -o out -x cat --args "{}/params.txt" --file-name "params.txt" --file-type "linesep" --test
+a 2
+b 0
+a 2
+b 1
+a 3
+b 0
+a 3
+b 1
+a 4
+b 0
+a 4
+b 1
 
-to be reused subsequently:
-
->>> job -c run.json run -p a=2,3,4 b=0,1
-
-
-Use custom filetype and model definition (see job install)
+with a number of parameter formats (job run -h for details).
 """
 import argparse
 import tempfile
