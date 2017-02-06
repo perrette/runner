@@ -89,7 +89,7 @@ def main(argv=None):
 
     try:
         func(cmdo)
-    except ValueError as error:
+    except Exception as error:
         if o.debug:
             raise
         else:

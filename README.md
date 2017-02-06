@@ -76,9 +76,10 @@ Model interface
 The command above run an ensemble of 6 model versions, by calling `echo` with
 following arguments, where {a}, {b} and {} will be formatted using runtime
 parameter and run directory values. Without `--test`, the command would be run
-in the background, in parallel subprocesses. Note `--` is only needed when 
-there is some ambiguity between job run and your model arguments, as seen by
-argparse.
+in the background, in parallel subprocesses. 
+
+Note `--` is only needed when there is some ambiguity between job run and your
+model arguments, as seen by argparse.
 
 The same command could be achieved with --arg-param-prefix and --arg-out-prefix:
 

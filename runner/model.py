@@ -261,13 +261,16 @@ class Model(object):
             stdout = None
             stderr = None
 
+        workdir = self.work_dir.format(rundir) if self.work_dir else "."
+
         try:
-            p = subprocess.Popen(args, env=env, cwd=self.work_dir, 
+            p = subprocess.Popen(args, env=env, cwd=workdir, 
                                  stdout=stdout, stderr=stderr)
-        except:
-            if os.path.isfile(args[0]) and not args[0].startswith('.'):
-                print("Check executable name (use leading . or bash)")
-            raise
+        except OSError as error:
+            #if os.path.isfile(args[0]) and not args[0].startswith('.'):
+            #    print("Check executable name (use leading . or bash)")
+            #raise OSError("NOT EXECUTABLE: "+" ".join(args))
+            raise OSError("FAILED TO EXECUTE: `"+" ".join(args)+"` FROM `"+workdir+"`")
 
         if not background:
             ret = p.wait()
@@ -284,7 +287,8 @@ class Model(object):
         output = output or os.path.join(rundir, "log.out")
         error = error or os.path.join(rundir, "log.err")
         jobfile = jobfile or os.path.join(rundir, 'submit.sh')
-        return submit_job(" ".join(args), env=env, workdir=self.work_dir, 
+        workdir = self.work_dir.format(rundir) if self.work_dir else "."
+        return submit_job(" ".join(args), env=env, workdir=workdir, 
                           output=output, error=error, jobfile=jobfile, **kwargs)
 
 
