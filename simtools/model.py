@@ -182,7 +182,8 @@ class Model(object):
         # for communication with the model
         if self.filetype and self.filename:
             #TODO: have model params as a dictionary
-            self.filetype.dump(self.params, open(self.filename, 'w'))
+            filepath = os.path.join(rundir, self.filename)
+            self.filetype.dump(self.params, open(filepath, 'w'))
 
     def _command_out(self, rundir):
         if self.arg_out_prefix is None:
