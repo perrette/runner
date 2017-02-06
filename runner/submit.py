@@ -21,7 +21,7 @@ class JobScript(object):
         self.lines = []
 
         # export environment variables
-        env = env or []
+        env = env or {}
         for k in sorted(env.keys()):
             self.lines.append("export "+k+'='+env[k])
 
@@ -36,7 +36,7 @@ class JobScript(object):
 
     @property
     def body(self):
-        return "\n".join([self.lines])
+        return "\n".join(self.lines)
 
     @property
     def script(self):
@@ -61,7 +61,7 @@ class Slurm(JobScript):
     def header(self):
         lines = []
         for k in self.opt:
-            lines.append("#SBATCH "+self.make_arg(k, opt[k]))
+            lines.append("#SBATCH "+self.make_arg(k, self.opt[k]))
         return "\n".join(lines)
 
         
@@ -129,6 +129,8 @@ def submit_job(commands, manager=MANAGER, jobfile=None,
     elif manager == "slurm":
         if workdir: 
             opt["workdir"] = workdir
+        if output: kwargs["output"] = output
+        if error: kwargs["error"] = error
         job = Slurm(commands, **kwargs)
 
     else:

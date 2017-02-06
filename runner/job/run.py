@@ -48,6 +48,7 @@ import numpy as np
 from runner.prior import Prior, DiscreteParam
 #from runner.xparams import XParams
 from runner.xrun import XParams, XRun, XPARAM
+from runner.submit import submit_job
 from runner import register
 from runner.job.model import model_parser as model, modelwrapper, getmodel, modelconfig
 import runner.job.stats  # register !
@@ -198,7 +199,7 @@ def run_post(o):
     if o.include_default:
         indices = list(indices) + [None]
 
-    slurm_opt = filtervars(o, slurm)
+    slurm_opt = filtervars(o, slurm, include_none=False)
 
     # test: run everything serially
     if o.test:
@@ -210,12 +211,17 @@ def run_post(o):
     # array: create a parameterized "job" command [SLURM]
     elif o.array:
         # prepare job command: runid and params passed by slurm
-        file = tempfile.mktemp(dir=o.expdir, prefix='job.run-array.', suffix='.json')
+        #base = tempfile.mktemp(dir=o.expdir, prefix='job.run-array.')
+        base = os.path.join(o.expdir, 'job.run.array')
+        file = base + '.json'
+        script = base + '.sh'
+        output = base + '.out'
+        error = base + '.err'
         write_config(vars(o), file, parser=_slurmarray)
-        template = "{job} -c {config_file} run --id $SLURM_ARRAY_TASK_ID --params-file {params_file}"
+        template = "{job} -c {config_file} run --id $SLURM_ARRAY_TASK_ID --params-file {params_file} --force"
         command = template.format(job="job", config_file=file, params_file=pfile) 
         slurm_opt["array"] = o.runid or "{}-{}".format(0, xparams.size-1)
-        p = submit_job(command, **slurm_opt)
+        p = submit_job(command, jobfile=script, output=output, error=error, **slurm_opt)
 
     # the default
     else:
