@@ -64,7 +64,7 @@ package (copied in runner to reduce external dependencies).
 Model interface
 ---------------
 
-    job run -p a=2,3,4 b=0,1 -o out --test echo --a {a} --b {b} --out {}
+    job run -p a=2,3,4 b=0,1 -o out --test -- echo --a {a} --b {b} --out {}
 
     --a 2 --b 0 --out out/0
     --a 2 --b 1 --out out/1
@@ -73,8 +73,12 @@ Model interface
     --a 4 --b 0 --out out/4
     --a 4 --b 1 --out out/5
 
-The command above run an ensemble of 6 model versions, by calling `echo` with following arguments, where {a}, {b} and {} will
-be formatted using runtime parameter and run directory values. Without `--test`, the command would be run in the background, in parallel subprocesses.
+The command above run an ensemble of 6 model versions, by calling `echo` with
+following arguments, where {a}, {b} and {} will be formatted using runtime
+parameter and run directory values. Without `--test`, the command would be run
+in the background, in parallel subprocesses. Note `--` is only needed when 
+there is some ambiguity between job run and your model arguments, as seen by
+argparse.
 
 The same command could be achieved with --arg-param-prefix and --arg-out-prefix:
 
