@@ -24,11 +24,14 @@ def _filter(kw, after, diff=False, include_none=True):
     return filtered
 
 
-def filtervars(namespace, parser):
+def filtervars(namespace, parser, include_none=True):
     """like vars(namespace), but just taking arguments from one parser
     """
-    return {a.dest:getattr(namespace, a.dest) 
+    opt = {a.dest:getattr(namespace, a.dest) 
             for a in parser._actions if hasattr(namespace, a.dest)}
+    if not include_none:
+        opt = {k:opt[k] for k in opt if opt[k] is not None}
+    return opt
 
 
 def json_config(cfg, parser=None, diff=False, name=None, include_none=True):
