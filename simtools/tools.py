@@ -3,6 +3,7 @@
 import numpy as np
 from scipy.stats import norm, uniform
 import scipy.stats.distributions
+from argparse import Namespace
 
 def parse_val(s):
     " string to int, float, str "
@@ -218,3 +219,37 @@ def _create_dirtree(a,chunksize=2):
         l.append(b[i:i+chunksize])
         i += chunksize
     return [e[::-1] for e in l[::-1]]
+
+
+def _short(param):
+    '''Output short string representation of parameter and value.
+       Used for automatic folder name generation.'''
+
+    # Store the param value as a string
+    # Remove the plus sign in front of exponent
+    # Remove directory slashes, periods and trailing .nc from string values
+    value = "%s" % (param.value)
+    if "+" in value: value = value.replace('+','')
+
+    if "/" in value: value = value.replace('/','')
+    if ".." in value: value = value.replace('..','')
+    if ".nc" in value: value = value.replace('.nc','')
+
+    # Remove all vowels and underscores from parameter name
+    name = param.name
+    for letter in ['a','e','i','o','u','A','E','I','O','U','_']:
+        name = name[0] + name[1:].replace(letter, '')
+
+    return ".".join([name,value])
+
+
+def autofolder(params):
+    '''Given a list of parameters,
+       generate an appropriate folder name.
+    '''
+    parts = []
+
+    for p in params:
+        parts.append( _short(p) )
+
+    return '.'.join(parts)

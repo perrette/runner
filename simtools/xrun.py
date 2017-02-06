@@ -11,6 +11,7 @@ import subprocess
 from os.path import join
 
 from simtools.model import Param, Model
+from simtools.tools import autofolder, Namespace
 from simtools.xparams import XParams
 
 XPARAM = 'params.txt'
@@ -61,8 +62,15 @@ class XRun(object):
                   "Nevermind just skip this step.")
 
     def get_rundir(self, runid, expdir):
+        if runid is None:
+            return join(expdir, 'default')
+
         if self.autodir:
-            raise NotImplementedError('autodir')
+            #raise NotImplementedError('autodir')
+            params = [Namespace(name=name, value=value) 
+                      for name,value in zip(self.params.names, 
+                                            self.params.pset_as_array(runid))]
+            rundir = join(expdir, autofolder(params))
         else:
             rundir = join(expdir, self.rundir_template.format(runid))
         return rundir
