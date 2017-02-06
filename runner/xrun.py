@@ -45,7 +45,7 @@ class XRun(object):
         self.rundir_template = rundir_template
  
     def setup(self, expdir, force=False):
-        """Write experiment params and default model to directory
+        """Create directory and write experiment params
         """
         if not os.path.exists(expdir):
             logging.info("create directory",expdir)
@@ -53,13 +53,13 @@ class XRun(object):
         elif not force:
             raise RuntimeError(repr(expdir)+" experiment directory already exists")
         self.params.write(join(expdir, XPARAM))
-        try:
-            self.model.setup(join(expdir, 'default'))
-        except KeyError:
-            logging.warn("Failed to setup default model version" +
-                  "probably because no default values have been specified" +
-                  "and {NAME} syntax was used for command line arguments." +
-                  "Nevermind just skip this step.")
+        #try:
+        #    self.model.setup(join(expdir, 'default'))
+        #except KeyError:
+        #    logging.warn("Failed to setup default model version" +
+        #          "probably because no default values have been specified" +
+        #          "and {NAME} syntax was used for command line arguments." +
+        #          "Nevermind just skip this step.")
 
     def get_rundir(self, runid, expdir):
         if runid is None:
