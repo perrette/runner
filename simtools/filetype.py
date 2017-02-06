@@ -91,7 +91,7 @@ class LineTemplate(ParamsFile):
         for p in params:
             line = self.line.format(**p.__dict__)
             lines.append(line)
-        return "\n".join(lines)
+        return "\n".join(lines) + "\n"
 
 class LineSeparator(LineTemplate):
     """Line-based format like "{name}{sep}{value}", `dumps` AND `loads`
