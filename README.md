@@ -64,7 +64,7 @@ package (copied in runner to reduce external dependencies).
 Model interface
 ---------------
 
-    job run -p a=2,3,4 b=0,1 -o out -x echo --args "--a {a} --b {b} --out {}" --test
+    job run -p a=2,3,4 b=0,1 -o out --test echo --a {a} --b {b} --out {}
 
     --a 2 --b 0 --out out/0
     --a 2 --b 1 --out out/1
@@ -73,12 +73,12 @@ Model interface
     --a 4 --b 0 --out out/4
     --a 4 --b 1 --out out/5
 
-The command above run an ensemble of 6 model versions, by calling `echo` executable and with the arguments indicated in `--args`, where {a}, {b} and {} will
-be formatted using appropriate values. Without `--test`, the command would be run in the background, in parallel subprocesses.
+The command above run an ensemble of 6 model versions, by calling `echo` with following arguments, where {a}, {b} and {} will
+be formatted using runtime parameter and run directory values. Without `--test`, the command would be run in the background, in parallel subprocesses.
 
 The same command could be achieved with --arg-param-prefix and --arg-out-prefix:
 
-    job run -p a=2,3,4 b=0,1 -o out -x echo --arg-param-prefix "--{} " --arg-out-prefix "--out " --test
+    job run -p a=2,3,4 b=0,1 -o out --arg-param-prefix "--{} " --arg-out-prefix "--out " --test echo 
 
     --out out/0 --a 2 --b 0
     --out out/1 --a 2 --b 1
@@ -89,7 +89,7 @@ The same command could be achieved with --arg-param-prefix and --arg-out-prefix:
 
 Parameters can also be passed via a file:
 
-    job run -p a=2,3,4 b=0,1 -o out -x cat --args "{}/params.txt" --file-name "params.txt" --file-type "linesep" --test
+    job run -p a=2,3,4 b=0,1 -o out --file-name "params.txt" --file-type "linesep" --test cat {}/params.txt
 
     a 2
     b 0

@@ -112,18 +112,14 @@ grp.add_argument('-m','--user-module',
 
 modelconfig = argparse.ArgumentParser(add_help=False, parents=[custommodel])
 grp = modelconfig.add_argument_group('model configuration')
-grp.add_argument('--executable','-x', default='echo',
-                      help='model executable (e.g. runscript etc)')
-grp.add_argument('--args', default="",
-                 help='model arguments, where `{}` and `{NAME}` will be replaced by \
-the run directory and corresponding parameter value, respectively. \
-                 See also --arg-out-prefix, --arg-param-prefix to let job add these \
-                 arguments.')
-grp.add_argument('--xargs', nargs=argparse.REMAINDER, default=[], help='same as (and appended to) args, but no quotes needed. Use as last argument of the command-line.')
-
 grp.add_argument('--default-file', help='default param file, required for certain file types (e.g. namelist)')
 grp.add_argument('--work-dir', default=None, 
                  help='where to execute the model from, by default current directory')
+grp.add_argument('model', metavar='...', nargs=argparse.REMAINDER, default=[], help='model executable and its command-line arguments (need to be last on the command-line). \
+`{}` and `{NAME}` will be replaced by \
+    the run directory and corresponding parameter value, respectively. \
+    See also --arg-out-prefix, --arg-param-prefix')
+
 
 model_parser = argparse.ArgumentParser(add_help=False, 
                                        parents=[modelwrapper, modelconfig])
@@ -162,9 +158,15 @@ def getmodel(o, post_only=False):
 
     params = getdefaultparams(o, filetype)
 
+    if o.model and o.model[0] == '--':
+        o.model = o.model[1:]
+
+    if not o.model:
+        modelwrapper.error('model command is required: `job run [options] ...`')
+
     # basic model configuration
-    modelargs.update( dict(executable=o.executable, 
-                           args=o.args.split() + o.xargs, 
+    modelargs.update( dict(executable=o.model[0], 
+                           args=o.model[1:],
                            params=params, 
                            work_dir=o.work_dir, 
                            ) )
