@@ -103,7 +103,7 @@ class LineSeparator(LineTemplate):
     @property
     def line(self):
         line = "{name}"+self.sep+"{value}"
-        if reverse:
+        if self.reverse:
             line = line.format(name="{value}", value="{name}")
         return line
 
