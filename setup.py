@@ -6,5 +6,5 @@ setup(name='runner',
       cmdclass=versioneer.get_cmdclass(),
       author_email='mahe.perrette@pik-potsdam.de',
       packages = ['runner', 'runner.sampling', 'runner.ext', 'runner.job'],
-      scripts = ['job'], 
+      scripts = ['scripts/job'], 
       )
