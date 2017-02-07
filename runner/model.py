@@ -322,10 +322,9 @@ class CustomModel(Model):
         super(CustomModel, self).__init__(**kwargs)
 
     def setup(self, rundir):
-        return super(CustomModel, self).setup(rundir)  # write metadata
-        if self._setup is None:
-            return
-        return self._setup(rundir, self.executable, *self._format_args(rundir), **self.params_as_dict())
+        super(CustomModel, self).setup(rundir)  # write metadata
+        if self._setup is not None:
+            self._setup(rundir, self.executable, *self._format_args(rundir), **self.params_as_dict())
 
     def command(self, rundir):
         if self._command is None:
@@ -335,22 +334,12 @@ class CustomModel(Model):
     def getvar(self, name, rundir):
         if self._getvar is None:
             return super(CustomModel, self).getvar(name, rundir)
-        try:
-            # for experiment-dependent variables, provide the context
-            return self._getvar(name, rundir, self.executable, *self._format_args(rundir))
-        except TypeError:
-            # in case the function was written only with the two basic arguments
-            return self._getvar(name, rundir)
+        return self._getvar(name, rundir)
 
     def getobs(self, name):
         if self._getobs is None:
             return super(CustomModel, self).getobs(name)
-        try:
-            # for experiment-dependent variables, provide the context
-            return self._getobs(name, self.executable, *self.args)
-        except TypeError:
-            # in case the function was written only with the two basic arguments
-            return self._getobs(name)
+        return self._getobs(name)
 
     def getcost(self, rundir):
         if self._getcost is None:

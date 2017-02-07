@@ -57,11 +57,11 @@ def define_model(command=None, setup=None, getvar=None, getobs=None, getcost=Non
             prepare run directory (e.g. write param file)
     * command : callable ( rundir, executable, *args, **params ) --> list of args
             make run command given output directory and parameters
-    * getvar : callable ( name, rundir, executable, *args ) --> state variable (scalar)
-    * getobs : callable ( name, executable, *args ) --> obs (scalar)
-    * getcost : callable (rundir, executable, *args ) --> cost (scalar)
-    * loads : callable ( file content ) --> params dict {name:value}
-    * dumps : callable ( params dict ) --> file content (string)
+    * getvar : callable (name, rundir) --> state variable (scalar)
+    * getobs : callable (name) --> obs (scalar)
+    * getcost : callable (rundir) --> cost (scalar)
+    * loads : callable (file content) --> params dict {name:value}
+    * dumps : callable (params dict) --> file content (string)
     * defaults : will be used to set parser defaults with job run (e.g. executable etc)
         NOTE: this will only affects already registered job, so for the defaults
         to affect all commands, make sure to import job module

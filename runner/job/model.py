@@ -156,6 +156,10 @@ def getmodel(o, post_only=False):
     else:
         filetype = getfiletype(o)
 
+    # post-processing only, model run config not needed
+    if post_only:
+        return CustomModel(**modelargs)
+
     params = getdefaultparams(o, filetype)
 
     if o.model and o.model[0] == '--':
@@ -164,21 +168,14 @@ def getmodel(o, post_only=False):
     if not o.model:
         modelwrapper.error('model command is required: `job run [options] ...`')
 
-    # basic model configuration
     modelargs.update( dict(executable=o.model[0], 
                            args=o.model[1:],
                            params=params, 
                            work_dir=o.work_dir, 
-                           ) )
 
-    if post_only:
-        return CustomModel(**modelargs)
-
-    # model command, not needed for post-run analysis
-    modelargs.update( dict(
-                 filetype=filetype, filename=o.file_name,
-                 arg_out_prefix=o.arg_out_prefix, arg_param_prefix=o.arg_param_prefix, 
-                 env_out=o.env_out, env_prefix=o.env_prefix) )
+                           filetype=filetype, filename=o.file_name,
+                           arg_out_prefix=o.arg_out_prefix, arg_param_prefix=o.arg_param_prefix, 
+                           env_out=o.env_out, env_prefix=o.env_prefix) )
 
     model = CustomModel(**modelargs)
 
