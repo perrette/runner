@@ -10,25 +10,28 @@ from itertools import groupby
 from runner.model import Param, ParamsFile
 from runner.register import register_filetype
 
-NAME_FORMAT = "{group}.{short}"
-
 class Namelist(ParamsFile):
     """Namelist format
     """
-    def __init__(self, name_fmt=NAME_FORMAT):
-        self.name_fmt = name_fmt
+    def __init__(self, sep='.'):
+        self.sep = sep
 
     def dumps(self, params):
-        pars = [Param(name=p.short, group=p.group, 
-                            help=p.help if p.help else None) 
-                      for p in params]
+        pars = []
+        for p in params:
+            if hasattr(p, 'short') and hasattr(p, 'group'):
+                group, name = p.group, p.short
+            else:
+                group, name = p.name.split(self.sep)
+            pars.append(Param(name=name, group=group, value=p.value,
+                              help=getattr(p, 'help', None)))
         return format_nml(pars)
 
     def loads(self, string):
         params = parse_nml(string)
         for p in params:
             p.short = p.name
-            p.name = self.name_fmt.format(**p.__dict__)
+            p.name = p.group + self.sep + p.name
         return params
 
 
