@@ -115,7 +115,7 @@ grp = modelconfig.add_argument_group('model configuration')
 grp.add_argument('--default-file', help='default param file, required for certain file types (e.g. namelist)')
 grp.add_argument('--work-dir', default=None, 
                  help='where to execute the model from, by default current directory. Use "{}" for run directory.')
-modelconfig.add_argument('model', metavar='...', nargs=argparse.REMAINDER, default=[], help='model executable and its command-line arguments (need to be last on the command-line). \
+modelconfig.add_argument('model', metavar='...', nargs=argparse.REMAINDER, default=[], help='model executable and its command-line arguments (need to be last on the command-line, possibly separated from other arguments with `--`). \
 `{}` and `{NAME}` will be replaced by \
     the run directory and corresponding parameter value, respectively. \
     See also --arg-out-prefix, --arg-prefix')
