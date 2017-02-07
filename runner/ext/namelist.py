@@ -178,14 +178,14 @@ def format_nml(params):
         if group_name == "":
             print(list(group_params))
             raise ValueError("Group not defined. Cannot write to namelist.")
-        lines.append("&%s" % group_name)
+        lines.append("&{}".format(group_name))
         for param in group_params:
             if isinstance(param.value, list):
                 nmstr = "{:15}".format(param.name)
-                line = " %s = %s" % (nmstr, " ".join([_format_value(v) for v in param.value]))
+                line = " {} = {}".format(nmstr, " ".join([_format_value(v) for v in param.value]))
             else:
                 nmstr = "{:15}".format(param.name)
-                line = " %s = %s" % (nmstr, _format_value(param.value))
+                line = " {} = {}".format(nmstr, _format_value(param.value))
             line = "{:30}".format(line)
             if param.help:
                 line += ' ! '+param.help
@@ -199,13 +199,13 @@ def _format_value(value):
     if isinstance(value, bool):
         return value and '.true.' or '.false.'
     elif isinstance(value, int):
-        return "%d" % value
+        return "{}".format(value)
     elif isinstance(value, float):
         # return "{:.3e}".format(value) # use exp. notation after 3 digits
         return "{}".format(value) # use exp. notation after 3 digits
     elif isinstance(value, basestring):
-        return "'%s'" % value
+        return "'{}'".format(value)
     elif isinstance(value, complex):
-        return "(%s,%s)" % (_format_value(value.real), _format_value(value.imag))
+        return "({},{})".format(_format_value(value.real), _format_value(value.imag))
     else:
-        raise Exception("Variable type not understood: %s" % type(value))
+        raise Exception("Variable type not understood: {}".format(type(value)))
