@@ -1,46 +1,4 @@
 """Model ensemble run
-
-Examples
---------
-
->>> job run -p a=2,3,4 b=0,1 -o out -x echo --args "--a {a} --b {b} --out {}" --test
---a 2 --b 0 --out out/0
---a 2 --b 1 --out out/1
---a 3 --b 0 --out out/2
---a 3 --b 1 --out out/3
---a 4 --b 0 --out out/4
---a 4 --b 1 --out out/5
-
-The command above run an ensemble of 6 model versions, by calling `echo` executable and with the arguments indicated in `--args`, where {a}, {b} and {} will
-be formatted using appropriate values. Without `--test`, the command would be run in the background, in parallel subprocesses.
-
-The same command could be achieved with --arg-param-prefix and --arg-out-prefix:
-
->>> job run -p a=2,3,4 b=0,1 -o out -x echo --arg-param-prefix "--{} " --arg-out-prefix "--out " --test
---out out/0 --a 2 --b 0
---out out/1 --a 2 --b 1
---out out/2 --a 3 --b 0
---out out/3 --a 3 --b 1
---out out/4 --a 4 --b 0
---out out/5 --a 4 --b 1
-
-Parameters can also be passed via a file:
-
->>> job run -p a=2,3,4 b=0,1 -o out -x cat --args "{}/params.txt" --file-name "params.txt" --file-type "linesep" --test
-a 2
-b 0
-a 2
-b 1
-a 3
-b 0
-a 3
-b 1
-a 4
-b 0
-a 4
-b 1
-
-with a number of parameter formats (job run -h for details).
 """
 import argparse
 import tempfile
