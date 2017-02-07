@@ -112,15 +112,19 @@ Parameters can also be passed via a file:
 with a number of file types. File types that involve grouping, such as namelist,
 require a group prefix with a `.` separator in the parameter name:
 
-    job run -p g.a=2,3 g.b=0 -o out --file-name "params.txt" --file-type "namelist" --test  cat {}/params.txt
+    job run -p g1.a=0,1 g2.b=2. -o out --file-name "params.txt" --file-type "namelist" --test  cat {}/params.txt
 
-    &g
-     a               = 2          
-     b               = 0          
+    &g1
+     a               = 0          
     /
-    &g
-     a               = 3          
-     b               = 0          
+    &g2
+     b               = 2.0        
+    /
+    &g1
+     a               = 1          
+    /
+    &g2
+     b               = 2.0        
     /
 
 

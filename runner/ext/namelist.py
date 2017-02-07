@@ -190,8 +190,8 @@ def format_nml(params):
             if param.help:
                 line += ' ! '+param.help
             lines.append(line)
-        lines.append("/\n")
-    return "\n".join(lines)
+        lines.append("/")
+    return "\n".join(lines) + "\n"
 
 def _format_value(value):
     """ Format a value into fortran's namelist format (return a string)
