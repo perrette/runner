@@ -234,7 +234,7 @@ class Model(object):
         context.update(self.params_as_dict())
 
         # format them with appropriate prefix
-        update = {self.env_prefix.upper()+k.upper():str(context[k])
+        update = {self.env_prefix+k:str(context[k])
                for k in context if context[k] is not None}
 
         # update base environment
