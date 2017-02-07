@@ -11,9 +11,6 @@ from runner import __version__
 #from runner.model.generic import get_or_make_filetype
 
 # default values
-ARG_OUT_PREFIX = None
-ARG_PARAM_PREFIX = None
-ENV_PREFIX = None
 ENV_OUT = "RUNDIR"
 FILENAME = None
 FILETYPE = None
@@ -75,8 +72,8 @@ class ParamsFile(object):
 class Model(object):
     def __init__(self, executable=None, args=None, params=None, 
                  filetype=FILETYPE, filename=FILENAME, 
-                 arg_out_prefix=ARG_OUT_PREFIX, arg_param_prefix=ARG_PARAM_PREFIX, 
-                 env_out=ENV_OUT, env_prefix=ENV_PREFIX,
+                 arg_out_prefix=None, arg_param_prefix=None, 
+                 env_out=ENV_OUT, env_prefix=None,
                  work_dir=None,
                  ):
         """

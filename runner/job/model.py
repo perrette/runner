@@ -96,12 +96,12 @@ grp.add_argument('--file-name', default=mod.FILENAME,
                       help='file name to pass to model, relatively to {rundir}. \
                  If provided, param passing via file instead of command arg.\
                  Note this might be used in model arguments as "{paramfile}"')
-grp.add_argument('--arg-out-prefix', default=mod.ARG_OUT_PREFIX,
-                      help='format for params as command-line args (default=%(default)s)')
-grp.add_argument('--arg-param-prefix', default=mod.ARG_PARAM_PREFIX,
-                      help='prefix for passing param as command-line (default=%(default)s)')
-grp.add_argument('--env-prefix', default=mod.ENV_PREFIX,
-                 help='prefix for environment variables (default:%(default)s)')
+grp.add_argument('--arg-out-prefix', default=None,
+                      help='prefix for output directory on the command-line. None by default.')
+grp.add_argument('--arg-prefix', default=None,
+                 help='prefix for passing param as command-line, e.g. `--{} ` where `{}` will be replaced by param name. None by default.')
+grp.add_argument('--env-prefix', default=None,
+                 help='prefix for environment variables')
 grp.add_argument('--env-out', default=mod.ENV_OUT,
                  help='environment variable for output (after prefix) (default:%(default)s)')
 
@@ -115,10 +115,10 @@ grp = modelconfig.add_argument_group('model configuration')
 grp.add_argument('--default-file', help='default param file, required for certain file types (e.g. namelist)')
 grp.add_argument('--work-dir', default=None, 
                  help='where to execute the model from, by default current directory. Use "{}" for run directory.')
-grp.add_argument('model', metavar='...', nargs=argparse.REMAINDER, default=[], help='model executable and its command-line arguments (need to be last on the command-line). \
+modelconfig.add_argument('model', metavar='...', nargs=argparse.REMAINDER, default=[], help='model executable and its command-line arguments (need to be last on the command-line). \
 `{}` and `{NAME}` will be replaced by \
     the run directory and corresponding parameter value, respectively. \
-    See also --arg-out-prefix, --arg-param-prefix')
+    See also --arg-out-prefix, --arg-prefix')
 
 
 model_parser = argparse.ArgumentParser(add_help=False, 
@@ -174,7 +174,7 @@ def getmodel(o, post_only=False):
                            work_dir=o.work_dir, 
 
                            filetype=filetype, filename=o.file_name,
-                           arg_out_prefix=o.arg_out_prefix, arg_param_prefix=o.arg_param_prefix, 
+                           arg_out_prefix=o.arg_out_prefix, arg_param_prefix=o.arg_prefix, 
                            env_out=o.env_out, env_prefix=o.env_prefix) )
 
     model = CustomModel(**modelargs)

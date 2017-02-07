@@ -83,9 +83,9 @@ folders = argparse.ArgumentParser(add_help=False)
 grp = folders.add_argument_group("simulation settings")
 grp.add_argument('-o','--out-dir', default=EXPDIR, dest='expdir',
                   help='experiment directory \
-                  (params.txt and logs/ will be created, and possibly individual model output directories (each as {rundir})')
+                  (params.txt and logs/ will be created, as well as individual model output directories')
 grp.add_argument('-a','--auto-dir', action='store_true', 
-                 help='{runtag} and {rundir} named according to parameter values instead of {runid}')
+                 help='run directory named according to parameter values instead of run `id`')
 
 params_parser = argparse.ArgumentParser(add_help=False)
 x = params_parser.add_mutually_exclusive_group()

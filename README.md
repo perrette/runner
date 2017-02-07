@@ -81,9 +81,9 @@ in the background, in parallel subprocesses.
 Note `--` is only needed when there is some ambiguity between job run and your
 model arguments, as seen by argparse.
 
-The same command could be achieved with --arg-param-prefix and --arg-out-prefix:
+The same command could be achieved with --arg-prefix and --arg-out-prefix:
 
-    job run -p a=2,3,4 b=0,1 -o out --arg-param-prefix "--{} " --arg-out-prefix "--out " --shell echo 
+    job run -p a=2,3,4 b=0,1 -o out --arg-prefix "--{} " --arg-out "--out " --shell echo 
 
     --out out/0 --a 2 --b 0
     --out out/1 --a 2 --b 1
