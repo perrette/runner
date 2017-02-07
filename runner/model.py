@@ -298,11 +298,6 @@ class Model(object):
         """
         raise NotImplementedError("getvar")
 
-    def getobs(self, name):
-        """get observation corresponding to getvar
-        """
-        raise NotImplementedError("getobs")
-
     def getcost(self, rundir):
         """get cost-function for one member (==> weight = exp(-0.5*cost))
         """
@@ -313,11 +308,10 @@ class Model(object):
 class CustomModel(Model):
     """User-provided model (e.g. via job install)
     """
-    def __init__(self, command=None, setup=None, getvar=None, getobs=None, getcost=None, **kwargs):
+    def __init__(self, command=None, setup=None, getvar=None, getcost=None, **kwargs):
         self._command = command
         self._setup = setup
         self._getvar = getvar
-        self._getobs = getobs
         self._getcost = getcost
         super(CustomModel, self).__init__(**kwargs)
 
@@ -335,11 +329,6 @@ class CustomModel(Model):
         if self._getvar is None:
             return super(CustomModel, self).getvar(name, rundir)
         return self._getvar(name, rundir)
-
-    def getobs(self, name):
-        if self._getobs is None:
-            return super(CustomModel, self).getobs(name)
-        return self._getobs(name)
 
     def getcost(self, rundir):
         if self._getcost is None:

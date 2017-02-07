@@ -9,7 +9,6 @@ model = {
     'command': None,
     'setup': None,
     'getvar': None,
-    'getobs': None,
     'getcost': None,
     'loads': None,
     'dumps': None,
@@ -51,14 +50,13 @@ def set_model(key, func):
     model[key] = func
 
 
-def define_model(command=None, setup=None, getvar=None, getobs=None, getcost=None, dumps=None, loads=None, defaults=None):
+def define_model(command=None, setup=None, getvar=None, getcost=None, dumps=None, loads=None, defaults=None):
     """
     * setup : callable ( rundir, executable, *args, **params )
             prepare run directory (e.g. write param file)
     * command : callable ( rundir, executable, *args, **params ) --> list of args
             make run command given output directory and parameters
     * getvar : callable (name, rundir) --> state variable (scalar)
-    * getobs : callable (name) --> obs (scalar)
     * getcost : callable (rundir) --> cost (scalar)
     * loads : callable (file content) --> params dict {name:value}
     * dumps : callable (params dict) --> file content (string)
@@ -69,7 +67,6 @@ def define_model(command=None, setup=None, getvar=None, getobs=None, getcost=Non
     if command: set_model("command", command)
     if setup: set_model("setup", setup)
     if getvar: set_model("getvar", getvar)
-    if getobs: set_model("getobs", getobs)
     if getcost: set_model("getcost", getcost)
     if dumps: set_model("dumps", dumps)
     if loads: set_model("loads", loads)
@@ -97,10 +94,6 @@ class Model(object):
     @property
     def getvar(self):
         return Model('getvar')
-
-    @property
-    def getobs(self):
-        return Model('getobs')
 
     @property
     def getcost(self):

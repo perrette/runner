@@ -27,42 +27,6 @@ XLOGLIK = "loglik.txt" # log(weight)
 LOGLIKS = "logliks.txt" # log-likelihood for various variables
 
 
-class Obs(object):
-    " error as normal dist around obs "
-    def __init__(self, name, err, pct=False):
-        self.name = name
-        self.err = err
-        self.pct = pct
-
-    @classmethod
-    def parse(cls, string):
-        "observation error in absolute (NAME=STD) or relative (NAME=STD%%) term"
-        name, spec = string.split('=')
-        if spec.endswith('%'):
-            err = float(spec[:-1])
-            pct = True
-        else:
-            err = float(spec)
-            pct = False
-        return cls(name, err, pct)
-
-    def __str__(self):
-        if self.pct:
-            pattern = "{}={}%"
-        else:
-            pattern = "{}={}"
-        return pattern.format(self.name, self.err)
-
-    def get_dist(self, mean):
-        " return Likelihood type given mean"
-        if self.pct:
-            dist = norm(mean, self.err*self.pct/100.)
-        else:
-            dist = norm(mean, self.err)
-        return PriorParam(self.name, dist)
-
-
-
 analyze= argparse.ArgumentParser(add_help=False, parents=[modelconfig])
 analyze.add_argument('expdir', default=EXPDIR, 
                                help='experiment directory to analyze')
@@ -70,7 +34,7 @@ analyze.add_argument('--out', default=None,
                                help='experiment directory to write the diagnostics to (by default same as expdir)')
 analyze.add_argument('-i', '--in-state', 
                                help='input state file to consider (normally derived via custom getvar)')
-grp =analyze.add_argument_group("model state")
+grp =analyze.add_argument_group("model state", description='For now this requires a custom `getvar` function to retrieve state variables')
 grp.add_argument("-v", "--state-variables", nargs='+', default=[],
                  help='list of state variables to include in state.txt, \
                  does not necessarily enter in the likelihood')
@@ -78,20 +42,12 @@ grp.add_argument('--stats', action='store_true', help='add statistics on model s
 
 grp =analyze.add_argument_group(
     "likelihood", 
-    description='likelihood can be entered either as a list of distributions (same convention as job sample), OR as a measurement error (provided a custom getobs function is defined to retrieve the mean) OR via a custom `getcost`')
+    description='likelihood is provided a list of distributions (same convention as job sample) or via a custom `getcost`')
 
 grp.add_argument('-l', '--likelihood',
                  type=PriorParam.parse,
                  help=PriorParam.parse.__doc__,
                  metavar="NAME=DIST",
-                 default = [],
-                 nargs='+')
-
-
-grp.add_argument('--obs-error',
-                 type=Obs.parse,
-                 help=Obs.parse.__doc__,
-                 metavar="NAME=ERR",
                  default = [],
                  nargs='+')
 
@@ -121,7 +77,7 @@ def analyze_post(o):
 
     # write state.txt
     # ===============
-    names = o.state_variables + [x.name for x in o.likelihood + o.obs_error]
+    names = o.state_variables + [x.name for x in o.likelihood]
 
     if o.in_state:
         print("Read state variables from",o.in_state)
@@ -142,14 +98,6 @@ def analyze_post(o):
 
     # direct distributions
     constraints = [l for l in o.likelihood]
-
-    # build likelihood from obs-errors (requires getobs)
-    if o.obs_error:
-        # TODO: add fromjson to Model class, to avoid messing global variables
-        for err in o.obs_error:
-            mean = xrun.model.getobs(err.name)
-            like = err.get_dist(mean)
-            constraints.append(like)
 
     # Apply constraints on state 
     # ==========================
@@ -210,8 +158,6 @@ def analyze_post(o):
 
     with open(os.path.join(o.out, 'stats.txt'), 'w') as f:
         f.write(str(df))
-
-    #assert constraints, 'requires -l/--likelihood OR --obs-error'
 
 register_job('analyze',analyze, analyze_post, 
              help="analyze ensemble (state + loglik + stats) for resampling")
