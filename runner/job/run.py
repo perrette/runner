@@ -74,10 +74,6 @@ grp.add_argument('-b', '--array', action='store_true',
                  help='submit using sbatch --array (faster!), EXPERIMENTAL)')
 grp.add_argument('-f', '--force', action='store_true', 
                  help='perform run even in an existing directory')
-grp.add_argument('--save-wrapper', 
-                 help='save model wrapper config to a file, for later reuse')
-#x.add_argument('--background', 
-#                 action='store_true', help='run in the background, do not wait for executation to end')
 
 folders = argparse.ArgumentParser(add_help=False)
 grp = folders.add_argument_group("simulation settings")
@@ -148,9 +144,6 @@ def run_post(o):
 
     write_config(vars(o), os.path.join(o.expdir, EXPCONFIG), parser=experiment)
 
-    if o.save_wrapper:
-        write_config(vars(o), o.save_wrapper, parser=modelwrappper)
-    
     if o.runid:
         indices = parse_slurm_array_indices(o.runid)
     else:
