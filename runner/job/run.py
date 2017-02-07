@@ -65,10 +65,10 @@ grp = submit.add_argument_group("simulation mode (submit, background...)")
 #grp.add_argument('--batch-script', help='')
 #x = grp.add_mutually_exclusive_group()
 grp.add_argument('-s', '--submit', action='store_true', help='submit job to slurm')
-grp.add_argument('-t', '--test', action='store_true', 
-               help='test mode: print to screen instead of log, run sequentially')
+grp.add_argument('--shell', action='store_true', 
+               help='print output to terminal instead of log file, run sequentially, mostly useful for testing/debugging')
 grp.add_argument('--echo', action='store_true', 
-               help='echo test mode: --test and replace executable with echo')
+                 help='display commands instead of running them (but does setup output directory). Alias for --shell --force echo [model args ...]')
 grp.add_argument('-w','--wait', action='store_true', help='wait for job to end')
 grp.add_argument('-b', '--array', action='store_true', 
                  help='submit using sbatch --array (faster!), EXPERIMENTAL)')
@@ -118,11 +118,13 @@ _slurmarray = argparse.ArgumentParser(add_help=False, parents=[model, folders])
 
 
 def run_post(o):
-    model = getmodel(o)  # default model
 
     if o.echo:
-        model.executable = 'echo'
-        o.test = True
+        o.model = ['echo'] + o.model
+        o.shell = True
+        o.force = True
+
+    model = getmodel(o)  # default model
 
     if o.params_file:
         xparams = XParams.read(o.params_file)
@@ -160,7 +162,7 @@ def run_post(o):
     slurm_opt = filtervars(o, slurm, include_none=False)
 
     # test: run everything serially
-    if o.test:
+    if o.shell:
         for i in indices:
             model = xrun.get_model(i)
             rundir = xrun.get_rundir(i, o.expdir)

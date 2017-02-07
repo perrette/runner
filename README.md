@@ -64,7 +64,7 @@ package (copied in runner to reduce external dependencies).
 Model interface
 ---------------
 
-    job run -p a=2,3,4 b=0,1 -o out --test -- echo --a {a} --b {b} --out {}
+    job run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {}
 
     --a 2 --b 0 --out out/0
     --a 2 --b 1 --out out/1
@@ -75,7 +75,7 @@ Model interface
 
 The command above run an ensemble of 6 model versions, by calling `echo` with
 following arguments, where {a}, {b} and {} will be formatted using runtime
-parameter and run directory values. Without `--test`, the command would be run
+parameter and run directory values. Without `--shell`, the command would be run
 in the background, in parallel subprocesses. 
 
 Note `--` is only needed when there is some ambiguity between job run and your
@@ -83,7 +83,7 @@ model arguments, as seen by argparse.
 
 The same command could be achieved with --arg-param-prefix and --arg-out-prefix:
 
-    job run -p a=2,3,4 b=0,1 -o out --arg-param-prefix "--{} " --arg-out-prefix "--out " --test echo 
+    job run -p a=2,3,4 b=0,1 -o out --arg-param-prefix "--{} " --arg-out-prefix "--out " --shell echo 
 
     --out out/0 --a 2 --b 0
     --out out/1 --a 2 --b 1
@@ -94,7 +94,7 @@ The same command could be achieved with --arg-param-prefix and --arg-out-prefix:
 
 Parameters can also be passed via a file:
 
-    job run -p a=2,3,4 b=0,1 -o out --file-name "params.txt" --file-type "linesep" --test cat {}/params.txt
+    job run -p a=2,3,4 b=0,1 -o out --file-name "params.txt" --file-type "linesep" --shell cat {}/params.txt
 
     a 2
     b 0
@@ -112,7 +112,7 @@ Parameters can also be passed via a file:
 with a number of file types. File types that involve grouping, such as namelist,
 require a group prefix with a `.` separator in the parameter name:
 
-    job run -p g1.a=0,1 g2.b=2. -o out --file-name "params.txt" --file-type "namelist" --test  cat {}/params.txt
+    job run -p g1.a=0,1 g2.b=2. -o out --file-name "params.txt" --file-type "namelist" --shell  cat {}/params.txt
 
     &g1
      a               = 0          
