@@ -115,12 +115,12 @@ require a group prefix with a `.` separator in the parameter name:
     job run -p g.a=2,3 g.b=0 -o out --file-name "params.txt" --file-type "namelist" --test  cat {}/params.txt
 
     &g
-     b               = 0          
      a               = 2          
+     b               = 0          
     /
     &g
-     b               = 0          
      a               = 3          
+     b               = 0          
     /
 
 

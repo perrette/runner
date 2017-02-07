@@ -1,4 +1,5 @@
 # XParams
+from collections import OrderedDict as odict
 from runner.tools import DataFrame
 from runner.sampling.resampling import Resampler, RESAMPLING_METHOD, NEFF_BOUNDS
 
@@ -27,9 +28,9 @@ class XParams(DataFrame):
         pvalues = self.pset_as_array(i)
 
         if pvalues is None:
-            return {}  # case were default parameters are not provided
+            return odict()  # case were default parameters are not provided
 
-        params = {}
+        params = odict()
         for k, v in zip(self.names, pvalues):
             params[k] = v
         return params
