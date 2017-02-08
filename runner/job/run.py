@@ -1,5 +1,68 @@
-"""Model ensemble run
+"""Run model ensemble
+
+The canonical form of `job run` is:
+
+    job run [OPTIONS] -- EXECUTABLE [OPTIONS]
+
+where `EXECUTABLE` is your model executable or a command, followed by its
+arguments. Note the `--` that separates `job run` arguments `OPTIONS` from the
+executable.  When there is no ambiguity in the command-line arguments (as seen
+by python's argparse) it may be dropped. `job run` options determine in which
+manner to run the model, which parameter values to vary (the ensemble), and how
+to communicate these parameter values to the model.
 """
+examples="""
+Examples
+--------
+
+    job run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {}
+
+    --a 2 --b 0 --out out/0
+    --a 2 --b 1 --out out/1
+    --a 3 --b 0 --out out/2
+    --a 3 --b 1 --out out/3
+    --a 4 --b 0 --out out/4
+    --a 4 --b 1 --out out/5
+
+The command above runs an ensemble of 6 model versions, by calling `echo --a {a}
+--b {b} --out {}`  where `{a}`, `{b}` and `{}` are formatted using runtime with
+parameter and run directory values, as displayed in the output above. Parameters can also be provided as a file:
+
+    job run -p a=2,3,4 b=0,1 -o out --file-name "params.txt" --file-type "linesep" --line-sep " " --shell cat {}/params.txt
+
+    a 2
+    b 0
+    a 2
+    b 1
+    a 3
+    b 0
+    a 3
+    b 1
+    a 4
+    b 0
+    a 4
+    b 1
+
+Where UNIX `cat` command displays file content into the terminal. File types
+that involve grouping, such as namelist, require a group prefix with a `.`
+separator in the parameter name:
+
+    job run -p g1.a=0,1 g2.b=2. -o out --file-name "params.txt" --file-type "namelist" --shell  cat {}/params.txt
+
+    &g1
+     a               = 0          
+    /
+    &g2
+     b               = 2.0        
+    /
+    &g1
+     a               = 1          
+    /
+    &g2
+     b               = 2.0        
+    /
+"""
+
 import argparse
 import tempfile
 import numpy as np
@@ -100,8 +163,7 @@ params_parser.add_argument('--include-default',
                   action='store_true', 
                   help='also run default model version (with no parameters)')
 
-run = argparse.ArgumentParser(parents=[model, params_parser, folders, submit, slurm],
-                              description=__doc__)
+run = argparse.ArgumentParser(parents=[model, params_parser, folders, submit, slurm], epilog=examples, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
 
 # keep group of params for later

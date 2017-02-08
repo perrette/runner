@@ -46,8 +46,9 @@ def main(argv=None):
                         parents=[j.parser], 
                         add_help=False, 
                         description=j.parser.description, 
+                        epilog=j.parser.epilog, 
                         help=j.help,
-                        formatter_class=argparse.RawDescriptionHelpFormatter)
+                        formatter_class=j.parser.formatter_class)
         tops.add_parser(j.name, help=j.help, add_help=False)
         parsers[j.name] = j.parser
         postprocs[j.name] = j.postproc
