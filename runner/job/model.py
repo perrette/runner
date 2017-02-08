@@ -35,7 +35,7 @@ filetype = argparse.ArgumentParser('[filetype]', add_help=False,
 grp = filetype.add_argument_group('filetype', description='file formats to pass parameters from job to model. Enter --help-file-type to see how to register custom filetypes')
 
 grp.add_argument('--file-type', help='model params file type (including registered custom)', default=mod.FILETYPE,
-                 choices=choices+register.filetypes.keys())
+                 choices=choices+list(register.filetypes.keys()))
 grp.add_argument('--line-sep', help='separator for "linesep" and "lineseprev" file types')
 grp.add_argument('--line-template', help='line template for "linetemplate" file type')
 grp.add_argument('--template-file', help='template file for "template" file type')

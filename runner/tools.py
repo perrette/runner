@@ -96,7 +96,6 @@ def parse_dist(string):
 def str_dataframe(pnames, pmatrix, max_rows=1e20, include_index=False, index=None):
     """Pretty-print matrix like in pandas, but using only basic python functions
     """
-    #assert isinstance(pnames[0], basestring), type(pnames[0])
     #assert isinstance(pmatrix[0][0], float), type(pmatrix[0][0])
     # determine columns width
     col_width_default = 6

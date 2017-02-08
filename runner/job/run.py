@@ -109,7 +109,7 @@ def _typechecker(type):
         try:
             type(string) # just a check
         except Exception as error:
-            print('ERROR:', error.message)
+            print('ERROR:', str(error))
             raise
         return string
 
@@ -199,7 +199,7 @@ def run_post(o):
         xrun.setup(o.expdir, force=o.force)  
         pfile = os.path.join(o.expdir, XPARAM)
     except RuntimeError as error:
-        print("ERROR :: "+error.message)
+        print("ERROR :: "+str(error))
         print("Use -f/--force to bypass this check")
         run.exit(1)
 

@@ -198,14 +198,5 @@ def _format_value(value):
     """
     if isinstance(value, bool):
         return value and '.true.' or '.false.'
-    elif isinstance(value, int):
-        return "{}".format(value)
-    elif isinstance(value, float):
-        # return "{:.3e}".format(value) # use exp. notation after 3 digits
-        return "{}".format(value) # use exp. notation after 3 digits
-    elif isinstance(value, basestring):
-        return "'{}'".format(value)
-    elif isinstance(value, complex):
-        return "({},{})".format(_format_value(value.real), _format_value(value.imag))
     else:
-        raise Exception("Variable type not understood: {}".format(type(value)))
+        return "{}".format(repr(value))

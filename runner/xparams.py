@@ -11,7 +11,7 @@ class XParams(DataFrame):
     """Experiment params
     """
     def __init__(self, values, names, default=None):
-        self.values = values 
+        self.values = values
         self.names = names
         self.default = default
 
@@ -20,6 +20,8 @@ class XParams(DataFrame):
             pvalues = self.default
         else:
             pvalues = self.values[i]
+        if hasattr(pvalues, 'tolist'):
+            pvalues = pvalues.tolist() # numpy array
         return pvalues
 
     def pset_as_dict(self, i=None):

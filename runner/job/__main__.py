@@ -99,7 +99,7 @@ def main(argv=None):
         if o.debug:
             raise
         else:
-            print("ERROR: "+error.message)
+            print("ERROR: "+str(error))
             print("ERROR: use --debug to print full traceback")
             job.exit(1)
 

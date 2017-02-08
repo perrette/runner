@@ -4,7 +4,7 @@ Sample parameters, run model ensemble, submit to high-performance cluster queues
 
 Requirements
 ============
-python 2.7
+python 2.7 and 3
 numpy (tested with 1.11)
 scipy (tested with 0.16 and 0.18)
 
@@ -110,7 +110,7 @@ There are a number of other ways to communicate parameter values to your model
 the same result with less redundancy, when parameter names match). Parameters
 can also be passed via a file:
 
-    job run -p a=2,3,4 b=0,1 -o out --file-name "params.txt" --file-type "linesep" --line-sep " " --shell cat {}/params.txt
+    job run -p a=2,3,4 b=0,1 -o out --file-name params.txt --file-type linesep --line-sep " " --shell cat {}/params.txt
 
     a 2
     b 0
@@ -128,7 +128,7 @@ can also be passed via a file:
 with a number of other file types. File types that involve grouping, such as
 namelist, require a group prefix with a `.` separator in the parameter name:
 
-    job run -p g1.a=0,1 g2.b=2. -o out --file-name "params.txt" --file-type "namelist" --shell  cat {}/params.txt
+    job run -p g1.a=0,1 g2.b=2. -o out --file-name params.txt --file-type namelist --shell  cat {}/params.txt
 
     &g1
      a               = 0          

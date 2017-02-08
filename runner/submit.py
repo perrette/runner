@@ -3,6 +3,7 @@
 import os
 import subprocess
 import tempfile
+from runner.compat import basestring
 
 MANAGER = "slurm"
 

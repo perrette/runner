@@ -44,7 +44,7 @@ class GenericParam(object):
                 param = DiscreteParam.parse(string)
 
         except Exception as error:
-            print( "ERROR:",error.message)
+            print( "ERROR:",str(error))
             raise
         return param
 

@@ -8,6 +8,7 @@ import datetime
 from runner.tools import parse_val
 from runner.submit import submit_job
 from runner import __version__
+from runner.compat import basestring
 #from runner.model.generic import get_or_make_filetype
 
 # default values
@@ -174,7 +175,7 @@ class Model(object):
             'sys.argv': sys.argv,
         }
         json.dump(cfg, open(os.path.join(rundir, MODELSETUP), 'w'), 
-                  sort_keys=True, indent=2)
+                  sort_keys=True, indent=2, default=lambda x:x.tolist() if hasattr(x, 'tolist') else x )
 
         # for communication with the model
         if self.filetype and self.filename:

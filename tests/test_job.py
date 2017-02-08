@@ -19,6 +19,7 @@ class TestSample(unittest.TestCase):
 
     def test_sample(self):
         out = check_output('job sample a=U?0,1 b=N?0,1 --size 10 --seed 4', shell=True)
+        # FIXME: python3 uses more digits, how to make a test that works for both versions?
         self.assertEqual(out.strip(),"""
      a      b
 0.425298236238 0.988953805595
@@ -67,7 +68,7 @@ class TestRun(unittest.TestCase):
                          """.strip())
 
     def test_paramsio_file_linesep(self):
-        out = check_output('job run -p a=2,3,4 b=0,1 -o out --file-name "params.txt" --file-type "linesep" --line-sep " " --shell cat {}/params.txt', shell=True)
+        out = check_output('job run -p a=2,3,4 b=0,1 -o out --file-name params.txt --file-type linesep --line-sep " " --shell cat {}/params.txt', shell=True)
         self.assertEqual(out.strip(),"""
 a 2
 b 0
@@ -84,7 +85,7 @@ b 1
                          """.strip())
 
     def test_paramsio_file_namelist(self):
-        out = check_output('job run -p g1.a=0,1 g2.b=2. -o out --file-name "params.txt" --file-type "namelist" --shell  cat {}/params.txt', shell=True)
+        out = check_output('job run -p g1.a=0,1 g2.b=2. -o out --file-name params.txt --file-type namelist --shell  cat {}/params.txt', shell=True)
         self.assertEqual(out.strip(),"""
 &g1
  a               = 0          
