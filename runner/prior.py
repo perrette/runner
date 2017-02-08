@@ -208,13 +208,8 @@ class DiscreteParam(GenericParam):
 # json-compatible I/O
 # ===================
 
-def filterargs(kwargs, keys):
-    """Only keep some of the keeps in a dictionary
-    This is convenient for wrapper functions/methods, to avoid setting a default 
-    parameter value at each level of dispatching.
-    """
+def filterkeys(kwargs, keys):
     return {k:kwargs[k] for k in kwargs if k in keys}
-
 
 
 class Prior(object):
@@ -274,7 +269,7 @@ class Prior(object):
         np.random.seed(seed)
 
         if method == "lhs":
-            opts = filterargs(kwargs, ['criterion', 'iterations'])
+            opts = filterkeys(kwargs, ['criterion', 'iterations'])
             xparams = self.sample_lhs(size, **opts)
         else:
             xparams = self.sample_montecarlo(size)
