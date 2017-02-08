@@ -100,8 +100,7 @@ params_parser.add_argument('--include-default',
                   action='store_true', 
                   help='also run default model version (with no parameters)')
 
-run = argparse.ArgumentParser(add_help=False, 
-                              parents=[model, params_parser, folders, submit, slurm],
+run = argparse.ArgumentParser(parents=[model, params_parser, folders, submit, slurm],
                               description=__doc__)
 
 

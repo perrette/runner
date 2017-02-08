@@ -17,8 +17,7 @@ def _return_params(xparams, out):
 
 # product
 # -------
-product = argparse.ArgumentParser(add_help=False,
-                                  description="Factorial combination of parameter values")
+product = argparse.ArgumentParser(description="Factorial combination of parameter values")
 product.add_argument('factors',
                  type=DiscreteParam.parse,
                  metavar="NAME=VAL1[,VAL2 ...]",
@@ -55,8 +54,7 @@ grp.add_argument('--lhs-criterion',
 grp.add_argument('--lhs_iterations', type=int)
 
 
-sample = argparse.ArgumentParser(description="Sample prior parameter distribution", 
-                                 add_help=False, parents=[prior, lhs])
+sample = argparse.ArgumentParser(description="Sample prior parameter distribution", parents=[prior, lhs])
 sample.add_argument('-o', '--out', help="output parameter file")
 
 sample.add_argument('-N', '--size',type=int, 
@@ -84,7 +82,7 @@ register_job('sample', sample, sample_post,
 
 # resample
 # --------
-resample = argparse.ArgumentParser(add_help=False, description=xp.__doc__)
+resample = argparse.ArgumentParser(description=xp.__doc__)
 resample.add_argument("params_file", 
                     help="ensemble parameter flle to resample")
 

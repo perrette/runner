@@ -17,8 +17,8 @@ from .config import json_config, load_config, __version__
 def main(argv=None):
 
     # prepare parser
-    job = argparse.ArgumentParser('job', parents=[], description=__doc__,
-                                  formatter_class=argparse.RawTextHelpFormatter)
+    job = argparse.ArgumentParser('job', parents=[], description=__doc__, 
+                                  formatter_class=argparse.RawDescriptionHelpFormatter)
 
     job.add_argument('-v','--version', action='version', version=__version__)
     job.add_argument('-c','--config-file', 
@@ -33,7 +33,7 @@ def main(argv=None):
                    help='save/show full config, not only differences from default')
     job.add_argument('--debug', action="store_true", help='print full traceback')
     
-    top = argparse.ArgumentParser(parents=[job], conflict_handler='resolve')
+    top = argparse.ArgumentParser(parents=[job], add_help=False)
     tops = top.add_subparsers(dest='cmd') # just for the command
 
     # add subcommands
@@ -42,8 +42,13 @@ def main(argv=None):
     parsers = {}
 
     for j in register.jobs:
-        subp.add_parser(j.name, parents=[j.parser], help=j.help)
-        tops.add_parser(j.name, help=j.help)
+        subp.add_parser(j.name, 
+                        parents=[j.parser], 
+                        add_help=False, 
+                        description=j.parser.description, 
+                        help=j.help,
+                        formatter_class=argparse.RawDescriptionHelpFormatter)
+        tops.add_parser(j.name, help=j.help, add_help=False)
         parsers[j.name] = j.parser
         postprocs[j.name] = j.postproc
 

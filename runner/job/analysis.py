@@ -27,7 +27,7 @@ XLOGLIK = "loglik.txt" # log(weight)
 LOGLIKS = "logliks.txt" # log-likelihood for various variables
 
 
-analyze= argparse.ArgumentParser(add_help=False, parents=[modelconfig])
+analyze= argparse.ArgumentParser(parents=[modelconfig])
 analyze.add_argument('expdir', default=EXPDIR, 
                                help='experiment directory to analyze')
 analyze.add_argument('--out', default=None,
