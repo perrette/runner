@@ -82,7 +82,8 @@ register_job('sample', sample, sample_post,
 
 # resample
 # --------
-resample = argparse.ArgumentParser(description=xp.__doc__)
+resample = argparse.ArgumentParser(description=xp.__doc__, 
+                                   formatter_class=argparse.RawDescriptionHelpFormatter)
 resample.add_argument("params_file", 
                     help="ensemble parameter flle to resample")
 
