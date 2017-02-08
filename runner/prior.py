@@ -10,7 +10,7 @@ import scipy.stats
 from scipy.stats import norm, uniform
 
 from runner.tools import parse_dist, parse_list, parse_range, dist_to_str
-from runner.sampling.doelhs import lhs
+from runner.lib.doelhs import lhs
 
 import runner.xparams as xp
 from runner.xparams import XParams

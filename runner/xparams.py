@@ -1,7 +1,7 @@
 # XParams
 from collections import OrderedDict as odict
 from runner.tools import DataFrame
-from runner.sampling.resampling import Resampler, RESAMPLING_METHOD, NEFF_BOUNDS
+from runner.resample import Resampler, RESAMPLING_METHOD, NEFF_BOUNDS
 
 
 # Ensemble parameters

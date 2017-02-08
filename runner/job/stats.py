@@ -1,7 +1,7 @@
 import argparse
 import numpy as np
 from runner.prior import Prior, GenericParam, DiscreteParam
-import runner.sampling.resampling as xp
+import runner.resample as xp
 from runner.xparams import XParams, Resampler
 from runner.register import register_job
 
