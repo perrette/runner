@@ -1,0 +1,10 @@
+before_script:
+  - apt-get update -qq && apt-get install -y -qq python
+  - python -v
+  - which python
+  - pip install numpy
+  - pip install scipy
+
+test:
+  script:
+    - python tests/test_job.py
