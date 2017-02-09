@@ -1,5 +1,23 @@
 #!/usr/bin/env python2.7
-"""Play around with glacier model
+"""Analyze run results
+
+This requires a user-defined `getvar` function and possibly `getcost`
+
+Example
+-------
+
+    from runner.register import define
+
+    @define.getvar
+    def getvar(name, rundir):
+        "retrieve state variable from run directory"
+        ...
+
+    @define.getcost
+    def getcost(rundir):
+        " cost function for one model, given its run directory (canonical form: J = (var - mean)/std)"
+        ...
+
 """
 from __future__ import print_function, absolute_import, division
 import argparse
@@ -17,7 +35,7 @@ from runner.register import register_job
 from runner.prior import PriorParam
 from runner.xrun import XRun, XData
 from runner.job.config import load_config
-from runner.job.model import model_parser, modelconfig, custommodel, \
+from runner.job.model import modelconfig, custommodel, \
     CustomModel, getmodel
 from runner.job.run import parse_slurm_array_indices, _typechecker, run
 from runner.job.run import XPARAM, EXPDIR, EXPCONFIG
@@ -27,20 +45,24 @@ XLOGLIK = "loglik.txt" # log(weight)
 LOGLIKS = "logliks.txt" # log-likelihood for various variables
 
 
-analyze= argparse.ArgumentParser(parents=[modelconfig])
+analyze = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter) #parents=[modelconfig])
 analyze.add_argument('expdir', default=EXPDIR, 
                                help='experiment directory to analyze')
 analyze.add_argument('--out', default=None,
                                help='experiment directory to write the diagnostics to (by default same as expdir)')
 analyze.add_argument('-i', '--in-state', 
                                help='input state file to consider (normally derived via custom getvar)')
+
+analyze.add_argument('-m','--user-module', 
+                 help='user-defined python module that contains model definitions, necessary for postprocessing')
+
 grp =analyze.add_argument_group("model state", description='For now this requires a custom `getvar` function to retrieve state variables')
 grp.add_argument("-v", "--state-variables", nargs='+', default=[],
                  help='list of state variables to include in state.txt, \
                  does not necessarily enter in the likelihood')
 grp.add_argument('--stats', action='store_true', help='add statistics on model state')
 
-grp =analyze.add_argument_group(
+grp = analyze.add_argument_group(
     "likelihood", 
     description='likelihood is provided a list of distributions (same convention as job sample) or via a custom `getcost`')
 

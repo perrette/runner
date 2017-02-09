@@ -19,9 +19,9 @@ Use command-line help:
 - [job -h](doc/job.txt)
 - [job product -h](doc/product.txt)
 - [job sample -h](doc/sample.txt)
+- [job resample -h](doc/resample.txt)
 - [job run -h](doc/run.txt)
 - [job analyze -h](doc/analyze.txt)
-- [job resample -h](doc/resample.txt)
 
 
 Examples
