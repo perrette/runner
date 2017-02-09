@@ -4,9 +4,9 @@ Sample parameters, run model ensemble, submit to high-performance cluster queues
 
 Requirements
 ============
-python 2.7 and 3
-numpy (tested with 1.11)
-scipy (tested with 0.16 and 0.18)
+- python 2.7 and 3
+- numpy (tested with 1.11)
+- scipy (tested with 0.16 and 0.18)
 
 Install
 =======
