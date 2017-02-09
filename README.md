@@ -16,17 +16,6 @@ Usage
 =====
 Use command-line help:
 
-    job --help
-
-And for each sub-command:
-
-    job product --help
-    job sample --help
-    job resample --help
-    job run --help
-
-also visible here:
-    
 - [job -h](doc/job.txt)
 - [job product -h](doc/product.txt)
 - [job sample -h](doc/sample.txt)
