@@ -1,0 +1,31 @@
+usage: job sample [-h]
+                  [--lhs-criterion {center,c,maximin,m,centermaximin,cm,correlation,corr}]
+                  [--lhs_iterations LHS_ITERATIONS] [-o OUT] [-N SIZE]
+                  [--seed SEED] [--method {montecarlo,lhs}]
+                  [NAME=DIST [NAME=DIST ...]]
+
+Sample prior parameter distribution
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -o OUT, --out OUT     output parameter file
+  -N SIZE, --size SIZE  Sample size
+  --seed SEED           random seed, for reproducible results (default to
+                        None)
+  --method {montecarlo,lhs}
+                        sampling method (default=lhs)
+
+prior distribution of model parameters:
+  NAME=DIST             Prior parameter defintion as NAME=SPEC. SPEC specifies
+                        param values or distribution. Discrete parameter
+                        values can be provided as a comma-separated list
+                        `VALUE[,VALUE...]` or a range `START:STOP:N`. A
+                        distribution is provided as `TYPE?ARG,ARG[,ARG,...]`.
+                        Pre-defined `U?min,max` (uniform) and `N?mean,sd`
+                        (normal) or any scipy.stats distribution as
+                        TYPE?[SHP,]LOC,SCALE.")
+
+Latin hypercube sampling:
+  --lhs-criterion {center,c,maximin,m,centermaximin,cm,correlation,corr}
+                        randomized by default
+  --lhs_iterations LHS_ITERATIONS

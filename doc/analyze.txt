@@ -1,0 +1,56 @@
+usage: job analyze [-h] [-m USER_MODULE] [--default-file DEFAULT_FILE]
+                   [--work-dir WORK_DIR] [--out OUT] [-i IN_STATE]
+                   [-v STATE_VARIABLES [STATE_VARIABLES ...]] [--stats]
+                   [-l NAME=DIST [NAME=DIST ...]] [--custom-cost]
+                   ... expdir
+
+positional arguments:
+  ...                   model executable and its command-line arguments (need
+                        to be last on the command-line, possibly separated
+                        from other arguments with `--`). `{}` and `{NAME}`
+                        will be replaced by the run directory and
+                        corresponding parameter value, respectively. See also
+                        --arg-out-prefix, --arg-prefix
+  expdir                experiment directory to analyze
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --out OUT             experiment directory to write the diagnostics to (by
+                        default same as expdir)
+  -i IN_STATE, --in-state IN_STATE
+                        input state file to consider (normally derived via
+                        custom getvar)
+
+user-customed model:
+  -m USER_MODULE, --user-module USER_MODULE
+                        user-defined python module that contains custom file
+                        type, model definitions, necessary for postprocessing
+                        (see `runner.register.define`)
+
+model configuration:
+  --default-file DEFAULT_FILE
+                        default param file, required for certain file types
+                        (e.g. namelist)
+  --work-dir WORK_DIR   where to execute the model from, by default current
+                        directory. Use "{}" for run directory.
+
+model state:
+  For now this requires a custom `getvar` function to retrieve state
+  variables
+
+  -v STATE_VARIABLES [STATE_VARIABLES ...], --state-variables STATE_VARIABLES [STATE_VARIABLES ...]
+                        list of state variables to include in state.txt, does
+                        not necessarily enter in the likelihood
+  --stats               add statistics on model state
+
+likelihood:
+  likelihood is provided a list of distributions (same convention as job
+  sample) or via a custom `getcost`
+
+  -l NAME=DIST [NAME=DIST ...], --likelihood NAME=DIST [NAME=DIST ...]
+                        NAME=N?MEAN,STD or NAME=U?MIN,MAX or
+                        NAME=TYPE?ARG1[,ARG2 ...] where TYPE is any
+                        scipy.stats distribution with *shp, loc, scale
+                        parameters.
+  --custom-cost         use custom getcost function (adds up) (see
+                        runner.register.define)

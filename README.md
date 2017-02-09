@@ -25,6 +25,15 @@ And for each sub-command:
     job resample --help
     job run --help
 
+also visible here:
+    
+- [job -h](doc/job.txt)
+- [job product -h](doc/product.txt)
+- [job sample -h](doc/sample.txt)
+- [job run -h](doc/run.txt)
+- [job analyze -h](doc/analyze.txt)
+- [job resample -h](doc/resample.txt)
+
 
 Examples
 ========

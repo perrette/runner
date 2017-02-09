@@ -1,0 +1,11 @@
+usage: job product [-h] [-o OUT]
+                   [NAME=VAL1[,VAL2 ...] [NAME=VAL1[,VAL2 ...] ...]]
+
+Factorial combination of parameter values
+
+positional arguments:
+  NAME=VAL1[,VAL2 ...]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -o OUT, --out OUT     output parameter file

@@ -1,0 +1,27 @@
+usage: job [-h] [-v] [-c CONFIG_FILE] [-s SAVEAS | -u] [--show] [--full]
+           [--debug]
+           {product,sample,resample,run,analyze} ...
+
+Jobs for numerical experiments
+
+positional arguments:
+  {product,sample,resample,run,analyze}
+    product             generate ensemble from all parameter combinations
+    sample              generate ensemble by sampling prior distributions
+    resample            resample parameters from previous simulation
+    run                 run model (single version or ensemble)
+    analyze             analyze ensemble (state + loglik + stats) for
+                        resampling
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -v, --version         show program's version number and exit
+  -c CONFIG_FILE, --config-file CONFIG_FILE
+                        load defaults from configuration file
+  -s SAVEAS, --saveas SAVEAS
+                        save selected defaults to config file and exit
+  -u, --update-config   -uc FILE is an alias for -c FILE -s FILE
+  --show                show config and exit
+  --full                save/show full config, not only differences from
+                        default
+  --debug               print full traceback
