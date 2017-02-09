@@ -144,9 +144,3 @@ namelist, require a group prefix with a `.` separator in the parameter name:
 Additionally, parameters can be set as environment variables via `--env-prefix`
 argument (e.g. `--env-prefix ""` for direct access via `$NAME` within the
 script).
-
-
-Resample an existing parameter set
-----------------------------------
-
-    job resample --help
