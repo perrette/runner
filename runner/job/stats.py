@@ -132,7 +132,7 @@ def resample_post(o):
                             iis=o.iis, epsilon=o.epsilon, 
                             neff_bounds=o.neff_bounds, 
                             )
-    return _return_params(xparams, o)
+    return _return_params(xparams, o.out)
 
 
 register_job('resample', resample, resample_post,
