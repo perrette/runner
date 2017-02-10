@@ -85,7 +85,6 @@ def getxrunanalysis(o, expdir):
     cfg = load_config(os.path.join(expdir, EXPCONFIG))
     cfg["user_module"] = o.user_module
     model = getmodel(argparse.Namespace(**cfg), post_only=True) 
-    assert model.executable is not None
     xparams = XData.read(paramsfile) # for the size & autodir
     return XRun(model, xparams, autodir=cfg["auto_dir"])
 
