@@ -1,9 +1,11 @@
 before_script:
-  - apt-get update -qq && apt-get install -y -qq python
-  - python -v
+  - virtualenv testrunner
+  - source testrunner/bin/activate
   - which python
+  - python -v
   - pip install numpy
   - pip install scipy
+  - python setup.py install
 
 test:
   script:
