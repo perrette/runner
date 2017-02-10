@@ -98,7 +98,8 @@ def analyze_post(o):
 
     # write state.txt
     # ===============
-    names = o.state_variables + [x.name for x in o.likelihood]
+    names = o.state_variables + [x.name for x in o.likelihood 
+                                 if x.name not in o.state_variables]
 
     if o.in_state:
         print("Read state variables from",o.in_state)
