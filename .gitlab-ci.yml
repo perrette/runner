@@ -1,10 +1,9 @@
 before_script:
-  - virtualenv testrunner
+  - virtualenv --system-site-packages testrunner
   - source testrunner/bin/activate
   - which python
   - python -v
-  - pip install numpy
-  - pip install scipy
+  - ls
   - python setup.py install
 
 test:
