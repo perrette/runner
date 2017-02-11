@@ -78,10 +78,11 @@ a 3
 b 0.0
                          """.strip())
 
-
     def test_paramsio_file_linesep(self):
         out = check_output('./scripts/job run -p a=2,3,4 b=0,1 -o out --file-name params.txt --file-type linesep --line-sep " " --shell cat {}/params.txt', shell=True)
-        self.assertEqual(out.strip(),"""
+        self.assertEqual(out.strip(),self.linesep.strip())
+
+    linesep = """
 a 2
 b 0
 a 2
@@ -94,11 +95,17 @@ a 4
 b 0
 a 4
 b 1
-                         """.strip())
+    """
+
+    def test_paramsio_file_linesep_auto(self):
+        out = check_output('./scripts/job run -p a=2,3,4 b=0,1 -o out --file-name params.txt --shell cat {}/params.txt', shell=True)
+        self.assertEqual(out.strip(),self.linesep.strip())
 
     def test_paramsio_file_namelist(self):
-        out = check_output('./scripts/job run -p g1.a=0,1 g2.b=2. -o out --file-name params.nml --file-type namelist --shell  cat {}/params.nml', shell=True)
-        self.assertEqual(out.strip(),"""
+        out = check_output('./scripts/job run -p g1.a=0,1 g2.b=2. -o out --file-name params.txt --file-type namelist --shell  cat {}/params.txt', shell=True)
+        self.assertEqual(out.strip(), self.namelist.strip())
+        
+    namelist = """
 &g1
  a               = 0          
 /
@@ -111,11 +118,15 @@ b 1
 &g2
  b               = 2.0        
 /
-                         """.strip())
+    """
+
+    def test_paramsio_file_namelist_auto(self):
+        out = check_output('./scripts/job run -p g1.a=0,1 g2.b=2. -o out --file-name params.nml --shell  cat {}/params.nml', shell=True)
+        self.assertEqual(out.strip(), self.namelist.strip())
+
 
 class TestAnalyze(unittest.TestCase):
 
-    filetype = 'json'
     fileout = 'output.json'
 
     @classmethod
@@ -123,7 +134,7 @@ class TestAnalyze(unittest.TestCase):
         if os.path.exists('out'):
             raise RuntimeError('remove output directory `out` before running tests')
         out = check_output('./scripts/job run -p a=1,2 b=0. -o out'
-                           +' --file-type-out '+cls.filetype +' --file-out '+cls.fileout
+                           +' --file-out '+cls.fileout
                            +' --shell python scripts/dummy.py {} --aa {a} --bb {b}', shell=True)
 
     @classmethod
@@ -158,8 +169,6 @@ class TestAnalyze(unittest.TestCase):
                          """.strip())
 
 class TestAnalyzeLineSep(TestAnalyze):
-
-    filetype = 'linesep'
     fileout = 'output'
 
 

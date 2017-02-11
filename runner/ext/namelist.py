@@ -35,7 +35,7 @@ class Namelist(ParamsFile):
         return params
 
 
-register_filetype("namelist", Namelist())
+register_filetype("namelist", Namelist(), '.nml')
 
 
 def parse_nml(string, ignore_comments=False):

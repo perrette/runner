@@ -21,6 +21,7 @@ import runner.model as mod
 from runner.model import Param, Model, CustomModel, ParamsFile
 from runner.filetype import (JsonDict, LineSeparator, LineTemplate, 
                                TemplateFile, FileTypeWrapper)
+import runner.ext.namelist # automatically add Namelist to register
 
 
 # model file type
@@ -57,14 +58,27 @@ def getfiletype(o, file_type=None, file_name=None):
 
     if file_type is None:
         file_type = o.file_type
-    if file_type is None:
-        return None
+
+    if not file_type:
+        # first check vs extension
+        _, file_type = os.path.splitext(file_name or o.file_in or "")
+
+    if not file_type or file_type == '.txt':
+        # default to basic '{name} {value}' on each line if no extension
+        file_type = 'linesep'
 
     # check register first
     if file_type in register.filetypes:
-        return register.filetypes[file_type]
+        ft, ext = register.filetypes[file_type]
+        return ft
 
-    elif file_type == "json":
+    if file_type.startswith('.'):
+        for name in register.filetypes:
+            ft, ext = register.filetypes[name]
+            if file_type in ext:
+                return ft
+
+    if file_type in ("json", ".json"):
         ft = JsonDict()
 
     elif file_type == "linesep":
@@ -85,7 +99,7 @@ def getfiletype(o, file_type=None, file_name=None):
 
     else:
         _print_filetypes()
-        raise ValueError("Unknown file type: "+str(file_type))
+        raise ValueError("Unknown file type or extension: "+str(file_type))
     return ft
 
 

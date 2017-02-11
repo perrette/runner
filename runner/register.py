@@ -37,11 +37,10 @@ def set_defaults(*cmds, **kwargs):
         if cmd in _defaults:
             _defaults[cmd].update(kwargs)
 
-
-def register_filetype(name, filetype):
+def register_filetype(name, filetype, *ext):
     if name in filetypes:
         warnings.warn("filetype name already exists: "+repr(name))
-    filetypes[name] = filetype
+    filetypes[name] = filetype, ext
 
 
 def set_model(key, func):
