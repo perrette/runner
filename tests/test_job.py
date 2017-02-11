@@ -67,6 +67,18 @@ class TestRun(unittest.TestCase):
 --out out/5 --a 4 --b 1
                          """.strip())
 
+    def test_paramsio_env(self):
+        out = check_output('./scripts/job run -p a=2,3 b=0. -o out --shell --env-prefix "" -- bash scripts/dummy.sh', shell=True)
+        self.assertEqual(out.strip(),"""
+RUNDIR out/0
+a 2
+b 0.0
+RUNDIR out/1
+a 3
+b 0.0
+                         """.strip())
+
+
     def test_paramsio_file_linesep(self):
         out = check_output('./scripts/job run -p a=2,3,4 b=0,1 -o out --file-name params.txt --file-type linesep --line-sep " " --shell cat {}/params.txt', shell=True)
         self.assertEqual(out.strip(),"""
