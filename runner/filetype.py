@@ -6,6 +6,7 @@ Also take a look at runner.ext
 For more complex formats you may want to define your own class. 
 It takes subclassing `ParamsFile.dumps`, and if needed `ParamsFile.loads`.
 """
+import json
 from runner.model import ParamsFile, Param
 from runner.tools import parse_val
 

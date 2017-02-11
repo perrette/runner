@@ -13,9 +13,6 @@ from runner.compat import basestring
 
 # default values
 ENV_OUT = "RUNDIR"
-FILENAME = None
-FILETYPE = None
-
 MODELSETUP = 'setup.json'
 
 
@@ -72,10 +69,11 @@ class ParamsFile(object):
 # ==============
 class Model(object):
     def __init__(self, executable=None, args=None, params=None, 
-                 filetype=FILETYPE, filename=FILENAME, 
+                 filetype=None, filename=None, 
                  arg_out_prefix=None, arg_param_prefix=None, 
                  env_out=ENV_OUT, env_prefix=None,
-                 work_dir=None,
+                 work_dir=None, 
+                 filetype_output=None, filename_output=None,
                  ):
         """
         * executable : runscript
@@ -103,6 +101,9 @@ class Model(object):
         * work_dir: str, optional
             directory to start the model from (work directory)
             by default from the current directory
+        * filetype_output : ParamsFile instance or anything with `load` method, optional
+        * filename_output : relative path to rundir, optional
+            filename for output variable (also needs filetype_output)
         """
         self.executable = executable
         if isinstance(args, basestring):
@@ -111,6 +112,8 @@ class Model(object):
         self.params = params or []
         self.filetype = filetype
         self.filename = filename
+        self.filetype_output = filetype_output
+        self.filename_output = filename_output
         self.arg_out_prefix = arg_out_prefix
         self.arg_param_prefix = arg_param_prefix
         self.env_prefix = env_prefix
@@ -294,7 +297,10 @@ class Model(object):
     def getvar(self, name, rundir):
         """get state variable by name given run directory
         """
-        raise NotImplementedError("getvar")
+        assert self.filename_output, "filename_output is required"
+        assert self.filetype_output, "filetype_output is required"
+        variables = self.filetype_output.load(open(os.path.join(rundir, self.filename_output)))
+        return {v.name : v.value for v in variables}[name]
 
     def getcost(self, rundir):
         """get cost-function for one member (==> weight = exp(-0.5*cost))

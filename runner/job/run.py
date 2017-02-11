@@ -167,7 +167,7 @@ run = argparse.ArgumentParser(parents=[model, params_parser, folders, submit, sl
 
 
 # keep group of params for later
-experiment = argparse.ArgumentParser(add_help=False, parents=[modelconfig])
+experiment = argparse.ArgumentParser(add_help=False, parents=[modelconfig, modelwrapper])
 experiment.add_argument('-a','--auto-dir', action='store_true')
 
 # ...only when --array is invoked

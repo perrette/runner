@@ -34,7 +34,9 @@ filetype = argparse.ArgumentParser('[filetype]', add_help=False,
                                    formatter_class=argparse.RawDescriptionHelpFormatter, description=__doc__)
 grp = filetype.add_argument_group('filetype', description='file formats to pass parameters from job to model. Enter --help-file-type to see how to register custom filetypes')
 
-grp.add_argument('--file-type', help='model params file type (including registered custom)', default=mod.FILETYPE,
+grp.add_argument('--file-type', help='model params file type',
+                 choices=choices+list(register.filetypes.keys()))
+grp.add_argument('--file-type-out', help='model output file type',
                  choices=choices+list(register.filetypes.keys()))
 grp.add_argument('--line-sep', help='separator for "linesep" and "lineseprev" file types')
 grp.add_argument('--line-template', help='line template for "linetemplate" file type')
@@ -46,41 +48,44 @@ def _print_filetypes():
     print("Available filetypes:", ", ".join([repr(k) for k in choices]))
 
 
-def getfiletype(o):
+def getfiletype(o, file_type=None, file_name=None):
     """Initialize file type
     """
     if o.help_file_type:
         filetype.print_help()
         filetype.exit(0)
 
-    if o.file_type is None:
+    if file_type is None:
+        file_type = o.file_type
+    if file_type is None:
         return None
 
-    if o.file_type in register.filetypes:
-        ft = register.filetypes[o.file_type]
+    # check register first
+    if file_type in register.filetypes:
+        return register.filetypes[file_type]
 
-    elif o.file_type == "json":
+    elif file_type == "json":
         ft = JsonDict()
 
-    elif o.file_type == "linesep":
+    elif file_type == "linesep":
         ft = LineSeparator(o.line_sep)
 
-    elif o.file_type == "lineseprev":
+    elif file_type == "lineseprev":
         ft = LineSeparator(o.line_sep, reverse=True)
 
-    elif o.file_type == "linetemplate":
+    elif file_type == "linetemplate":
         if not o.line_template:
             raise ValueError("line_template is required for 'linetemplate' file type")
         ft = LineTemplate(o.line_template)
     
-    elif o.file_type == "template":
+    elif file_type == "template":
         if not o.template_file:
             raise ValueError("template_file is required for 'template' file type")
         ft = TemplateFile(o.template_file)
 
     else:
         _print_filetypes()
-        raise ValueError("Unknown file type: "+str(o.file_type))
+        raise ValueError("Unknown file type: "+str(file_type))
     return ft
 
 
@@ -92,10 +97,12 @@ modelwrapper = argparse.ArgumentParser(add_help=False, parents=[filetype])
 grp = modelwrapper.add_argument_group('interface', description='job to model communication')
 #grp.add_argument('--io-params', choices=["arg", "file"], default='arg',
 #                 help='mode for passing parameters to model (default:%(default)s)')
-grp.add_argument('--file-name', default=mod.FILENAME, 
-                      help='file name to pass to model, relatively to {rundir}. \
-                 If provided, param passing via file instead of command arg.\
-                 Note this might be used in model arguments as "{paramfile}"')
+grp.add_argument('--file-in','--file-name', 
+                      help='param file name to pass to model, relatively to {rundir}. \
+                 If provided, param passing via file instead of command arg.')
+grp.add_argument('--file-out', 
+                      help='model output file name, relatively to {rundir}. \
+                 If provided, param passing via file instead of command arg.')
 grp.add_argument('--arg-out-prefix', default=None,
                       help='prefix for output directory on the command-line. None by default.')
 grp.add_argument('--arg-prefix', default=None,
@@ -147,14 +154,22 @@ def getmodel(o, post_only=False):
     # check register first (from import module above)
     modelargs = register.model.copy() # command, setup, getvar, filetype
 
+    # param and output file types
     loads = modelargs.pop('loads')
     dumps = modelargs.pop('dumps')
     if loads or dumps:
-        filetype = FileTypeWrapper(dumps, loads)
+        filetype = filetype_out = FileTypeWrapper(dumps, loads)
     elif post_only:
         filetype = None
+        filetype_out = getfiletype(o, o.file_type_out, o.file_out)
     else:
-        filetype = getfiletype(o)
+        filetype = getfiletype(o, o.file_type, o.file_in)
+        filetype_out = getfiletype(o, o.file_type_out, o.file_out)
+
+    modelargs.update(dict(
+        filetype=filetype, filename=o.file_in,
+        filetype_output=filetype_out, filename_output=o.file_out,
+    ))
 
     # post-processing only, model run config not needed
     if post_only:
@@ -172,8 +187,6 @@ def getmodel(o, post_only=False):
                            args=o.model[1:],
                            params=params, 
                            work_dir=o.work_dir, 
-
-                           filetype=filetype, filename=o.file_name,
                            arg_out_prefix=o.arg_out_prefix, arg_param_prefix=o.arg_prefix, 
                            env_out=o.env_out, env_prefix=o.env_prefix) )
 
