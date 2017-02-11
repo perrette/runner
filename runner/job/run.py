@@ -66,7 +66,7 @@ separator in the parameter name:
 import argparse
 import tempfile
 import numpy as np
-from runner.prior import Prior, DiscreteParam
+from runner.param import Prior, DiscreteParam
 #from runner.xparams import XParams
 from runner.xrun import XParams, XRun, XPARAM
 from runner.submit import submit_job

@@ -6,47 +6,15 @@ import sys
 import json
 import datetime
 from collections import OrderedDict as odict
+from runner import __version__
+from runner.param import Param
 from runner.tools import parse_val
 from runner.submit import submit_job
-from runner import __version__
 from runner.compat import basestring
 #from runner.model.generic import get_or_make_filetype
 
 # default values
 ENV_OUT = "RUNDIR"
-
-
-class Param(object):
-    """default parameter --> useful to specify custom I/O formats
-    """
-    def __init__(self, name, default=None, help=None, value=None, **kwargs):
-        """
-        name : parameter name
-        default : default value, optional
-        help : help (e.g. to provide for argparse), optional
-        **kwargs : any other attribute required for custom file formats
-            or to define prior distributions.
-        """
-        self.name = name
-        self.default = default
-        self.value = value if value is not None else default
-        self.help = help
-        self.__dict__.update(kwargs)
-
-    #def __repr__(self):
-    #    return "{cls}(name={name},default={default},value={value})".format(cls=type(self).__name__, **self.__dict__)
-
-    def __str__(self):
-        return "{name}={value}".format(name=self.name, value=self.value)
-
-    @classmethod
-    def parse(cls, string):
-        name, value = string.split('=')
-        return cls(name, parse_val(value))
-
-    def tojson(self, **kwargs):
-        return json.dumps(self.__dict__)
-        #return json.dumps(str(self))
 
 
 def _update_params(params, params_kw, strict=False):

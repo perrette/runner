@@ -1,6 +1,6 @@
 import argparse
 import numpy as np
-from runner.prior import Prior, GenericParam, DiscreteParam
+from runner.param import Prior, Param, DiscreteParam
 import runner.resample as xp
 from runner.xparams import XParams, Resampler
 from runner.register import register_job
@@ -40,8 +40,8 @@ register_job('product', product, product_post,
 prior = argparse.ArgumentParser(add_help=False)
 grp = prior.add_argument_group("prior distribution of model parameters")
 grp.add_argument('dist',
-                 type=GenericParam.parse,
-                 help=GenericParam.parse.__doc__,
+                 type=Param.parse,
+                 help=Param.parse.__doc__,
                  metavar="NAME=DIST",
                  nargs='*')
 
@@ -166,8 +166,8 @@ register_job('resample', resample, resample_post,
 
 #obs = argparse.ArgumentParser(add_help=False, description="observational constraints")
 #obs.add_argument('--likelihood', '-l', dest='constraints',
-#                 type=typechecker(GenericParam.parse),
-#                 help=GenericParam.parse.__doc__,
+#                 type=typechecker(Param.parse),
+#                 help=Param.parse.__doc__,
 #                 metavar="NAME=SPEC",
 #                 nargs='*')
 
