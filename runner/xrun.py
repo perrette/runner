@@ -48,7 +48,7 @@ class XRun(object):
         """Create directory and write experiment params
         """
         if not os.path.exists(expdir):
-            logging.info("create directory",expdir)
+            logging.info("create directory: "+expdir)
             os.makedirs(expdir)
         elif not force:
             raise RuntimeError(repr(expdir)+" experiment directory already exists")

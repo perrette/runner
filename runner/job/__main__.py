@@ -5,7 +5,7 @@ from __future__ import absolute_import
 import sys, os
 from importlib import import_module
 import argparse
-import warnings
+import logging
 from runner import register
 from .config import json_config, load_config, __version__
 
@@ -60,6 +60,9 @@ def main(argv=None):
     o = job.parse_args(argv)
     parser = parsers[o.cmd]
     func = postprocs[o.cmd]
+
+    if o.debug:
+        logging.basicConfig(level=logging.DEBUG)
 
     # now make sure subparse does not interfer
     i = argv.index(o.cmd)

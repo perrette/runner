@@ -1,10 +1,11 @@
 from __future__ import print_function, absolute_import
-import difflib
 import subprocess
 import os
+import logging
 import sys
 import json
 import datetime
+from collections import OrderedDict as odict
 from runner.tools import parse_val
 from runner.submit import submit_job
 from runner import __version__
@@ -13,7 +14,6 @@ from runner.compat import basestring
 
 # default values
 ENV_OUT = "RUNDIR"
-MODELSETUP = 'setup.json'
 
 
 class Param(object):
@@ -49,6 +49,36 @@ class Param(object):
         #return json.dumps(str(self))
 
 
+def _update_params(params, params_kw, strict=False):
+    """update a list of params with a dict
+    """
+    names = [p.name for p in params]
+
+    if not isinstance(params_kw, dict):
+        raise TypeError('update params/state :: expected dict, got: {}'.format(type(params_kw).__name__))
+
+    for name in params_kw:
+        value = params_kw[name]
+
+        # update existing parameter
+        if name in names:
+            i = names.index(name)
+            params[i].value = value
+
+        # if no parameter found, depends on `strict`
+        else:
+            if strict:
+                import difflib
+                logging.error("Available parameters:"+" ".join(names))
+                suggestions = difflib.get_close_matches(name, names)
+                if suggestions:
+                    logging.error("Did you mean: "+ ", ".join(suggestions)+ " ?")
+                raise ValueError("unknown parameter:"+repr(name))
+
+            else:
+                params.append(Param(name, value=value))
+
+
 class ParamsFile(object):
     """Parent class for the parameters
     """
@@ -68,7 +98,7 @@ class ParamsFile(object):
 # Model instance
 # ==============
 class Model(object):
-    def __init__(self, executable=None, args=None, params=None, 
+    def __init__(self, executable=None, args=None, params=None, state=None,
                  filetype=None, filename=None, 
                  arg_out_prefix=None, arg_param_prefix=None, 
                  env_out=ENV_OUT, env_prefix=None,
@@ -84,8 +114,8 @@ class Model(object):
             might be set with `arg_out_prefix` and `arg_param_prefix` options.
         * params : [Param], optional
             list of model parameters to be updated with modified params
-            If params is provided, strict checking of param names is performed during 
-            update, with informative error message.
+        * state : [Param], optional
+            list of model state variables (output)
         * filetype : ParamsFile instance or anything with `dump` method, optional
         * filename : relative path to rundir, optional
             filename for parameter passing to model (also needs filetype)
@@ -110,6 +140,7 @@ class Model(object):
             args = args.split()
         self.args = args or []
         self.params = params or []
+        self.state = state or []
         self.filetype = filetype
         self.filename = filename
         self.filetype_output = filetype_output
@@ -124,8 +155,6 @@ class Model(object):
                             ) # for formatting args and environment variable etc.
         self.work_dir = work_dir
 
-        self.strict = len(self.params) > 0
-
         # check !
         if filename:
             if filetype is None: 
@@ -134,31 +163,29 @@ class Model(object):
                 raise TypeError("invalid filetype: no `dumps` method: "+repr(filetype))
 
 
-    def update(self, params_kw, context=None):
-        """Update parameter from ensemble
+    def update(self, params=None, state=None, context=None, strict=False):
+        """Update parameters and state variables
         """
-        names = [p.name for p in self.params]
-
-        for name in params_kw:
-            value = params_kw[name]
-
-            # update existing parameter
-            if name in names:
-                i = names.index(name)
-                self.params[i].value = value
-
-            # if no parameter found, never mind, may check or not
-            else:
-                if self.strict:
-                    print("Available parameters:"," ".join(names))
-                    suggestions = difflib.get_close_matches(name, names)
-                    if suggestions:
-                        print("Did you mean: ", ", ".join(suggestions), "?")
-                    raise ValueError("unknown parameter:"+repr(name))
-                else:
-                    self.params.append(Param(name, value=value))
-
+        _update_params(self.params, params or {}, strict)
+        _update_params(self.state, state or {}, strict)
         self.context.update(context or {})
+
+
+    def save(self, rundir, cfg=None):
+        """save model state and parameter
+        """
+        cfg = cfg or {
+            'time': str(datetime.datetime.now()),
+            'version': __version__,
+            'params': {p.name:p.value for p in self.params},
+            'state': {p.name:p.value for p in self.state},
+            'workdir': os.getcwd(),
+            'executable': self.executable,
+            'args': self._format_args(rundir),
+            'sys.argv': sys.argv,
+        }
+        json.dump(cfg, open(os.path.join(rundir, "run.json"), 'w'), 
+                  sort_keys=True, indent=2, default=lambda x:x.tolist() if hasattr(x, 'tolist') else x )
 
 
     def setup(self, rundir):
@@ -167,18 +194,7 @@ class Model(object):
         if not os.path.exists(rundir):
             os.makedirs(rundir)
         
-        # for diagnostics
-        cfg = {
-            'time': str(datetime.datetime.now()),
-            'version': __version__,
-            'params': {p.name:p.value for p in self.params},
-            'workdir': os.getcwd(),
-            'executable': self.executable,
-            'args': self._format_args(rundir),
-            'sys.argv': sys.argv,
-        }
-        json.dump(cfg, open(os.path.join(rundir, MODELSETUP), 'w'), 
-                  sort_keys=True, indent=2, default=lambda x:x.tolist() if hasattr(x, 'tolist') else x )
+        self.save(rundir)
 
         # for communication with the model
         if self.filetype and self.filename:
@@ -292,15 +308,52 @@ class Model(object):
         return submit_job(" ".join(args), env=env, workdir=workdir, 
                           output=output, error=error, jobfile=jobfile, **kwargs)
 
+    ## POST-processing
+    def _readstate(self, rundir):
+        """get model state from original output (return dict)
+        """
+        if not self.filename_output:
+            return {}
+        logging.info('read state')
+        assert self.filetype_output, "filetype_output is required"
+        variables = self.filetype_output.load(open(os.path.join(rundir, self.filename_output)))
+        return odict([(v.name,v.value) for v in variables])
 
-    # POST-processing
+
+    def load(self, rundir, reload=False, save=False):
+        """load state variable and params from run directory
+
+        reload: bool, if True, reload from model own param file instead of run.json
+        save: bool, if True, save state to run.json file
+        """
+        # was written upon run
+        fname = os.path.join(rundir, "run.json")
+        cfg = json.load(open(fname))
+        if 'state' not in cfg:
+            cfg['state'] = {} # back compat
+
+        # load state variables
+        if not cfg['state'] or reload:
+            cfg['state'] = self._readstate(rundir)
+            if save:
+                self.save(rundir, cfg)
+
+        self.update(cfg['params'], cfg['state'])
+
+
     def getvar(self, name, rundir):
         """get state variable by name given run directory
         """
-        assert self.filename_output, "filename_output is required"
-        assert self.filetype_output, "filetype_output is required"
-        variables = self.filetype_output.load(open(os.path.join(rundir, self.filename_output)))
-        return {v.name : v.value for v in variables}[name]
+        if not self.state:
+            self.load(rundir)
+        names = [p.name for p in self.state]
+        try:
+            i = names.index(name)
+        except ValueError: 
+            logging.error("Available parameters:"+(" ".join(names) if names else "None"))
+            raise
+        return self.state[i].value
+
 
     def getcost(self, rundir):
         """get cost-function for one member (==> weight = exp(-0.5*cost))
@@ -341,4 +394,3 @@ class CustomModel(Model):
             return self._getcost(rundir, self.executable, *self._format_args(rundir))
         except TypeError:
             return self._getcost(rundir)
-
