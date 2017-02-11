@@ -1,11 +1,11 @@
 import unittest
 import os, shutil
-from subprocess import check_output
+from subprocess import check_output, call
 
 class TestSample(unittest.TestCase):
 
     def test_product(self):
-        out = check_output('job product a=2,3,4 b=0,1', shell=True)
+        out = check_output('./scripts/job product a=2,3,4 b=0,1', shell=True)
         self.assertEqual(out.strip(),"""
      a      b
      2      0
@@ -18,7 +18,7 @@ class TestSample(unittest.TestCase):
 
 
     def test_sample(self):
-        out = check_output('job sample a=U?0,1 b=N?0,1 --size 10 --seed 4', shell=True)
+        out = check_output('./scripts/job sample a=U?0,1 b=N?0,1 --size 10 --seed 4', shell=True)
         # FIXME: python3 uses more digits, how to make a test that works for both versions?
         self.assertEqual(out.strip(),"""
      a      b
@@ -46,7 +46,7 @@ class TestRun(unittest.TestCase):
             shutil.rmtree('out') # clean up after each individual test
 
     def test_paramsio_args(self):
-        out = check_output('job run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {}', shell=True)
+        out = check_output('./scripts/job run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {}', shell=True)
         self.assertEqual(out.strip(),"""
 --a 2 --b 0 --out out/0
 --a 2 --b 1 --out out/1
@@ -57,7 +57,7 @@ class TestRun(unittest.TestCase):
                          """.strip())
 
     def test_paramsio_args_prefix(self):
-        out = check_output('job run -p a=2,3,4 b=0,1 -o out --shell --arg-prefix "--{} " --arg-out-prefix "--out " -- echo', shell=True)
+        out = check_output('./scripts/job run -p a=2,3,4 b=0,1 -o out --shell --arg-prefix "--{} " --arg-out-prefix "--out " -- echo', shell=True)
         self.assertEqual(out.strip(),"""
 --out out/0 --a 2 --b 0
 --out out/1 --a 2 --b 1
@@ -68,7 +68,7 @@ class TestRun(unittest.TestCase):
                          """.strip())
 
     def test_paramsio_file_linesep(self):
-        out = check_output('job run -p a=2,3,4 b=0,1 -o out --file-name params.txt --file-type linesep --line-sep " " --shell cat {}/params.txt', shell=True)
+        out = check_output('./scripts/job run -p a=2,3,4 b=0,1 -o out --file-name params.txt --file-type linesep --line-sep " " --shell cat {}/params.txt', shell=True)
         self.assertEqual(out.strip(),"""
 a 2
 b 0
@@ -85,7 +85,7 @@ b 1
                          """.strip())
 
     def test_paramsio_file_namelist(self):
-        out = check_output('job run -p g1.a=0,1 g2.b=2. -o out --file-name params.txt --file-type namelist --shell  cat {}/params.txt', shell=True)
+        out = check_output('./scripts/job run -p g1.a=0,1 g2.b=2. -o out --file-name params.nml --file-type namelist --shell  cat {}/params.nml', shell=True)
         self.assertEqual(out.strip(),"""
 &g1
  a               = 0          
@@ -100,6 +100,56 @@ b 1
  b               = 2.0        
 /
                          """.strip())
+
+class TestAnalyze(unittest.TestCase):
+
+    filetype = 'json'
+    fileout = 'output.json'
+
+    @classmethod
+    def setUpClass(cls):
+        if os.path.exists('out'):
+            raise RuntimeError('remove output directory `out` before running tests')
+        out = check_output('./scripts/job run -p a=1,2 b=0. -o out'
+                           +' --file-type-out '+cls.filetype +' --file-out '+cls.fileout
+                           +' --shell python scripts/dummy.py {} --aa {a} --bb {b}', shell=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.exists('out'):
+            shutil.rmtree('out') # clean up after each individual test
+
+    def test_state(self):
+        call('./scripts/job --debug analyze out -v aa bb', shell=True)
+        out = open('out/state.txt').read()
+        self.assertEqual(out.strip(),"""
+	aa     bb
+   1.0    0.0
+   2.0    0.0
+                         """.strip())
+
+    def test_state_mixed(self):
+        call('./scripts/job --debug analyze out -v aa -l bb=N?0,1', shell=True)
+        out = open('out/state.txt').read()
+        self.assertEqual(out.strip(),"""
+	aa     bb
+   1.0    0.0
+   2.0    0.0
+                         """.strip())
+
+    def test_like(self):
+        call('./scripts/job --debug analyze out -l aa=N?0,1', shell=True)
+        out = open('out/loglik.txt').read()
+        self.assertEqual(out.strip(),"""
+-1.418938533204672670e+00
+-2.918938533204672670e+00
+                         """.strip())
+
+class TestAnalyzeLineSep(TestAnalyze):
+
+    filetype = 'linesep'
+    fileout = 'output'
+
 
 
 if __name__ == '__main__':
