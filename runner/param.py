@@ -191,39 +191,33 @@ def filterkeys(kwargs, keys):
     return {k:kwargs[k] for k in kwargs if k in keys}
 
 
-class MultiParam(object):
-    """Combine a list of parameters or state variables, can sample, compute likelihood etc
+class ParamList(list):
+    """enhanced list: pure python data structure, does not do any work
     """
     def __init__(self, params):
         " list of Param instances"
-        self.params = params
-
+        super(ParamList, self).__init__(params)
         for p in self:
             if not isinstance(p, Param):
                 raise TypeError("expected Param, got:"+repr(type(p)))
-
-    def __iter__(self):
-        return iter(self.params)
 
     @property
     def names(self):
         return [p.name for p in self]
 
+    def as_dict(self):
+        return {p.name : p.value for p in self}
+
 
     def __getitem__(self, name):
         if type(name) is int:
-            return self.params[name]
-        try:
-            i = self.names.index(name)
-        except:
-            raise KeyError("unknown parameter or variable:"+repr(name))
-        return self.params[i]
+            return super(ParamList, self)[name]
+        else:
+            return {p.name:p for p in self}[name]
+
 
     def __add__(self, other):
-        return MultiParam(self.params + list(other))
-
-    def __len__(self):
-        return len(self.params)
+        return type(self)(list(self) + list(other))
 
 
     def update(self, params_kw, strict=False, verbose=True):
@@ -238,12 +232,12 @@ class MultiParam(object):
             value = params_kw[name]
 
             try:
-                p = MultiParam(self.params)[name]
+                p = self[name]
                 p.value = value
 
             except KeyError:
                 if not strict: 
-                    self.params.append(Param(name, value=value))
+                    self.append(Param(name, value=value))
                 else:
                     if verbose:
                         logging.error("Available parameters:"+" ".join(names))
@@ -266,31 +260,11 @@ class MultiParam(object):
         params = [p for p in self if predicate(p)]
         return type(self)(params)
 
-    #@classmethod
-    #def read(cls, file, key=PRIOR_KEY, param_cls=Param):
-    #    """read from config file
-
-    #    file : json file
-    #    key : sub-part of a larger json file?
-    #    param_cls : optional, e.g. pick only Param or DiscreteDist
-    #        (for more informative error messages)
-    #    """
-    #    cfg = json.load(open(file))
-    #    if key and key in cfg: cfg = cfg[key]
-    #    params = [param_cls.fromjson(json.dumps(p)) for p in cfg["params"]]
-    #    return cls(params)
-
-    #TODO: `bounds` method for resampling?
 
 
-    #def tojson(self, sort_keys=True, **kwargs):
-    #    """Create json-compatible configuration file
-    #    """
-    #    cfg = {
-    #        "params": [json.loads(p.tojson()) for p in self]
-    #    }
-    #    return json.dumps(cfg, sort_keys=True, **kwargs)
-
+class MultiParam(ParamList):
+    """Combine a list of parameters or state variables, can sample, compute likelihood etc
+    """
 
     def product(self):
         for p in self:

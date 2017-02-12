@@ -77,8 +77,8 @@ class Model(object):
         if isinstance(args, basestring):
             args = args.split()
         self.args = args or []
-        self._params = list(params or [])
-        self._state = list(state or [])
+        self.params = MultiParam(params or [])
+        self.state = MultiParam(state or [])
         self.filetype = filetype
         self.filename = filename
         self.filetype_output = filetype_output
@@ -97,19 +97,13 @@ class Model(object):
             if not hasattr(filetype, "dumps"):
                 raise TypeError("invalid filetype: no `dumps` method: "+repr(filetype))
 
-    @property
-    def params(self):
-        return MultiParam(self._params)
-
-    @property
-    def state(self):
-        return MultiParam(self._state)
-
     def update(self, params=None, state=None, context=None, strict=False):
         """Update parameters and state variables
         """
         if params: self.params.update(params, strict)
+        if params: logging.info('updated params: '+repr(params)+' --> '+repr(self.params.as_dict()))
         if state: self.state.update(state, strict)
+        if state: logging.info('updated state: '+repr(state)+' --> '+repr(self.state.as_dict()))
         if context: self._context.update(context)
 
 
@@ -159,7 +153,7 @@ class Model(object):
         """two-pass formatting: first rundir and params with `{}` and `{NAME}`
         then context `{{rundir}}` `{{runid}}`
         """
-        paramskw = self.params_as_dict()
+        paramskw = self.params.as_dict()
         return [arg.format(rundir, **paramskw).format(rundir=rundir, **self._context) 
                 for arg in self.args]
 
@@ -180,9 +174,6 @@ class Model(object):
 
         return args
 
-    def params_as_dict(self):
-        return {p.name:p.value for p in self.params}
-
     def environ(self, rundir, env=None):
         """define environment variables to pass to model
         """
@@ -193,7 +184,7 @@ class Model(object):
         context = self._context.copy()
         if self.env_out is not None:
             context[self.env_out] = rundir 
-        context.update(self.params_as_dict())
+        context.update(self.params.as_dict())
 
         # format them with appropriate prefix
         update = {self.env_prefix+k:str(context[k])
@@ -307,8 +298,11 @@ class Model(object):
         """get state variable by name given run directory
         """
         if not self.state:
+            logging.info('load state')
             self.load(rundir)
-        return MultiParam(self.state + self.params)[name].value
+        else:
+            logging.info('state already loaded:'+repr(self.state.as_dict()))
+        return (self.state + self.params)[name].value
 
 
     def getcost(self, rundir=None):
@@ -333,12 +327,12 @@ class CustomModel(Model):
     def setup(self, rundir):
         super(CustomModel, self).setup(rundir)  # write metadata
         if self._setup is not None:
-            self._setup(rundir, self.executable, *self._format_args(rundir), **self.params_as_dict())
+            self._setup(rundir, self.executable, *self._format_args(rundir), **self.params.as_dict())
 
     def command(self, rundir):
         if self._command is None:
             return super(CustomModel, self).command(rundir)
-        return self._command(rundir, self.executable, *self._format_args(rundir), **self.params_as_dict())
+        return self._command(rundir, self.executable, *self._format_args(rundir), **self.params.as_dict())
 
     def getvar(self, name, rundir):
         if self._getvar is None:
