@@ -145,7 +145,7 @@ class TestAnalyze(unittest.TestCase):
             shutil.rmtree('out') # clean up after each individual test
 
     def test_state(self):
-        call(JOB+' analyze out -v aa bb', shell=True)
+        assert call(JOB+' analyze out -v aa bb', shell=True) == 0
         out = open('out/state.txt').read()
         self.assertEqual(out.strip(),"""
 	aa     bb
@@ -154,7 +154,7 @@ class TestAnalyze(unittest.TestCase):
                          """.strip())
 
     def test_state_mixed(self):
-        call(JOB+' analyze out -v aa -l bb=N?0,1', shell=True)
+        assert call(JOB+' analyze out -v aa -l bb=N?0,1', shell=True) == 0
         out = open('out/state.txt').read()
         self.assertEqual(out.strip(),"""
 	aa     bb
@@ -163,7 +163,7 @@ class TestAnalyze(unittest.TestCase):
                          """.strip())
 
     def test_like(self):
-        call(JOB+' analyze out -l aa=N?0,1', shell=True)
+        assert call(JOB+' analyze out -l aa=N?0,1', shell=True) == 0
         out = open('out/loglik.txt').read()
         self.assertEqual(out.strip(),"""
 -1.418938533204672670e+00
