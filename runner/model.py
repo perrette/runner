@@ -77,8 +77,8 @@ class Model(object):
         if isinstance(args, basestring):
             args = args.split()
         self.args = args or []
-        self.params = params or []
-        self.state = state or []
+        self._params = list(params or [])
+        self._state = list(state or [])
         self.filetype = filetype
         self.filename = filename
         self.filetype_output = filetype_output
@@ -97,12 +97,19 @@ class Model(object):
             if not hasattr(filetype, "dumps"):
                 raise TypeError("invalid filetype: no `dumps` method: "+repr(filetype))
 
+    @property
+    def params(self):
+        return MultiParam(self._params)
+
+    @property
+    def state(self):
+        return MultiParam(self._state)
 
     def update(self, params=None, state=None, context=None, strict=False):
         """Update parameters and state variables
         """
-        if params: MultiParam(self.params).update(params, strict)
-        if state: MultiParam(self.state).update(state, strict)
+        if params: self.params.update(params, strict)
+        if state: self.state.update(state, strict)
         if context: self._context.update(context)
 
 
@@ -250,7 +257,6 @@ class Model(object):
         """
         if not self.filename_output:
             return {}
-        logging.info('read state')
         assert self.filetype_output, "filetype_output is required"
         variables = self.filetype_output.load(open(os.path.join(rundir, self.filename_output)))
         return odict([(v.name,v.value) for v in variables])
@@ -281,19 +287,19 @@ class Model(object):
     def prior(self):
         """prior parameter distribution
         """
-        return MultiParam(self.params).filter()
+        return self.params.filter()
 
     @property
     def likelihood(self):
         """state variables' likelihood
         """
-        return MultiParam(self.state).filter()
+        return self.state.filter()
 
     @property
     def posterior(self):
         """model posterior (params' prior * state posterior)
         """
-        return MultiParam(self.params + self.state).filter()
+        return self.params.filter() + self.state.filter()
 
 
     ## Back-compatibility & easier access

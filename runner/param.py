@@ -211,11 +211,19 @@ class MultiParam(object):
 
 
     def __getitem__(self, name):
+        if type(name) is int:
+            return self.params[name]
         try:
             i = self.names.index(name)
         except:
             raise KeyError("unknown parameter or variable:"+repr(name))
         return self.params[i]
+
+    def __add__(self, other):
+        return MultiParam(self.params + list(other))
+
+    def __len__(self):
+        return len(self.params)
 
 
     def update(self, params_kw, strict=False, verbose=True):
