@@ -226,25 +226,22 @@ class ParamList(list):
         if not isinstance(params_kw, dict):
             raise TypeError('update params/state :: expected dict, got: {}'.format(type(params_kw).__name__))
 
-        names = self.names
-
         for name in params_kw:
             value = params_kw[name]
 
-            try:
-                p = self[name]
-                p.value = value
+            if name in self.names:
+                self[name].value = value
 
-            except KeyError:
-                if not strict: 
-                    self.append(Param(name, value=value))
-                else:
-                    if verbose:
-                        logging.error("Available parameters:"+" ".join(names))
-                        suggestions = difflib.get_close_matches(name, names)
-                        if suggestions:
-                            logging.error("Did you mean: "+ ", ".join(suggestions)+ " ?")
-                    raise
+            elif not strict: 
+                self.append(Param(name, value=value))
+
+            else:
+                if verbose:
+                    logging.error("Available parameters:"+" ".join(self.names))
+                    suggestions = difflib.get_close_matches(name, self.names)
+                    if suggestions:
+                        logging.error("Did you mean: "+ ", ".join(suggestions)+ " ?")
+                raise
 
 
     def filter(self, predicate=None):
