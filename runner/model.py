@@ -87,10 +87,7 @@ class Model(object):
         self.arg_param_prefix = arg_param_prefix
         self.env_prefix = env_prefix
         self.env_out = env_out
-        self.context = dict(filename=filename, 
-                            executable=executable,
-                            runid = '{runid}',
-                            ) # for formatting args and environment variable etc.
+        self._context = {}
         self.work_dir = work_dir
 
         # check !
@@ -106,20 +103,20 @@ class Model(object):
         """
         if params: MultiParam(self.params).update(params, strict)
         if state: MultiParam(self.state).update(state, strict)
-        if context: self.context.update(context)
+        if context: self._context.update(context)
 
 
     def save(self, rundir, cfg=None, include_state=True):
-        """save model state and parameter
+        """save model state and parameter, for postprocessing and debugging
         """
         cfg = cfg or {
             'time': str(datetime.datetime.now()),
             'version': __version__,
             'params': {p.name:p.value for p in self.params},
             'state': {p.name:p.value for p in self.state if include_state},
-            'workdir': os.getcwd(),
-            'executable': self.executable,
-            'args': self._format_args(rundir),
+            'workdir': self.work_dir.format(rundir) if self.work_dir else os.getcwd(),
+            'environ': self.environ(rundir),
+            'command': self.command(rundir),
             'sys.argv': sys.argv,
         }
         json.dump(cfg, open(os.path.join(rundir, "run.json"), 'w'), 
@@ -156,7 +153,7 @@ class Model(object):
         then context `{{rundir}}` `{{runid}}`
         """
         paramskw = self.params_as_dict()
-        return [arg.format(rundir, **paramskw).format(rundir=rundir, **self.context) 
+        return [arg.format(rundir, **paramskw).format(rundir=rundir, **self._context) 
                 for arg in self.args]
 
     def command(self, rundir):
@@ -186,7 +183,7 @@ class Model(object):
             return None
 
         # prepare variables to pass to environment
-        context = self.context.copy()
+        context = self._context.copy()
         if self.env_out is not None:
             context[self.env_out] = rundir 
         context.update(self.params_as_dict())
@@ -216,7 +213,7 @@ class Model(object):
             stdout = None
             stderr = None
 
-        workdir = self.work_dir.format(rundir) if self.work_dir else "."
+        workdir = self.work_dir.format(rundir) if self.work_dir else os.getcwd()
 
         try:
             p = subprocess.Popen(args, env=env, cwd=workdir, 
