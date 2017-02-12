@@ -19,8 +19,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from numpy.linalg import norm
 from numpy import random, matrix, zeros, triu_indices, sum, argsort, ravel, max
 from numpy import min as minimum
-from scipy.stats import rv_continuous, rv_discrete
-from scipy.stats.distributions import rv_frozen
+from runner.tools import  rv_continuous, rv_discrete, rv_frozen
 
 ##### Default variables #####
 scalingFactor = 5 ## number > 1 (M) Chosen as 5 as suggested by the paper (above this no improvement.

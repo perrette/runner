@@ -29,7 +29,7 @@ import os
 import sys
 import subprocess
 from collections import OrderedDict as odict
-from scipy.stats import norm
+from runner.tools import norm
 
 from runner.register import register_job
 from runner.param import ScipyParam

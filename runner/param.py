@@ -8,9 +8,6 @@ import difflib
 import itertools
 import numpy as np
 
-import scipy.stats
-from scipy.stats import norm, uniform, rv_continuous
-
 from runner.xparams import XParams
 from runner.tools import parse_dist as parse_scipy, parse_list, parse_range, dist_to_str as scipy_to_str
 from runner.lib.doelhs import lhs

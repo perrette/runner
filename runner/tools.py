@@ -1,9 +1,25 @@
 """Tools
 """
 import numpy as np
-from scipy.stats import norm, uniform
-import scipy.stats.distributions
 from argparse import Namespace
+
+
+class LazyDist(object):
+    " lazy loading of scipy distributions "
+    def __init__(self, name):
+        self.name = name
+
+    def __call__(self, *args, **kwargs):
+        import scipy.stats.distributions
+        dist = getattr(scipy.stats.distributions, self.name)
+        return dist(*args, **kwargs)
+
+norm = LazyDist('norm')
+uniform = LazyDist('uniform')
+rv_continuous = LazyDist('rv_continuous')
+rv_discrete = LazyDist('rv_discrete')
+rv_frozen = LazyDist('rv_frozen')
+
 
 def parse_val(s):
     " string to int, float, str "
@@ -87,7 +103,7 @@ def parse_dist(string):
         dist = uniform(lo, hi-lo) 
 
     else:
-        dist = getattr(scipy.stats.distributions, name)(*args)
+        dist = LazyDist(name)(*args)
 
     return dist
 
