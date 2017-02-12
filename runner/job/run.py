@@ -66,7 +66,7 @@ separator in the parameter name:
 import argparse
 import tempfile
 import numpy as np
-from runner.param import Prior, DiscreteParam
+from runner.param import MultiParam, DiscreteParam
 #from runner.xparams import XParams
 from runner.xrun import XParams, XRun, XPARAM
 from runner.submit import submit_job
@@ -150,7 +150,10 @@ params_parser = argparse.ArgumentParser(add_help=False)
 x = params_parser.add_mutually_exclusive_group()
 x.add_argument('-p', '--params',
                  type=DiscreteParam.parse,
-                 help=DiscreteParam.parse.__doc__,
+                 help="""Param values to combine.
+        SPEC specifies discrete parameter values 
+        as a comma-separated list `VALUE[,VALUE...]`
+        or a range `START:STOP:N`.""",
                  metavar="NAME=SPEC",
                  nargs='*')
 x.add_argument('-i','--params-file', help='ensemble parameters file')
@@ -186,7 +189,7 @@ def run_post(o):
     if o.params_file:
         xparams = XParams.read(o.params_file)
     elif o.params:
-        prior = Prior(o.params)
+        prior = MultiParam(o.params)
         xparams = prior.product() # only product allowed as direct input
         #update = {p.name:p.value for p in o.params}
     else:

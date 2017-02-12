@@ -1,10 +1,11 @@
 usage: job run [-h]
                [--file-type {json,linesep,lineseprev,linetemplate,template,namelist}]
+               [--file-type-out {json,linesep,lineseprev,namelist}]
                [--line-sep LINE_SEP] [--line-template LINE_TEMPLATE]
                [--template-file TEMPLATE_FILE] [--help-file-type]
-               [--file-name FILE_NAME] [--arg-out-prefix ARG_OUT_PREFIX]
-               [--arg-prefix ARG_PREFIX] [--env-prefix ENV_PREFIX]
-               [--env-out ENV_OUT] [-m USER_MODULE]
+               [--file-in FILE_IN] [--file-out FILE_OUT]
+               [--arg-out-prefix ARG_OUT_PREFIX] [--arg-prefix ARG_PREFIX]
+               [--env-prefix ENV_PREFIX] [--env-out ENV_OUT] [-m USER_MODULE]
                [--default-file DEFAULT_FILE] [--work-dir WORK_DIR]
                [-p [NAME=SPEC [NAME=SPEC ...]] | -i PARAMS_FILE]
                [-j I,J...,START-STOP:STEP,...] [--include-default] [-o EXPDIR]
@@ -36,6 +37,9 @@ positional arguments:
 optional arguments:
   -h, --help            show this help message and exit
   -p [NAME=SPEC [NAME=SPEC ...]], --params [NAME=SPEC [NAME=SPEC ...]]
+                        Param values to combine. SPEC specifies discrete
+                        parameter values as a comma-separated list
+                        `VALUE[,VALUE...]` or a range `START:STOP:N`.
   -i PARAMS_FILE, --params-file PARAMS_FILE
                         ensemble parameters file
   -j I,J...,START-STOP:STEP,..., --id I,J...,START-STOP:STEP,...
@@ -48,7 +52,9 @@ filetype:
   file formats to pass parameters from job to model. Enter --help-file-type to see how to register custom filetypes
 
   --file-type {json,linesep,lineseprev,linetemplate,template,namelist}
-                        model params file type (including registered custom)
+                        model params file type
+  --file-type-out {json,linesep,lineseprev,namelist}
+                        model output file type
   --line-sep LINE_SEP   separator for "linesep" and "lineseprev" file types
   --line-template LINE_TEMPLATE
                         line template for "linetemplate" file type
@@ -59,11 +65,13 @@ filetype:
 interface:
   job to model communication
 
-  --file-name FILE_NAME
-                        file name to pass to model, relatively to {rundir}. If
+  --file-in FILE_IN, --file-name FILE_IN
+                        param file name to pass to model, relatively to
+                        {rundir}. If provided, param passing via file instead
+                        of command arg.
+  --file-out FILE_OUT   model output file name, relatively to {rundir}. If
                         provided, param passing via file instead of command
-                        arg. Note this might be used in model arguments as
-                        "{paramfile}"
+                        arg.
   --arg-out-prefix ARG_OUT_PREFIX
                         prefix for output directory on the command-line. None
                         by default.

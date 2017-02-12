@@ -2,25 +2,26 @@
 """
 from __future__ import division
 import json
-from itertools import product
 import logging
 import sys
+import difflib
+import itertools
 import numpy as np
 
 import scipy.stats
 from scipy.stats import norm, uniform, rv_continuous
 
+from runner.xparams import XParams
 from runner.tools import parse_dist as parse_scipy, parse_list, parse_range, dist_to_str as scipy_to_str
 from runner.lib.doelhs import lhs
 
 import runner.xparams as xp
-from runner.xparams import XParams
 
 # default criterion for the lhs method
 LHS_CRITERION = 'centermaximin' 
 
 # for reading...
-PRIOR_KEY = "prior"
+ALPHA = 0.99  # validity interval
 
 
 # emulate scipy dist
@@ -94,6 +95,8 @@ class Param(object):
         else:
             return "{name}={default}".format(name=self.name, default=self.default)
 
+    def __eq__(self, other):
+        return isinstance(other, Param) and self.name == other.name
 
     @classmethod
     def parse(cls, string):
@@ -105,8 +108,7 @@ class Param(object):
         or a range `START:STOP:N`.
         A distribution is provided as `TYPE?ARG,ARG[,ARG,...]`.
         Pre-defined `U?min,max` (uniform) and `N?mean,sd` (normal)
-        or any scipy.stats distribution as TYPE?[SHP,]LOC,SCALE.")
-        Additionally default value can be indicated with '!DEFAULT'
+        or any scipy.stats distribution as TYPE?[SHP,]LOC,SCALE.
         """
         # otherwise custom, command-line specific representation
         try:
@@ -124,11 +126,47 @@ class Param(object):
             raise
 
 
+    # distribution applied to self:
+    def logpdf(self):
+        return self.dist.logpdf(self.value) if np.isfinite(self.value) else -np.inf
+
+    def pdf(self):
+        return self.dist.pdf(self.value) if np.isfinite(self.value) else 0.
+
+    def isvalid(self, alpha=ALPHA):
+        """params in the confidence interval
+        """
+        lo, hi = self.dist.interval(alpha)
+        if not np.isfinite(self.value) or self.value < lo or self.value > hi:
+            return False
+        else:
+            return True
+
+    # back-compat
+    def cost(self):
+        return cost(self.dist, self.value) if np.isfinite(self.value) else np.inf
+
+def cost(dist, value):
+    " logpdf = -0.5*cost + cte, only makes sense for normal distributions "
+    logpdf = dist.logpdf(value)
+    cst = dist.logpdf(dist.mean())
+    return -2*(logpdf - cst)
+
+
 class DiscreteParam(Param):
+
     def __init__(self, *args, **kwargs):
         super(DiscreteParam, self).__init__(*args, **kwargs)
         if not isinstance(self.dist, DiscreteDist):
             raise TypeError("expected DiscreteDist, got: "+type(self.dist).__name__)
+
+
+class ScipyParam(Param):
+    def __init__(self, *args, **kwargs):
+        super(ScipyParam, self).__init__(*args, **kwargs)
+        if isinstance(self.dist, DiscreteDist):
+            raise TypeError("expected scipy dist, got discrete values")
+        
 
 
 
@@ -149,20 +187,76 @@ class DiscreteParam(Param):
 
 
 
-# json-compatible I/O
-# ===================
-
 def filterkeys(kwargs, keys):
     return {k:kwargs[k] for k in kwargs if k in keys}
 
 
-class Params(object):
+class MultiParam(object):
+    """Combine a list of parameters or state variables, can sample, compute likelihood etc
+    """
     def __init__(self, params):
-        " list of Param instances (for product)"
-        self.params = list(params)
-        for p in self.params:
+        " list of Param instances"
+        self.params = params
+
+        for p in self:
             if not isinstance(p, Param):
                 raise TypeError("expected Param, got:"+repr(type(p)))
+
+    def __iter__(self):
+        return iter(self.params)
+
+    @property
+    def names(self):
+        return [p.name for p in self]
+
+
+    def __getitem__(self, name):
+        try:
+            i = self.names.index(name)
+        except:
+            raise KeyError("unknown parameter or variable:"+repr(name))
+        return self.params[i]
+
+
+    def update(self, params_kw, strict=False, verbose=True):
+        """update with a dict (key, value) (inplace)
+        """
+        if not isinstance(params_kw, dict):
+            raise TypeError('update params/state :: expected dict, got: {}'.format(type(params_kw).__name__))
+
+        names = self.names
+
+        for name in params_kw:
+            value = params_kw[name]
+
+            try:
+                p = MultiParam(self.params)[name]
+                p.value = value
+
+            except KeyError:
+                if not strict: 
+                    self.params.append(Param(name, value=value))
+                else:
+                    if verbose:
+                        logging.error("Available parameters:"+" ".join(names))
+                        suggestions = difflib.get_close_matches(name, names)
+                        if suggestions:
+                            logging.error("Did you mean: "+ ", ".join(suggestions)+ " ?")
+                    raise
+
+
+    def filter(self, predicate=None):
+        """filter params, by default all that have a distribution defined
+        """
+        if predicate is None:
+            predicate = lambda p : p.dist is not None
+
+        elif isinstance(predicate, list):
+            names = predicate
+            predicate = lambda p : p.name in names
+
+        params = [p for p in self if predicate(p)]
+        return type(self)(params)
 
     #@classmethod
     #def read(cls, file, key=PRIOR_KEY, param_cls=Param):
@@ -178,64 +272,6 @@ class Params(object):
     #    params = [param_cls.fromjson(json.dumps(p)) for p in cfg["params"]]
     #    return cls(params)
 
-
-    @property
-    def names(self):
-        return [p.name for p in self.params]
-
-    def sample_montecarlo(self, size):
-        """Basic montecarlo sampling --> return XParams
-        """
-        pmatrix = np.empty((size,len(self.names)))
-
-        for i, p in enumerate(self.params):
-            pmatrix[:,i] = p.dist.rvs(size=size) # scipy distribution: sample !
-
-        return XParams(pmatrix, self.names)
-
-    def sample_lhs(self, size, criterion=LHS_CRITERION, iterations=None):
-        """Latin hypercube sampling --> return Xparams
-        """
-        #from pyDOE import lhs
-
-        pmatrix = np.empty((size,len(self.names)))
-        lhd = lhs(len(self.names), size, criterion, iterations) # sample x parameters, all in [0, 1]
-
-        for i, p in enumerate(self.params):
-            pmatrix[:,i] = p.dist.ppf(lhd[:,i]) # take the quantile for the particular distribution
-
-        return XParams(pmatrix, self.names)
-
-    def sample(self, size, seed=None, method="lhs", **kwargs):
-        """Wrapper for the various sampling methods. Unused **kwargs are ignored.
-        """
-        pmatrix = np.empty((size,len(self.names)))
-        np.random.seed(seed)
-
-        if method == "lhs":
-            opts = filterkeys(kwargs, ['criterion', 'iterations'])
-            xparams = self.sample_lhs(size, **opts)
-        else:
-            xparams = self.sample_montecarlo(size)
-        return xparams
-
-    def product(self):
-        """only if all parameters are discrete
-        """
-        for p in self.params:
-            if not isinstance(p.dist, DiscreteDist):
-                raise TypeError("cannot make product of continuous distributions: "+p.name)
-
-        pmatrix = list(product(*[p.dist.values for p in self.params]))
-        return XParams(pmatrix, self.names)
-
-
-    def filter_params(self, names, keep=True):
-        if keep:
-            self.params = [p for p in self.params if p.name in names]
-        else:
-            self.params = [p for p in self.params if p.name not in names]
-
     #TODO: `bounds` method for resampling?
 
 
@@ -243,8 +279,63 @@ class Params(object):
     #    """Create json-compatible configuration file
     #    """
     #    cfg = {
-    #        "params": [json.loads(p.tojson()) for p in self.params]
+    #        "params": [json.loads(p.tojson()) for p in self]
     #    }
     #    return json.dumps(cfg, sort_keys=True, **kwargs)
 
-Prior = Params  # alias for back-compat
+
+    def product(self):
+        for p in self:
+            if not isinstance(p.dist, DiscreteDist):
+                raise TypeError("cannot make product of continuous distributions: "+p.name)
+        return XParams(list(itertools.product(*[p.dist.values.tolist() for p in self])), self.names)
+
+
+    def sample_montecarlo(self, size, seed=None):
+        """Basic montecarlo sampling --> return pmatrx
+        """
+        pmatrix = np.empty((size,len(self.names)))
+
+        for i, p in enumerate(self):
+            pmatrix[:,i] = p.dist.rvs(size=size, random_state=seed+i if seed else None) # scipy distribution: sample !
+
+        return XParams(pmatrix, self.names)
+
+
+    def sample_lhs(self, size, seed=None, criterion=LHS_CRITERION, iterations=None):
+        """Latin hypercube sampling --> return Xparams
+        """
+        pmatrix = np.empty((size,len(self.names)))
+        np.random.seed(seed)
+        lhd = lhs(len(self.names), size, criterion, iterations) # sample x parameters, all in [0, 1]
+
+        for i, p in enumerate(self):
+            pmatrix[:,i] = p.dist.ppf(lhd[:,i]) # take the quantile for the particular distribution
+
+        return XParams(pmatrix, self.names)
+
+
+    def sample(self, size, seed=None, method="lhs", **kwargs):
+        """Wrapper for the various sampling methods. Unused **kwargs are ignored.
+        """
+        pmatrix = np.empty((size,len(self.names)))
+        if method == "lhs":
+            opts = filterkeys(kwargs, ['criterion', 'iterations'])
+            xparams = self.sample_lhs(size, seed, **opts)
+        else:
+            xparams = self.sample_montecarlo(size, seed)
+        return xparams
+
+
+    def logpdf(self):
+        return np.array([p.logpdf() for p in self])
+
+    def pdf(self):
+        return np.array([p.pdf() for p in self])
+
+    def isvalid(self, alpha=ALPHA):
+        return np.array([p.isvalid(alpha) for p in self])
+
+    # back-compat
+    def cost(self):
+        return np.array([p.cost() for p in self])

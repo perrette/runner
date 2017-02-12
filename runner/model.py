@@ -7,7 +7,7 @@ import json
 import datetime
 from collections import OrderedDict as odict
 from runner import __version__
-from runner.param import Param
+from runner.param import Param, MultiParam
 from runner.tools import parse_val
 from runner.submit import submit_job
 from runner.compat import basestring
@@ -15,36 +15,6 @@ from runner.compat import basestring
 
 # default values
 ENV_OUT = "RUNDIR"
-
-
-def _update_params(params, params_kw, strict=False):
-    """update a list of params with a dict
-    """
-    names = [p.name for p in params]
-
-    if not isinstance(params_kw, dict):
-        raise TypeError('update params/state :: expected dict, got: {}'.format(type(params_kw).__name__))
-
-    for name in params_kw:
-        value = params_kw[name]
-
-        # update existing parameter
-        if name in names:
-            i = names.index(name)
-            params[i].value = value
-
-        # if no parameter found, depends on `strict`
-        else:
-            if strict:
-                import difflib
-                logging.error("Available parameters:"+" ".join(names))
-                suggestions = difflib.get_close_matches(name, names)
-                if suggestions:
-                    logging.error("Did you mean: "+ ", ".join(suggestions)+ " ?")
-                raise ValueError("unknown parameter:"+repr(name))
-
-            else:
-                params.append(Param(name, value=value))
 
 
 class ParamsFile(object):
@@ -134,19 +104,19 @@ class Model(object):
     def update(self, params=None, state=None, context=None, strict=False):
         """Update parameters and state variables
         """
-        _update_params(self.params, params or {}, strict)
-        _update_params(self.state, state or {}, strict)
-        self.context.update(context or {})
+        if params: MultiParam(self.params).update(params, strict)
+        if state: MultiParam(self.state).update(state, strict)
+        if context: self.context.update(context)
 
 
-    def save(self, rundir, cfg=None):
+    def save(self, rundir, cfg=None, include_state=True):
         """save model state and parameter
         """
         cfg = cfg or {
             'time': str(datetime.datetime.now()),
             'version': __version__,
             'params': {p.name:p.value for p in self.params},
-            'state': {p.name:p.value for p in self.state},
+            'state': {p.name:p.value for p in self.state if include_state},
             'workdir': os.getcwd(),
             'executable': self.executable,
             'args': self._format_args(rundir),
@@ -162,7 +132,7 @@ class Model(object):
         if not os.path.exists(rundir):
             os.makedirs(rundir)
         
-        self.save(rundir)
+        self.save(rundir, include_state=False)
 
         # for communication with the model
         if self.filetype and self.filename:
@@ -276,7 +246,8 @@ class Model(object):
         return submit_job(" ".join(args), env=env, workdir=workdir, 
                           output=output, error=error, jobfile=jobfile, **kwargs)
 
-    ## POST-processing
+
+    ## Load model state
     def _readstate(self, rundir):
         """get model state from original output (return dict)
         """
@@ -309,24 +280,40 @@ class Model(object):
         self.update(cfg['params'], cfg['state'])
 
 
-    def getvar(self, name, rundir):
+    @property
+    def prior(self):
+        """prior parameter distribution
+        """
+        return MultiParam(self.params).filter()
+
+    @property
+    def likelihood(self):
+        """state variables' likelihood
+        """
+        return MultiParam(self.state).filter()
+
+    @property
+    def posterior(self):
+        """model posterior (params' prior * state posterior)
+        """
+        return MultiParam(self.params + self.state).filter()
+
+
+    ## Back-compatibility & easier access
+    def getvar(self, name, rundir=None):
         """get state variable by name given run directory
         """
         if not self.state:
             self.load(rundir)
-        names = [p.name for p in self.state]
-        try:
-            i = names.index(name)
-        except ValueError: 
-            logging.error("Available parameters:"+(" ".join(names) if names else "None"))
-            raise
-        return self.state[i].value
+        return MultiParam(self.state + self.params)[name].value
 
 
-    def getcost(self, rundir):
+    def getcost(self, rundir=None):
         """get cost-function for one member (==> weight = exp(-0.5*cost))
         """
-        raise NotImplementedError("getcost")
+        if not self.state:
+            self.load(rundir)
+        return self.likelihood.logpdf()
 
 
 

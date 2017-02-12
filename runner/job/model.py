@@ -38,7 +38,7 @@ grp = filetype.add_argument_group('filetype', description='file formats to pass 
 grp.add_argument('--file-type', help='model params file type',
                  choices=choices+list(register.filetypes.keys()))
 grp.add_argument('--file-type-out', help='model output file type',
-                 choices=choices+list(register.filetypes.keys()))
+                 choices=["json","linesep","lineseprev","namelist"])
 grp.add_argument('--line-sep', help='separator for "linesep" and "lineseprev" file types')
 grp.add_argument('--line-template', help='line template for "linetemplate" file type')
 grp.add_argument('--template-file', help='template file for "template" file type')

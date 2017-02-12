@@ -32,7 +32,7 @@ from collections import OrderedDict as odict
 from scipy.stats import norm
 
 from runner.register import register_job
-from runner.param import Param
+from runner.param import ScipyParam
 from runner.xrun import XRun, XData
 from runner.job.config import load_config
 from runner.job.model import modelconfig, custommodel, \
@@ -67,8 +67,9 @@ grp = analyze.add_argument_group(
     description='likelihood is provided a list of distributions (same convention as job sample) or via a custom `getcost`')
 
 grp.add_argument('-l', '--likelihood',
-                 type=Param.parse,
-                 help=Param.parse.__doc__,
+                 type=ScipyParam.parse,
+                 help='NAME=SPEC where SPEC define a distribution: N?MEAN,STD or U?MIN,MAX or TYPE?ARG1[,ARG2 ...] \
+        where TYPE is any scipy.stats distribution with *shp, loc, scale parameters.',
                  metavar="NAME=DIST",
                  default = [],
                  nargs='+')

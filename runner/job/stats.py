@@ -1,6 +1,6 @@
 import argparse
 import numpy as np
-from runner.param import Prior, Param, DiscreteParam
+from runner.param import MultiParam, Param, DiscreteParam
 import runner.resample as xp
 from runner.xparams import XParams, Resampler
 from runner.register import register_job
@@ -28,7 +28,7 @@ product.add_argument('-o','--out', help="output parameter file")
 def product_post(o):
     if not o.factors:
         product.error("must provide at least one parameter")
-    xparams = Prior(o.factors).product()
+    xparams = MultiParam(o.factors).product()
     return _return_params(xparams, o.out)
 
 register_job('product', product, product_post,
@@ -69,7 +69,7 @@ def sample_post(o):
         sample.error("argument -N/--size is required")
     if not o.dist:
         sample.error("must provide at least one parameter")
-    prior = Prior(o.dist)
+    prior = MultiParam(o.dist)
     xparams = prior.sample(o.size, seed=o.seed, 
                            method=o.method,
                            criterion=o.lhs_criterion,

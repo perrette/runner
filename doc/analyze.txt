@@ -48,8 +48,8 @@ likelihood:
   likelihood is provided a list of distributions (same convention as job sample) or via a custom `getcost`
 
   -l NAME=DIST [NAME=DIST ...], --likelihood NAME=DIST [NAME=DIST ...]
-                        NAME=N?MEAN,STD or NAME=U?MIN,MAX or
-                        NAME=TYPE?ARG1[,ARG2 ...] where TYPE is any
+                        NAME=SPEC where SPEC define a distribution: N?MEAN,STD
+                        or U?MIN,MAX or TYPE?ARG1[,ARG2 ...] where TYPE is any
                         scipy.stats distribution with *shp, loc, scale
                         parameters.
   --custom-cost         use custom getcost function (adds up) (see

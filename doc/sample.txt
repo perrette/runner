@@ -23,7 +23,7 @@ prior distribution of model parameters:
                         distribution is provided as `TYPE?ARG,ARG[,ARG,...]`.
                         Pre-defined `U?min,max` (uniform) and `N?mean,sd`
                         (normal) or any scipy.stats distribution as
-                        TYPE?[SHP,]LOC,SCALE.")
+                        TYPE?[SHP,]LOC,SCALE.
 
 Latin hypercube sampling:
   --lhs-criterion {center,c,maximin,m,centermaximin,cm,correlation,corr}

@@ -53,14 +53,14 @@ def dist_to_str(dist):
 # string to param
 # ---------------
 def parse_list(string):
-    """Parse list of parameters VALUE[,VALUE,...]
+    """List of parameters: VALUE[,VALUE,...]
     """
     if not string:
         raise ValueError("empty list")
     return [parse_val(value) for value in string.split(',')]
 
 def parse_range(string):
-    """Parse parameters START:STOP:N
+    """Parameter range: START:STOP:N
     """
     start, stop, n = string.split(':')
     start = float(start)
@@ -69,7 +69,10 @@ def parse_range(string):
     return np.linspace(start, stop, n).tolist()
 
 def parse_dist(string):
-    """Parse distribution dist?loc,scale
+    """Distribution:
+
+    N?MEAN,STD or U?MIN,MAX or TYPE?ARG1[,ARG2 ...] 
+    where TYPE is any scipy.stats distribution with *shp, loc, scale parameters.
     """
     name,spec = string.split('?')
     args = [float(a) for a in spec.split(',')]
