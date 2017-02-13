@@ -21,6 +21,35 @@ rv_discrete = LazyDist('rv_discrete')
 rv_frozen = LazyDist('rv_frozen')
 
 
+def dist_todict(dist):
+    """scipy dist to keywords
+    """
+    dist_gen = dist.dist
+    n = len(dist_gen.shapes.split()) if dist_gen.shapes else 0
+    shapes = dist.args[:n]
+    kw = {'name': dist_gen.name, 'loc':0, 'scale':1}
+    kw.update(dist.kwds)
+    if shapes:
+        kw['shapes'] = shapes
+    assert len(dist.args[n:]) <= 2, dist.name
+    if len(dist.args[n:]) >= 1:
+        kw['loc'] = dist.args[n]
+    if len(dist.args[n:]) == 2:
+        kw['scale'] = dist.args[n+1]
+    return kw
+
+
+def dist_fromkw(name, **kwargs):
+    """scipy dist to keywords
+    """
+    import scipy.stats.distributions as mod
+    dist = getattr(mod, name)
+    args = list(kwargs.pop('shapes', [])) + [kwargs.pop('loc',0), kwargs.pop('scale',1)]
+    assert not kwargs, name
+    return dist(*args)
+
+
+
 def parse_val(s):
     " string to int, float, str "
     try:
