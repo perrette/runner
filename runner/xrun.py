@@ -1,14 +1,15 @@
 """Experiment run
 """
 from __future__ import print_function, absolute_import
-import numpy as np
 import logging
 import json
 import copy
 import os
 import sys
 import subprocess
+import six
 from os.path import join
+import numpy as np
 
 from runner.model import Param, Model
 from runner.tools import autofolder, Namespace
@@ -91,7 +92,7 @@ class XRun(object):
         """
         N = self.params.size
         if indices is None:
-            indices = xrange(N)
+            indices = six.moves.range(N)
 
         results = []
         for i in indices:
@@ -131,7 +132,7 @@ class XRun(object):
         values = np.empty((N,) + shp)
         values.fill(np.nan)
 
-        for i in xrange(N):
+        for i in six.moves.range(N):
             model = self.get_model(i)
             rundir = self.get_rundir(i, expdir)
             try:

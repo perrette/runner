@@ -1,14 +1,24 @@
 import unittest
 import os, shutil
-from subprocess import check_output, call
+import six
+import logging
+from subprocess import check_call
 
-JOB = "./scripts/job --debug"
+JOB = "./scripts/job"
+
+if six.PY2:
+    from subprocess import check_output
+    def getoutput(cmd):
+        return check_output(cmd, shell=True)
+else:
+    from subprocess import getoutput
+
 
 class TestSample(unittest.TestCase):
 
     def test_product(self):
-        out = check_output(JOB+' product a=2,3,4 b=0,1', shell=True)
-        self.assertEqual(out.strip(),"""
+        out = getoutput(JOB+' product a=2,3,4 b=0,1')
+        self.assertEqual(out.strip(), """
      a      b
      2      0
      2      1
@@ -18,11 +28,26 @@ class TestSample(unittest.TestCase):
      4      1
                          """.strip())
 
-
     def test_sample(self):
-        out = check_output(JOB+' sample a=U?0,1 b=N?0,1 --size 10 --seed 4', shell=True)
+        out = getoutput(JOB+' sample a=U?0,1 b=N?0,1 --size 10 --seed 4')
         # FIXME: python3 uses more digits, how to make a test that works for both versions?
-        self.assertEqual(out.strip(),"""
+        if six.PY3:
+            self.assertEqual(out.strip(),"""
+a      b
+0.4252982362383444 0.9889538055947533
+0.90441600579315 2.6248228301550833
+0.6862993235599223 0.7054452199344784
+0.3976274454776242 -0.766770633921025
+0.5779382921793753 -0.5226094671315683
+0.09670298390136767 -0.1421540745795235
+0.71638422414047 0.04957259589653996
+0.2697728824597271 0.5196323235536475
+0.19726843599648844 -1.6006861519796032
+0.8008986097667555 -0.9483266285993096
+
+                             """.strip())
+        else:
+            self.assertEqual(out.strip(),"""
      a      b
 0.425298236238 0.988953805595
 0.904416005793 2.62482283016
@@ -34,7 +59,7 @@ class TestSample(unittest.TestCase):
 0.26977288246 0.519632323554
 0.197268435996 -1.60068615198
 0.800898609767 -0.948326628599
-                         """.strip())
+                             """.strip())
 
 
 class TestRun(unittest.TestCase):
@@ -48,7 +73,7 @@ class TestRun(unittest.TestCase):
             shutil.rmtree('out') # clean up after each individual test
 
     def test_paramsio_args(self):
-        out = check_output(JOB+' run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {}', shell=True)
+        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {}')
         self.assertEqual(out.strip(),"""
 --a 2 --b 0 --out out/0
 --a 2 --b 1 --out out/1
@@ -59,7 +84,7 @@ class TestRun(unittest.TestCase):
                          """.strip())
 
     def test_paramsio_args_prefix(self):
-        out = check_output(JOB+' run -p a=2,3,4 b=0,1 -o out --shell --arg-prefix "--{} " --arg-out-prefix "--out " -- echo', shell=True)
+        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --shell --arg-prefix "--{} " --arg-out-prefix "--out " -- echo')
         self.assertEqual(out.strip(),"""
 --out out/0 --a 2 --b 0
 --out out/1 --a 2 --b 1
@@ -70,7 +95,7 @@ class TestRun(unittest.TestCase):
                          """.strip())
 
     def test_paramsio_env(self):
-        out = check_output(JOB+' run -p a=2,3 b=0. -o out --shell --env-prefix "" -- bash scripts/dummy.sh', shell=True)
+        out = getoutput(JOB+' run -p a=2,3 b=0. -o out --shell --env-prefix "" -- bash scripts/dummy.sh')
         self.assertEqual(out.strip(),"""
 RUNDIR out/0
 a 2
@@ -81,7 +106,7 @@ b 0.0
                          """.strip())
 
     def test_paramsio_file_linesep(self):
-        out = check_output(JOB+' run -p a=2,3,4 b=0,1 -o out --file-name params.txt --file-type linesep --line-sep " " --shell cat {}/params.txt', shell=True)
+        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --file-name params.txt --file-type linesep --line-sep " " --shell cat {}/params.txt')
         self.assertEqual(out.strip(),self.linesep.strip())
 
     linesep = """
@@ -100,11 +125,11 @@ b 1
     """
 
     def test_paramsio_file_linesep_auto(self):
-        out = check_output(JOB+' run -p a=2,3,4 b=0,1 -o out --file-name params.txt --shell cat {}/params.txt', shell=True)
+        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --file-name params.txt --shell cat {}/params.txt')
         self.assertEqual(out.strip(),self.linesep.strip())
 
     def test_paramsio_file_namelist(self):
-        out = check_output(JOB+' run -p g1.a=0,1 g2.b=2. -o out --file-name params.txt --file-type namelist --shell  cat {}/params.txt', shell=True)
+        out = getoutput(JOB+' run -p g1.a=0,1 g2.b=2. -o out --file-name params.txt --file-type namelist --shell  cat {}/params.txt')
         self.assertEqual(out.strip(), self.namelist.strip())
         
     namelist = """
@@ -123,7 +148,7 @@ b 1
     """
 
     def test_paramsio_file_namelist_auto(self):
-        out = check_output(JOB+' run -p g1.a=0,1 g2.b=2. -o out --file-name params.nml --shell  cat {}/params.nml', shell=True)
+        out = getoutput(JOB+' run -p g1.a=0,1 g2.b=2. -o out --file-name params.nml --shell  cat {}/params.nml')
         self.assertEqual(out.strip(), self.namelist.strip())
 
 
@@ -135,7 +160,7 @@ class TestAnalyze(unittest.TestCase):
     def setUpClass(cls):
         if os.path.exists('out'):
             raise RuntimeError('remove output directory `out` before running tests')
-        out = check_output(JOB+' run -p a=1,2 b=0. -o out'
+        check_call(JOB+' run -p a=1,2 b=0. -o out'
                            +' --file-out '+cls.fileout
                            +' --shell python scripts/dummy.py {} --aa {a} --bb {b}', shell=True)
 
@@ -145,7 +170,7 @@ class TestAnalyze(unittest.TestCase):
             shutil.rmtree('out') # clean up after each individual test
 
     def test_state(self):
-        assert call(JOB+' analyze out -v aa bb', shell=True) == 0
+        check_call(JOB+' analyze out -v aa bb', shell=True)
         out = open('out/state.txt').read()
         self.assertEqual(out.strip(),"""
 	aa     bb
@@ -154,7 +179,7 @@ class TestAnalyze(unittest.TestCase):
                          """.strip())
 
     def test_state_mixed(self):
-        assert call(JOB+' analyze out -v aa -l bb=N?0,1', shell=True) == 0
+        check_call(JOB+' analyze out -v aa -l bb=N?0,1', shell=True)
         out = open('out/state.txt').read()
         self.assertEqual(out.strip(),"""
 	aa     bb
@@ -163,7 +188,7 @@ class TestAnalyze(unittest.TestCase):
                          """.strip())
 
     def test_like(self):
-        assert call(JOB+' analyze out -l aa=N?0,1', shell=True) == 0
+        check_call(JOB+' analyze out -l aa=N?0,1', shell=True)
         out = open('out/loglik.txt').read()
         self.assertEqual(out.strip(),"""
 -1.418938533204672670e+00

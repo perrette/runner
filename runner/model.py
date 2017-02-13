@@ -6,11 +6,11 @@ import sys
 import json
 import datetime
 from collections import OrderedDict as odict
+import six
 from runner import __version__
 from runner.param import Param, MultiParam
 from runner.tools import parse_val
 from runner.submit import submit_job
-from runner.compat import basestring
 #from runner.model.generic import get_or_make_filetype
 
 # default values
@@ -74,7 +74,7 @@ class Model(object):
             filename for output variable (also needs filetype_output)
         """
         self.executable = executable
-        if isinstance(args, basestring):
+        if type(args) in six.string_types:
             args = args.split()
         self.args = args or []
         self.params = MultiParam(params or [])

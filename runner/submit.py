@@ -3,7 +3,7 @@
 import os
 import subprocess
 import tempfile
-from runner.compat import basestring
+import six
 
 MANAGER = "slurm"
 
@@ -15,7 +15,7 @@ class JobScript(object):
 
     def __init__(self, commands, env=None, **opt):
 
-        if isinstance(commands, basestring):
+        if type(commands) in six.string_types:
             commands = commands.splitlines()
         
         self.opt = opt
@@ -28,7 +28,7 @@ class JobScript(object):
 
         # add commands
         for cmd in commands:
-            assert isinstance(cmd, basestring), "commands must be strings"
+            assert type(cmd) in six.string_types, "commands must be strings"
             self.lines.append(cmd)
 
     @property
