@@ -1,11 +1,7 @@
 before_script:
-  - virtualenv --system-site-packages testrunner
-  - source testrunner/bin/activate
   - which python
-  - python -v
-  - ls
-  - python setup.py install
+  - python --version
 
-test:
+tests:
   script:
-    - python tests/test_job.py
+      make test
