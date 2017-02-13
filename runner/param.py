@@ -9,7 +9,7 @@ import itertools
 import numpy as np
 
 from runner.xparams import XParams
-from runner.tools import parse_dist as parse_scipy, parse_list, parse_range, dist_to_str as scipy_to_str
+from runner.tools import parse_dist as parse_scipy, parse_list, parse_range, dist_to_str as scipy_to_str, LazyDist, dist_todict as scipy_todict, dist_fromkw as scipy_fromkw
 from runner.lib.doelhs import lhs
 
 import runner.xparams as xp
@@ -20,15 +20,13 @@ LHS_CRITERION = 'centermaximin'
 # for reading...
 ALPHA = 0.99  # validity interval
 
-
 # emulate scipy dist
 class DiscreteDist(object):
     """Prior parameter that takes a number of discrete values
     """
     def __init__(self, values):
         self.values = np.asarray(values)
-        self.name = 'discrete'
-    
+
     def rvs(self, size):
         indices = np.random.randint(0, len(self.values), size)
         return self.values[indices]
@@ -142,6 +140,37 @@ class Param(object):
     # back-compat
     def cost(self):
         return cost(self.dist, self.value) if np.isfinite(self.value) else np.inf
+
+    def as_dict(self):
+        kw = self.__dict__.copy()
+        dist = kw.pop('dist')
+        kw2 = dist_todict(dist)
+        for k in kw2:
+            kw['dist_'+k] = kw2[k]
+        return kw
+
+    @classmethod
+    def fromkw(cls, name, **kwargs):
+        kw2 = {}
+        for k in kwargs:
+            if k.startswith('dist_'):
+                kw2[k[5:]] = kwargs.pop(k)
+        if kw2:
+            dist = dist_fromkw(**kw2)
+        else:
+            dist = None
+        return cls(name, dist=dist, **kwargs)
+
+
+def dist_todict(dist):
+    if isinstance(dist, DiscreteDist):
+        return {'values':dist.values.tolist(), 'name':'discrete'}
+    return scipy_todict(dist)
+
+def dist_fromkw(name, **kwargs):
+    if name == 'discrete':
+        return DiscreteDist(**kwargs)
+    return scipy_fromkw(name, **kwargs)
 
 def cost(dist, value):
     " logpdf = -0.5*cost + cte, only makes sense for normal distributions "
