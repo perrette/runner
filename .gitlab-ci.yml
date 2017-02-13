@@ -1,7 +1,7 @@
 before_script:
-  - which python
-  - python --version
+  - which tox
+  - tox --version
 
 tests:
   script:
-      make test
+      tox
