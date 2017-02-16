@@ -65,13 +65,16 @@ class Param(object):
     def __init__(self, name, value=None, dist=None, default=None, help=None, full_name=None, group=None):
         """
         * name 
-        * value
         * dist : scipy distribution - like
         * default : default value
         * help : parameter info
         * full_name : to be used for file I/O (e.g. namelist, includes prefix)
         * group : could be used to specify correlations between parameters
         """
+        #TODO: remove unused group
+        #TODO: remove value
+        if group:
+            warnings.warn(DeprecationWarning('Param group will be removed'))
         self.name = name
         self.value = value
         self.dist = dist
@@ -80,12 +83,12 @@ class Param(object):
         self.full_name = full_name
         self.group = group
 
+    def __call__(self, value=None):
+        return FrozenParam(self, value)
 
     def __str__(self):
         #return "{name}={value}".format(name=self.name, value=self.value)
-        if self.value:
-            return "{name}={value}".format(name=self.name, value=self.value)
-        elif self.dist:
+        if self.dist:
             return "{name}={dist}".format(name=self.name, dist=dist_to_str(self.dist))
         else:
             return "{name}={default}".format(name=self.name, default=self.default)
@@ -120,26 +123,6 @@ class Param(object):
             logging.error(str(error))
             raise
 
-
-    # distribution applied to self:
-    def logpdf(self):
-        return self.dist.logpdf(self.value) if np.isfinite(self.value) else -np.inf
-
-    def pdf(self):
-        return self.dist.pdf(self.value) if np.isfinite(self.value) else 0.
-
-    def isvalid(self, alpha=ALPHA):
-        """params in the confidence interval
-        """
-        lo, hi = self.dist.interval(alpha)
-        if not np.isfinite(self.value) or self.value < lo or self.value > hi:
-            return False
-        else:
-            return True
-
-    # back-compat
-    def cost(self):
-        return cost(self.dist, self.value) if np.isfinite(self.value) else np.inf
 
     def as_dict(self):
         kw = self.__dict__.copy()
@@ -179,8 +162,81 @@ def cost(dist, value):
     return -2*(logpdf - cst)
 
 
-class DiscreteParam(Param):
+def dummydist(default):
+    """dummy distribution built on rv_continuous
 
+    Example
+    -------
+    >>> dummy = dummydist(3)
+    >>> dummy.interval(0.9)
+    (-inf, inf)
+    >>> dummy.pdf(0)
+    1.0
+    >>> dummy.logpdf(0)
+    0.0
+    >>> dummy.rvs(2)
+    np.array([3.0, 3.0])
+    """
+    from scipy.stats import rv_continuous
+    class dummy_gen(rv_continuous): 
+        def _pdf(self, x):
+            return 1
+        def _ppf(self, x): # for interval to work
+            return np.inf if x >= 0.5 else -np.inf
+        def rvs(self, size=None, loc=0, **kwargs):
+            return np.zeros(size)+loc if size is not None else loc
+    dummy = dummy_gen('none')
+    return dummy(loc=default)
+
+
+class FrozenParam(object):
+    """Parameter / State variable with fixed value
+    """
+    def __init__(self, param, value=None):
+        self.param = param
+        self.value = value if value is not None else param.default
+
+    @property
+    def name(self):
+        return self.param.name
+
+    @property
+    def dist(self):
+        " scipy or custom distribution (frozen) "
+        return self.param.dist if self.param.dist else dummydist(self.default)
+
+    def __str__(self):
+        if self.value is None:
+            val = '({})'.format(self.param.default)
+        else:
+            val = self.value
+        return "{}={} ~ {}".format(self.name, val, self.dist)
+
+    # distribution applied to self:
+    def logpdf(self):
+        return self.dist.logpdf(self.value)
+
+    def pdf(self):
+        return self.dist.pdf(self.value)
+
+    def isvalid(self, alpha=ALPHA):
+        """params in the confidence interval
+        """
+        lo, hi = self.dist.interval(alpha)
+        if not np.isfinite(self.value) or self.value < lo or self.value > hi:
+            return False
+        else:
+            return True
+
+    # back-compat
+    # TODO: remove
+    @property
+    def cost(self):
+        return cost(self.dist, self.value) if np.isfinite(self.value) else np.inf
+
+
+# parsing made easier
+class DiscreteParam(Param):
     def __init__(self, *args, **kwargs):
         super(DiscreteParam, self).__init__(*args, **kwargs)
         if not isinstance(self.dist, DiscreteDist):
@@ -224,16 +280,12 @@ class ParamList(list):
         " list of Param instances"
         super(ParamList, self).__init__(params)
         for p in self:
-            if not isinstance(p, Param):
-                raise TypeError("expected Param, got:"+repr(type(p)))
+            if not hasattr(p, 'name'):
+                raise TypeError("Param-like with 'name' attribute required, got:"+repr(type(p)))
 
     @property
     def names(self):
         return [p.name for p in self]
-
-    def as_dict(self):
-        return {p.name : p.value for p in self}
-
 
     def __getitem__(self, name):
         if type(name) is int:
@@ -246,42 +298,20 @@ class ParamList(list):
         return type(self)(list(self) + list(other))
 
 
-    def update(self, params_kw, strict=False, verbose=True):
-        """update with a dict (key, value) (inplace)
-        """
-        if not isinstance(params_kw, dict):
-            raise TypeError('update params/state :: expected dict, got: {}'.format(type(params_kw).__name__))
-
-        for name in params_kw:
-            value = params_kw[name]
-
-            if name in self.names:
-                self[name].value = value
-
-            elif not strict: 
-                self.append(Param(name, value=value))
-
-            else:
-                if verbose:
-                    logging.error("Available parameters:"+" ".join(self.names))
-                    suggestions = difflib.get_close_matches(name, self.names)
-                    if suggestions:
-                        logging.error("Did you mean: "+ ", ".join(suggestions)+ " ?")
-                raise
-
-
-    def filter(self, predicate=None):
-        """filter params, by default all that have a distribution defined
-        """
-        if predicate is None:
-            predicate = lambda p : p.dist is not None
-
-        elif isinstance(predicate, list):
-            names = predicate
-            predicate = lambda p : p.name in names
-
-        params = [p for p in self if predicate(p)]
-        return type(self)(params)
+#    def _apply(self, func, *args, **kwargs):
+#        return type(self)(func(self, *args, **kwargs))
+#    def filter(self, predicate=None):
+#        """filter params, by default all that have a distribution defined
+#        """
+#        if predicate is None:
+#            predicate = lambda p : p.dist is not None
+#
+#        elif isinstance(predicate, list):
+#            names = predicate
+#            predicate = lambda p : p.name in names
+#
+#        params = [p for p in self if predicate(p)]
+#        return type(self)(params)
 
 
 
@@ -331,16 +361,25 @@ class MultiParam(ParamList):
             xparams = self.sample_montecarlo(size, seed)
         return xparams
 
+    def __call__(self, **kw):
+        return FrozenParams([p(kw.pop(p.name, p.default)) for p in self])
+
+
+class FrozenParams(ParamList):
+
+    def as_dict(self):
+        return {p.name : p.value for p in self if p.value is not None}
 
     def logpdf(self):
+        #if np.isfinite(self.getvalue()) else 0.
         return np.array([p.logpdf() for p in self])
 
     def pdf(self):
-        return np.array([p.pdf() for p in self])
+        return np.array([p.pdf for p in self])
 
     def isvalid(self, alpha=ALPHA):
         return np.array([p.isvalid(alpha) for p in self])
 
     # back-compat
     def cost(self):
-        return np.array([p.cost() for p in self])
+        return np.array([p.cost for p in self])

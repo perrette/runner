@@ -5,8 +5,9 @@ import logging
 import sys
 import json
 import datetime
-from collections import OrderedDict as odict
+from collections import OrderedDict as odict, namedtuple
 import six
+from argparse import Namespace
 from runner import __version__
 from runner.param import Param, MultiParam
 from runner.tools import parse_val
@@ -51,9 +52,9 @@ class Model(object):
             directory, and any `{NAME}` for parameter names. Alternatively these
             might be set with `arg_out_prefix` and `arg_param_prefix` options.
         * params : [Param], optional
-            list of model parameters to be updated with modified params
+            list of model parameters dist to be updated with modified params
         * state : [Param], optional
-            list of model state variables (output)
+            list of model state variables dist (output)
         * filetype : ParamsFile instance or anything with `dump` method, optional
         * filename : relative path to rundir, optional
             filename for parameter passing to model (also needs filetype)
@@ -87,8 +88,7 @@ class Model(object):
         self.arg_param_prefix = arg_param_prefix
         self.env_prefix = env_prefix
         self.env_out = env_out
-        self._context = {}
-        self.work_dir = work_dir
+        self.work_dir = work_dir or os.getcwd() 
 
         # check !
         if filename:
@@ -97,67 +97,27 @@ class Model(object):
             if not hasattr(filetype, "dumps"):
                 raise TypeError("invalid filetype: no `dumps` method: "+repr(filetype))
 
-    def update(self, params=None, state=None, context=None, strict=False):
-        """Update parameters and state variables
-        """
-        if params: self.params.update(params, strict)
-        if params: logging.info('updated params: '+repr(params)+' --> '+repr(self.params.as_dict()))
-        if state: self.state.update(state, strict)
-        if state: logging.info('updated state: '+repr(state)+' --> '+repr(self.state.as_dict()))
-        if context: self._context.update(context)
-
-
-    def save(self, rundir, cfg=None, include_state=True):
-        """save model state and parameter, for postprocessing and debugging
-        """
-        cfg = cfg or {
-            'time': str(datetime.datetime.now()),
-            'version': __version__,
-            'params': {p.name:p.value for p in self.params},
-            'state': {p.name:p.value for p in self.state if include_state},
-            'workdir': self.work_dir.format(rundir) if self.work_dir else os.getcwd(),
-            'environ': self.environ(rundir),
-            'command': self.command(rundir),
-            'sys.argv': sys.argv,
-        }
-        json.dump(cfg, open(os.path.join(rundir, "run.json"), 'w'), 
-                  sort_keys=True, indent=2, default=lambda x:x.tolist() if hasattr(x, 'tolist') else x )
-
-
-    def setup(self, rundir):
-        """create run directory and write parameters to file
-        """
-        if not os.path.exists(rundir):
-            os.makedirs(rundir)
-        
-        self.save(rundir, include_state=False)
-
-        # for communication with the model
-        if self.filetype and self.filename:
-            #TODO: have model params as a dictionary
-            filepath = os.path.join(rundir, self.filename)
-            self.filetype.dump(self.params, open(filepath, 'w'))
 
     def _command_out(self, rundir):
         if self.arg_out_prefix is None:
             return []
         return (self.arg_out_prefix + rundir).split() 
 
-    def _command_param(self, name, value, **kwargs):
+    def _command_param(self, name, value):
         if self.arg_param_prefix is None:
             return []
-        prefix = self.arg_param_prefix.format(name, name=name, **kwargs)
+        prefix = self.arg_param_prefix.format(name, value)
         return (prefix + str(value)).split()
 
-    def _format_args(self, rundir):
+    def _format_args(self, rundir, **params_kw):
         """two-pass formatting: first rundir and params with `{}` and `{NAME}`
-        then context `{{rundir}}` `{{runid}}`
+        then `{{rundir}}`
         """
-        paramskw = self.params.as_dict()
-        return [arg.format(rundir, **paramskw).format(rundir=rundir, **self._context) 
+        return [arg.format(rundir, **params_kw).format(rundir=rundir) 
                 for arg in self.args]
 
-    def command(self, rundir):
+
+    def command(self, rundir, params_kw):
         exe = self.executable
         if exe is None:
             raise ValueError("model requires an executable")
@@ -166,25 +126,25 @@ class Model(object):
                 raise ValueError("model executable is not : check permissions")
         args = [exe] 
         args += self._command_out(rundir)
-        args += self._format_args(rundir)
+        args += self._format_args(rundir, **params_kw)
 
         # prepare modified command-line arguments with appropriate format
-        for p in self.params:
-            args += self._command_param(**p.__dict__)
+        for p in self.params(**params_kw):
+            args += self._command_param(p.name, p.value)
 
         return args
 
-    def environ(self, rundir, env=None):
+    def environ(self, rundir, params_kw, env=None):
         """define environment variables to pass to model
         """
         if self.env_prefix is None:
             return None
 
         # prepare variables to pass to environment
-        context = self._context.copy()
+        context = {}
         if self.env_out is not None:
             context[self.env_out] = rundir 
-        context.update(self.params.as_dict())
+        context.update(params_kw)
 
         # format them with appropriate prefix
         update = {self.env_prefix+k:str(context[k])
@@ -196,54 +156,86 @@ class Model(object):
 
         return env
 
+    #def load(self, file=None, rundir=None, reload=False):
+    #    """
+    #    reload : if True, reload params from rundir if when it is present in run.json
+    #    """
+    #    cfg = json.load(open(file or cls.filename(rundir)))
+    #    kwargs = cfg['params']
+    #    if not cfg['state'] or reload:
+    #        kwargs.update(self.readstate(cfg["rundir"]))
+    #    else:
+    #        kwargs.update(cfg['state'])
+    #    return self(cfg['rundir'], **kwargs)
 
-    def run(self, rundir, background=True):
-        """open subprocess and return Popen instance 
+    def todict(self, rundir, params_kw, state_kw=None):
+        return odict([
+            ('rundir', rundir), 
+            ('params', params_kw),
+            ('state', state_kw or odict()),
+            ('command', self.command(rundir, params_kw)),
+            ('inidir', self.work_dir.format(rundir)),
+            ('environ', self.environ(rundir, params_kw)),
+            ('time', str(datetime.datetime.now())),
+            ('version', __version__),
+        ])
+
+
+    def run(self, rundir, params_kw, background=True, submit=False, **kwargs):
+        """Run the model (background subprocess, submit to slurm...)
         """
-        self.setup(rundir)
-        env = self.environ(rundir, env=os.environ.copy()) 
-        args = self.command(rundir)
+        # create run directory
+        if not os.path.exists(rundir):
+            os.makedirs(rundir)
 
-        if background:
-            stdout = open(os.path.join(rundir, 'log.out'), 'w')
-            stderr = open(os.path.join(rundir, 'log.err'), 'w')
+        frozenmodel = self(rundir, **params_kw)
+        frozenmodel.save()
+
+        # write param file to rundir
+        if self.filetype and self.filename:
+            #TODO: have model params as a dictionary
+            #TODO: rename filename --> file_in OR file_param
+            filepath = os.path.join(self.rundir, self.filename)
+            paramlist = frozenmodel.params
+            self.filetype.dump(paramlist, open(filepath, 'w'))
+
+        # prepare
+        env = self.environ(rundir, params_kw, 
+                           env=None if submit else os.environ.copy()) 
+        args = self.command(rundir, params_kw)
+        workdir = self.work_dir.format(rundir)
+        output = kwargs.pop('output', os.path.join(rundir, 'log.out'))
+        error = kwargs.pop('error', os.path.join(rundir, 'log.err'))
+
+        if submit:
+            jobfile = kwargs.pop('jobfile', os.path.join(rundir, 'submit.sh'))
+            p = submit_job(" ".join(args), env=env, workdir=workdir, 
+                              output=output, error=error, jobfile=jobfile, **kwargs)
+
         else:
-            stdout = None
-            stderr = None
+            if background:
+                stdout = open(output, 'w')
+                stderr = open(error, 'w')
+            else:
+                stdout = None
+                stderr = None
 
-        workdir = self.work_dir.format(rundir) if self.work_dir else os.getcwd()
+            try:
+                p = subprocess.Popen(args, env=env, cwd=workdir, 
+                                     stdout=stdout, stderr=stderr)
+            except OSError as error:
+                raise OSError("FAILED TO EXECUTE: `"+" ".join(args)+"` FROM `"+workdir+"`")
 
-        try:
-            p = subprocess.Popen(args, env=env, cwd=workdir, 
-                                 stdout=stdout, stderr=stderr)
-        except OSError as error:
-            #if os.path.isfile(args[0]) and not args[0].startswith('.'):
-            #    print("Check executable name (use leading . or bash)")
-            #raise OSError("NOT EXECUTABLE: "+" ".join(args))
-            raise OSError("FAILED TO EXECUTE: `"+" ".join(args)+"` FROM `"+workdir+"`")
+        frozenmodel.process = p
 
         if not background:
-            ret = p.wait()
+            ret = frozenmodel.wait()
 
-        return p
-
-
-    def submit(self, rundir, jobfile=None, output=None, error=None, **kwargs):
-        """Submit job to slurm or whatever is specified via **kwargs
-        """
-        self.setup(rundir)
-        env = self.environ(rundir)
-        args = self.command(rundir)
-        output = output or os.path.join(rundir, "log.out")
-        error = error or os.path.join(rundir, "log.err")
-        jobfile = jobfile or os.path.join(rundir, 'submit.sh')
-        workdir = self.work_dir.format(rundir) if self.work_dir else "."
-        return submit_job(" ".join(args), env=env, workdir=workdir, 
-                          output=output, error=error, jobfile=jobfile, **kwargs)
+        return frozenmodel
 
 
     ## Load model state
-    def _readstate(self, rundir):
+    def readstate(self, rundir):
         """get model state from original output (return dict)
         """
         if not self.filename_output:
@@ -253,64 +245,104 @@ class Model(object):
         return odict([(v.name,v.value) for v in variables])
 
 
-    def load(self, rundir, reload=False, save=False):
-        """load state variable and params from run directory
+    @classmethod
+    def runfile(cls, rundir):
+        return os.path.join(rundir, "run.json")
 
-        reload: bool, if True, reload from model own param file instead of run.json
-        save: bool, if True, save state to run.json file
+    def load(self, rundir):
+        " load model state from output directory "
+        cfg = json.load(open(self.runfile(rundir)))
+        kwds = cfg["params"]
+        kwds.update( cfg["state"] )
+        return self(rundir, **kwds)
+
+
+    def __call__(self, *args, **kwargs):
+        """freeze model with rundir and params
         """
-        # was written upon run
-        fname = os.path.join(rundir, "run.json")
-        cfg = json.load(open(fname))
-        if 'state' not in cfg:
-            cfg['state'] = {} # back compat
+        return FrozenModel(self, *args, **kwargs)
 
-        # load state variables
-        if not cfg['state'] or reload:
-            cfg['state'] = self._readstate(rundir)
-            if save:
-                self.save(rundir, cfg)
 
-        self.update(cfg['params'], cfg['state'])
 
+class FrozenModel(object):
+    """'Frozen' model instance representing a model run, with fixed rundir, params and state variables
+    """
+    def __init__(self, *args, **kwds):
+        """
+        *args : variable arguments with at least (model, rundir)
+        **kwds : key-word arguments, parameter
+
+        Example : FrozenModel(model, rundir, a=2, b=2, output=4)
+        """
+        assert len(args) == 2, 'expected 2 arg (model, rundir) got '+str(args)
+        self.args = args
+        self.kwds = kwds
+        self.process = None  # with wait method
 
     @property
+    def model(self):
+        return self.args[0]
+
+    @property
+    def rundir(self):
+        return self.args[1]
+
     def prior(self):
         """prior parameter distribution
         """
-        return self.params.filter()
+        return self.model.params(**self.kwds)
 
-    @property
     def likelihood(self):
         """state variables' likelihood
         """
-        return self.state.filter()
+        like = self.model.state(**self.kwds)
 
-    @property
     def posterior(self):
         """model posterior (params' prior * state posterior)
         """
-        return self.params.filter() + self.state.filter()
+        return self.prior + self.likelihood
 
+    @property
+    def params(self):
+        return self.prior.as_dict()
 
-    ## Back-compatibility & easier access
-    def getvar(self, name, rundir=None):
-        """get state variable by name given run directory
-        """
-        if not self.state:
-            logging.info('load state')
-            self.load(rundir)
+    @property
+    def state(self):
+        return self.likelihood.as_dict()
+
+    def todict(self):
+        return self.model.todict(self.rundir, self.kwds)
+
+    def save(self, file=None):
+        # write summary to file
+        cfg = self.todict()
+        with open(file or self.model.runfile(rundir), 'w') as f:
+            json.dump(cfg, f, 
+                      indent=2, 
+                      default=lambda x: x.tolist() if hasattr(x, 'tolist') else x)
+
+    def load(self):
+        " load model state from output directory "
+        cfg = json.load(open(self.model.runfile(self.rundir)))
+        self.kwds.update(cfg["params"])
+        self.kwds.update(cfg["state"])
+        return self
+
+    def readstate(self):
+        self.kwds.update(self.model.readstate(self.rundir))
+        return self
+
+    def postproc(self):
+        self.readstate().save()
+        return self
+
+    def wait(self):
+        if self.process is not None:
+            ret = self.process.wait()
         else:
-            logging.info('state already loaded:'+repr(self.state.as_dict()))
-        return (self.state + self.params)[name].value
-
-
-    def getcost(self, rundir=None):
-        """get cost-function for one member (==> weight = exp(-0.5*cost))
-        """
-        if not self.state:
-            self.load(rundir)
-        return self.likelihood.logpdf()
+            ret = None
+        self.postproc()
+        return ret
 
 
 
@@ -324,7 +356,7 @@ class CustomModel(Model):
         self._getcost = getcost
         super(CustomModel, self).__init__(**kwargs)
 
-    def setup(self, rundir):
+    def setup(self, rundir, ):
         super(CustomModel, self).setup(rundir)  # write metadata
         if self._setup is not None:
             self._setup(rundir, self.executable, *self._format_args(rundir), **self.params.as_dict())
