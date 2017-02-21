@@ -18,7 +18,8 @@ from importlib import import_module
 import runner
 from runner import register
 import runner.model as mod
-from runner.model import Param, Model, CustomModel, ParamsFile
+from runner.model import Param, ModelInterface, Model, ParamsFile
+from runner.param import MultiParam, Param, DiscreteParam
 from runner.filetype import (JsonDict, LineSeparator, LineTemplate, 
                                TemplateFile, FileTypeWrapper)
 import runner.ext.namelist # automatically add Namelist to register
@@ -136,7 +137,7 @@ grp = modelconfig.add_argument_group('model configuration')
 grp.add_argument('--default-file', help='default param file, required for certain file types (e.g. namelist)')
 grp.add_argument('--work-dir', default=None, 
                  help='where to execute the model from, by default current directory. Use "{}" for run directory.')
-modelconfig.add_argument('model', metavar='...', nargs=argparse.REMAINDER, default=[], help='model executable and its command-line arguments (need to be last on the command-line, possibly separated from other arguments with `--`). \
+modelconfig.add_argument('command', metavar='...', nargs=argparse.REMAINDER, default=[], help='model executable and its command-line arguments (need to be last on the command-line, possibly separated from other arguments with `--`). \
 `{}` and `{NAME}` will be replaced by \
     the run directory and corresponding parameter value, respectively. \
     See also --arg-out-prefix, --arg-prefix')
@@ -147,19 +148,17 @@ model_parser = argparse.ArgumentParser(add_help=False,
 
 def getdefaultparams(o, filetype=None, module=None):
     " default model parameters "
-    if o.default_file:
+    if getattr(o, 'default_file', None):
         if filetype is None:
             model_parser.error('need to provide filetype along with default_file')
-        params = filetype.load(open(o.default_file))
+        default_params = filetype.load(open(o.default_file))
     else:
-        params = []
-    return params
+        default_params = []
+    return default_params
 
 
-def getmodel(o, post_only=False):
-    """return model
-
-    post_only: if True, only process arguments useful for post-processing
+def getinterface(o):
+    """return model interface
     """
     if o.user_module:
         sys.path.insert(0, os.getcwd())
@@ -185,25 +184,14 @@ def getmodel(o, post_only=False):
         filetype_output=filetype_out, filename_output=o.file_out,
     ))
 
-    # post-processing only, model run config not needed
-    if post_only:
-        return CustomModel(**modelargs)
+    if o.command and o.command[0] == '--':
+        o.command = o.command[1:]
 
-    params = getdefaultparams(o, filetype)
-
-    if o.model and o.model[0] == '--':
-        o.model = o.model[1:]
-
-    if not o.model:
-        modelwrapper.error('model command is required: `job run [options] ...`')
-
-    modelargs.update( dict(executable=o.model[0], 
-                           args=o.model[1:],
-                           params=params, 
+    modelargs.update( dict(command=o.command, 
                            work_dir=o.work_dir, 
                            arg_out_prefix=o.arg_out_prefix, arg_param_prefix=o.arg_prefix, 
                            env_out=o.env_out, env_prefix=o.env_prefix) )
 
-    model = CustomModel(**modelargs)
+    model = ModelInterface(**modelargs)
 
     return model

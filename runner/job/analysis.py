@@ -54,9 +54,10 @@ analyze.add_argument('-i', '--in-state',
                                help='input state file to consider (normally derived via custom getvar)')
 
 analyze.add_argument('-m','--user-module', 
-                 help='user-defined python module that contains model definitions, necessary for postprocessing')
+                 help='user-defined python module that contains ModelInterface subclass')
 
-grp =analyze.add_argument_group("model state", description='For now this requires a custom `getvar` function to retrieve state variables')
+grp =analyze.add_argument_group("model output", description='')
+
 grp.add_argument("-v", "--state-variables", nargs='+', default=[],
                  help='list of state variables to include in state.txt, \
                  does not necessarily enter in the likelihood')
@@ -64,7 +65,7 @@ grp.add_argument('--stats', action='store_true', help='add statistics on model s
 
 grp = analyze.add_argument_group(
     "likelihood", 
-    description='likelihood is provided a list of distributions (same convention as job sample) or via a custom `getcost`')
+    description='likelihood is provided a list of distributions (same convention as job sample)')
 
 grp.add_argument('-l', '--likelihood',
                  type=ScipyParam.parse,
@@ -74,25 +75,23 @@ grp.add_argument('-l', '--likelihood',
                  default = [],
                  nargs='+')
 
-grp.add_argument('--custom-cost', action='store_true',
-                               help='use custom getcost function (adds up) \
-                               (see runner.register.define)')
-
-
-def getxrunanalysis(o, expdir):
-    """get XRun instance for post-run analysis
-    """
-    paramsfile = os.path.join(expdir, XPARAM)
-    cfg = load_config(os.path.join(expdir, EXPCONFIG))
-    cfg["user_module"] = o.user_module
-    model = getmodel(argparse.Namespace(**cfg), post_only=True) 
-    xparams = XData.read(paramsfile) # for the size & autodir
-    return XRun(model, xparams, autodir=cfg["auto_dir"])
+grp.add_argument('--as-cost', action='store_true', 
+                 help='treat model output as result of objective functions (set likelihood to N(0,1))')
 
 
 def analyze_post(o):
 
-    xrun = getxrunanalysis(o, o.expdir)
+    cfg = load_config(os.path.join(o.expdir, EXPCONFIG))
+    cfg["user_module"] = o.user_module
+    interface = getinterface(argparse.Namespace(**cfg))
+    model = Model(interface, likelihood=o.likelihood)
+    paramsfile = os.path.join(o.expdir, XPARAM)
+    xparams = XData.read(paramsfile) # for the size & autodir
+
+    #model = getmodel(argparse.Namespace(**cfg))
+    xparams = XData.read(paramsfile) # for the size & autodir
+    xrun = XRun(model, xparams, expdir=o.expdir)
+    return XRun(model, xparams, autodir=cfg["auto_dir"])
 
     if not o.out:
         o.out = o.expdir

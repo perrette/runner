@@ -62,11 +62,10 @@ def dist_to_str(dist):
 class Param(object):
     """random variable: parameter or state var
     """
-    def __init__(self, name, value=None, dist=None, default=None, help=None, full_name=None, group=None):
+    def __init__(self, name, default=None, dist=None, help=None, full_name=None, group=None):
         """
         * name 
         * dist : scipy distribution - like
-        * default : default value
         * help : parameter info
         * full_name : to be used for file I/O (e.g. namelist, includes prefix)
         * group : could be used to specify correlations between parameters
@@ -76,7 +75,6 @@ class Param(object):
         if group:
             warnings.warn(DeprecationWarning('Param group will be removed'))
         self.name = name
-        self.value = value
         self.dist = dist
         self.default = default
         self.help = help
@@ -94,7 +92,8 @@ class Param(object):
             return "{name}={default}".format(name=self.name, default=self.default)
 
     def __eq__(self, other):
-        return isinstance(other, Param) and self.name == other.name
+        return (isinstance(other, Param) and self.name == other.name) \
+            or (type(other) in six.string_types and self.name == other)
 
     @classmethod
     def parse(cls, string):

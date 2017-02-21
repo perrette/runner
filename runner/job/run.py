@@ -71,7 +71,7 @@ from runner.param import MultiParam, DiscreteParam
 from runner.xrun import XParams, XRun, XPARAM
 from runner.submit import submit_job
 from runner import register
-from runner.job.model import model_parser as model, modelwrapper, getmodel, modelconfig
+from runner.job.model import model_parser as model, modelwrapper, getinterface, modelconfig, getdefaultparams
 import runner.job.stats  # register !
 from runner.job.config import write_config, json_config, filtervars
 import os
@@ -127,14 +127,16 @@ submit = argparse.ArgumentParser(add_help=False)
 grp = submit.add_argument_group("simulation mode (submit, background...)")
 #grp.add_argument('--batch-script', help='')
 #x = grp.add_mutually_exclusive_group()
+grp.add_argument('-n', '--max-workers', type=int, 
+                 help="number of workers for parallel processing (need to be allocated, e.g. via sbatch)")
 grp.add_argument('-s', '--submit', action='store_true', help='submit job to slurm')
 grp.add_argument('--shell', action='store_true', 
                help='print output to terminal instead of log file, run sequentially, mostly useful for testing/debugging')
 grp.add_argument('--echo', action='store_true', 
                  help='display commands instead of running them (but does setup output directory). Alias for --shell --force echo [model args ...]')
 grp.add_argument('-w','--wait', action='store_true', help='wait for job to end')
-grp.add_argument('-b', '--array', action='store_true', 
-                 help='submit using sbatch --array (faster!), EXPERIMENTAL)')
+#grp.add_argument('-b', '--array', action='store_true', 
+#                 help='submit using sbatch --array (faster!), EXPERIMENTAL)')
 grp.add_argument('-f', '--force', action='store_true', 
                  help='perform run even in an existing directory')
 
@@ -166,7 +168,21 @@ params_parser.add_argument('--include-default',
                   action='store_true', 
                   help='also run default model version (with no parameters)')
 
-run = argparse.ArgumentParser(parents=[model, params_parser, folders, submit, slurm], epilog=examples, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+output_parser = argparse.ArgumentParser(add_help=False)
+#grp = output_parser.add_argument_group("model output", 
+#                                       description='model output variables')
+#grp.add_argument("-v", "--output-variables", nargs='+', default=[],
+#                 help='list of state variables to include in output.txt')
+#
+#grp.add_argument('-l', '--likelihood',
+#                 type=ScipyParam.parse,
+#                 help='distribution, to compute weights',
+#                 metavar="NAME=DIST",
+#                 default = [],
+#                 nargs='+')
+
+
+run = argparse.ArgumentParser(parents=[model, params_parser, output_parser, folders, submit, slurm], epilog=examples, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
 
 # keep group of params for later
@@ -177,14 +193,40 @@ experiment.add_argument('-a','--auto-dir', action='store_true')
 _slurmarray = argparse.ArgumentParser(add_help=False, parents=[model, folders])
 
 
+def getmodel(o):
+
+    interface = getinterface(o)
+
+    # prior parameter distributions
+    if getattr(o, 'params', None):
+        prior_params = o.params
+
+    elif getattr(o, 'params_file', None):
+        xparam = XParams(np.empty((0,0)), names=[])
+        prior_params = [Param(name) for name in xparam.names]
+
+    else:
+        prior_params = []
+
+    prior = MultiParam(prior_params)
+
+    # ...default values
+    default_params = getdefaultparams(o, interface.filetype)
+
+    for p in default_params:
+        if p.name in prior.names:
+            prior[p.name].default = p.value
+
+
+    return Model(interface, prior)
+
+
 def run_post(o):
 
     if o.echo:
         o.model = ['echo'] + o.model
         o.shell = True
         o.force = True
-
-    model = getmodel(o)  # default model
 
     if o.params_file:
         xparams = XParams.read(o.params_file)
@@ -196,10 +238,12 @@ def run_post(o):
         xparams = XParams(np.empty((0,0)), names=[])
         o.include_default = True
 
-    xrun = XRun(model, xparams, autodir=o.auto_dir)
+    model = getmodel(o) 
+
+    xrun = XRun(model, xparams, expdir=o.expdir, autodir=o.auto_dir, max_workers=o.max_workers)
     # create dir, write params.txt file, as well as experiment configuration
     try:
-        xrun.setup(o.expdir, force=o.force)  
+        xrun.setup(force=o.force)  
         pfile = os.path.join(o.expdir, XPARAM)
     except RuntimeError as error:
         print("ERROR :: "+str(error))
@@ -221,32 +265,27 @@ def run_post(o):
     # test: run everything serially
     if o.shell:
         for i in indices:
-            model = xrun.get_model(i)
-            rundir = xrun.get_rundir(i, o.expdir)
-            model.run(rundir, background=False)
+            xrun[i].run(background=False)
 
-    # array: create a parameterized "job" command [SLURM]
-    elif o.array:
-        # prepare job command: runid and params passed by slurm
-        #base = tempfile.mktemp(dir=o.expdir, prefix='job.run-array.')
-        base = os.path.join(o.expdir, 'job.run.array')
-        file = base + '.json'
-        script = base + '.sh'
-        output = base + '.out'
-        error = base + '.err'
-        write_config(vars(o), file, parser=_slurmarray)
-        template = "{job} -c {config_file} run --id $SLURM_ARRAY_TASK_ID --params-file {params_file} --force"
-        command = template.format(job="job", config_file=file, params_file=pfile) 
-        slurm_opt["array"] = o.runid or "{}-{}".format(0, xparams.size-1)
-        p = submit_job(command, jobfile=script, output=output, error=error, **slurm_opt)
+#    # array: create a parameterized "job" command [SLURM]
+#    elif o.array:
+#        # prepare job command: runid and params passed by slurm
+#        #base = tempfile.mktemp(dir=o.expdir, prefix='job.run-array.')
+#        base = os.path.join(o.expdir, 'job.run.array')
+#        file = base + '.json'
+#        script = base + '.sh'
+#        output = base + '.out'
+#        error = base + '.err'
+#        write_config(vars(o), file, parser=_slurmarray)
+#        template = "{job} -c {config_file} run --id $SLURM_ARRAY_TASK_ID --params-file {params_file} --force"
+#        command = template.format(job="job", config_file=file, params_file=pfile) 
+#        slurm_opt["array"] = o.runid or "{}-{}".format(0, xparams.size-1)
+#        p = submit_job(command, jobfile=script, output=output, error=error, **slurm_opt)
 
     # the default
     else:
         assert not slurm_opt.pop('array', False), 'missed if then else --array????'
-        if o.submit:
-            p = xrun.submit(indices=indices, expdir=o.expdir, **slurm_opt)
-        else:
-            p = xrun.run(indices=indices, expdir=o.expdir)
+        p = xrun.run(indices=indices, submit=o.submit, **slurm_opt)
 
     if o.wait:
         p.wait()
