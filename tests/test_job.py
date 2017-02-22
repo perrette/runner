@@ -62,8 +62,7 @@ a      b
 0.800898609767 -0.948326628599
                              """.strip())
 
-
-class TestRun(unittest.TestCase):
+class TestRunBase(unittest.TestCase):
 
     def setUp(self):
         if os.path.exists('out'):
@@ -72,6 +71,10 @@ class TestRun(unittest.TestCase):
     def tearDown(self):
         if os.path.exists('out'):
             shutil.rmtree('out') # clean up after each individual test
+
+
+class TestRunInterface(TestRunBase):
+
 
     def test_paramsio_args(self):
         out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {}')
@@ -151,6 +154,44 @@ b 1
     def test_paramsio_file_namelist_auto(self):
         out = getoutput(JOB+' run -p g1.a=0,1 g2.b=2. -o out --file-name params.nml --shell  cat {}/params.nml')
         self.assertEqual(out.strip(), self.namelist.strip())
+
+
+class TestRunMultiProc(TestRunBase):
+
+    def test_shell(self):
+        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {}')
+        self.assertEqual(out.strip(),"""
+--a 2 --b 0 --out out/0
+--a 2 --b 1 --out out/1
+--a 3 --b 0 --out out/2
+--a 3 --b 1 --out out/3
+--a 4 --b 0 --out out/4
+--a 4 --b 1 --out out/5
+                         """.strip())
+
+    def test_main(self):
+        _ = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out -- echo --a {a} --b {b} --out {}')
+        out = getoutput('cat out/*/log.out')
+        self.assertEqual(out.strip(),"""
+--a 2 --b 0 --out out/0
+--a 2 --b 1 --out out/1
+--a 3 --b 0 --out out/2
+--a 3 --b 1 --out out/3
+--a 4 --b 0 --out out/4
+--a 4 --b 1 --out out/5
+                         """.strip())
+
+
+class TestRunIndices(TestRunBase):
+
+    def test_shell(self):
+        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --shell -j 0,2-4 -- echo --a {a} --b {b} --out {}')
+        self.assertEqual(out.strip(),"""
+--a 2 --b 0 --out out/0
+--a 3 --b 0 --out out/2
+--a 3 --b 1 --out out/3
+--a 4 --b 0 --out out/4
+                         """.strip())
 
 
 class TestAnalyze(unittest.TestCase):
