@@ -1,6 +1,6 @@
 # runner
 
-Sample parameters, run model ensemble, submit to high-performance cluster queues
+Sample parameters, run model ensemble over multiple processors
 
 Requirements
 ============
@@ -100,8 +100,8 @@ The `job run` parameter `-o/--out-dir` indicates experiment directory, under
 which individual ensemble member run directories `{}` will be created. There
 are a number of options to determine how this should be done (e.g.
 `-a/--auto-dir` to create sub-directory based on parameter names and values).
-Without `--shell`, the command would be run in the background, in parallel
-subprocesses. Alternatively, `--submit` would submit the job via `SLURM`. 
+Without `--shell`, the command would be executed via python `multiprocessing.Pool` 
+and the output would saved to log files.
 
 There are a number of other ways to communicate parameter values to your model
 (see also `--arg-prefix` parameter, e.g. with `--arg-prefix "--{} "` to achieve
@@ -144,3 +144,17 @@ namelist, require a group prefix with a `.` separator in the parameter name:
 Additionally, parameters can be set as environment variables via `--env-prefix`
 argument (e.g. `--env-prefix ""` for direct access via `$NAME` within the
 script).
+
+
+
+Note for use on the cluster
+===========================
+The current version makes use of python's multiprocessing.Pool to handle parallel
+tasks. When running on the cluster, it is up to the user to allocate ressources, via
+sbatch, e.g. by simply writing the command in a bash script:
+
+    
+    # write job script
+    echo job run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {} > jobrun.sh
+    # submit with slurm with 10 procs
+    sbatch -n 10 jobrun.sh

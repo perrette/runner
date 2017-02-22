@@ -114,24 +114,14 @@ def _typechecker(type):
             raise
         return string
 
-# SLURM high-performance computer
-slurm = argparse.ArgumentParser(add_help=False)
-grp = slurm.add_argument_group('slurm', 
-                            description="These options only apply with --submit")
-grp.add_argument('--qos', help='queue')
-grp.add_argument('--job-name')
-grp.add_argument('--account')
-grp.add_argument('--walltime')
-
-# 
 submit = argparse.ArgumentParser(add_help=False)
 grp = submit.add_argument_group("simulation mode (submit, background...)")
 #grp.add_argument('--batch-script', help='')
 #x = grp.add_mutually_exclusive_group()
-grp.add_argument('-n', '--max-workers', type=int, 
-                 help="number of workers for parallel processing (need to be allocated, e.g. via sbatch)")
-grp.add_argument('-s', '--submit', action='store_true', help='submit job to slurm')
-grp.add_argument('--shell', action='store_true', 
+grp.add_argument('--max-workers', type=int, 
+                 help="number of workers for parallel processing (need to be allocated, e.g. via sbatch) -- default to the number of runs")
+grp.add_argument('-t', '--timeout', type=int, default=31536000, help='timeout in seconds (default to %(default)s)')
+grp.add_argument('--shell', action='store_true',
                help='print output to terminal instead of log file, run sequentially, mostly useful for testing/debugging')
 grp.add_argument('--echo', action='store_true', 
                  help='display commands instead of running them (but does setup output directory). Alias for --shell --force echo [model args ...]')
@@ -182,15 +172,12 @@ output_parser = argparse.ArgumentParser(add_help=False)
 #                 nargs='+')
 
 
-run = argparse.ArgumentParser(parents=[model, params_parser, output_parser, folders, submit, slurm], epilog=examples, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+run = argparse.ArgumentParser(parents=[model, params_parser, output_parser, folders, submit], epilog=examples, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
 
 # keep group of params for later
 experiment = argparse.ArgumentParser(add_help=False, parents=[modelconfig, modelwrapper])
 experiment.add_argument('-a','--auto-dir', action='store_true')
-
-# ...only when --array is invoked
-_slurmarray = argparse.ArgumentParser(add_help=False, parents=[model, folders])
 
 
 def getmodel(o):
@@ -240,7 +227,7 @@ def run_post(o):
 
     model = getmodel(o) 
 
-    xrun = XRun(model, xparams, expdir=o.expdir, autodir=o.auto_dir, max_workers=o.max_workers)
+    xrun = XRun(model, xparams, expdir=o.expdir, autodir=o.auto_dir, max_workers=o.max_workers, timeout=o.timeout)
     # create dir, write params.txt file, as well as experiment configuration
     try:
         xrun.setup(force=o.force)  
@@ -260,32 +247,14 @@ def run_post(o):
     if o.include_default:
         indices = list(indices) + [None]
 
-    slurm_opt = filtervars(o, slurm, include_none=False)
-
     # test: run everything serially
     if o.shell:
         for i in indices:
             xrun[i].run(background=False)
 
-#    # array: create a parameterized "job" command [SLURM]
-#    elif o.array:
-#        # prepare job command: runid and params passed by slurm
-#        #base = tempfile.mktemp(dir=o.expdir, prefix='job.run-array.')
-#        base = os.path.join(o.expdir, 'job.run.array')
-#        file = base + '.json'
-#        script = base + '.sh'
-#        output = base + '.out'
-#        error = base + '.err'
-#        write_config(vars(o), file, parser=_slurmarray)
-#        template = "{job} -c {config_file} run --id $SLURM_ARRAY_TASK_ID --params-file {params_file} --force"
-#        command = template.format(job="job", config_file=file, params_file=pfile) 
-#        slurm_opt["array"] = o.runid or "{}-{}".format(0, xparams.size-1)
-#        p = submit_job(command, jobfile=script, output=output, error=error, **slurm_opt)
-
     # the default
     else:
-        assert not slurm_opt.pop('array', False), 'missed if then else --array????'
-        xrun.run(indices=indices, submit=o.submit, **slurm_opt)
+        xrun.run(indices=indices)
 
     return
 
