@@ -156,7 +156,7 @@ b 1
         self.assertEqual(out.strip(), self.namelist.strip())
 
 
-class TestRunMultiProc(TestRunBase):
+class TestRunSubmit(TestRunBase):
 
     def test_shell(self):
         out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {}')

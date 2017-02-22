@@ -2,6 +2,8 @@
 """
 from __future__ import print_function, absolute_import
 import logging
+import signal
+import time
 import json
 import copy
 import os
@@ -36,9 +38,15 @@ def _model_output_as_array(m, names=None):
     return res
 
 
+def init_worker():
+    # to handle KeyboardInterrupt manually
+    # http://stackoverflow.com/a/6191991/2192272
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
 class XRun(object):
 
-    def __init__(self, model, params, expdir='./', autodir=False, rundir_template='{}', max_workers=None, chunksize=None):
+    def __init__(self, model, params, expdir='./', autodir=False, rundir_template='{}', max_workers=None, chunksize=None, timeout=31536000):
         self.model = model
         self.params = params  # XParams class
         self.expdir = expdir
@@ -46,6 +54,7 @@ class XRun(object):
         self.rundir_template = rundir_template
         self.max_workers = max_workers
         self.chunksize = chunksize or 1
+        self.timeout = timeout
  
     def setup(self, force=False):
         """Create directory and write experiment params
@@ -96,7 +105,7 @@ class XRun(object):
             yield self[i]
 
 
-    def map(self, func, indices=None):
+    def map(self, func, indices=None, kwds={}, callback=None):
         """Wrapper for multiprocessing.Pool.map
         """
         if indices is None:
@@ -104,15 +113,55 @@ class XRun(object):
             indices = six.moves.range(N)
         else:
             N = len(indices)
-        pool = multiprocessing.Pool(self.max_workers or max(1,N//self.chunksize))
-        return pool.map_async(func, indices, chunksize=self.chunksize).get(1e9)
+        pool = multiprocessing.Pool(self.max_workers or max(1,N//self.chunksize), 
+                                    init_worker)
 
+        # submit
+        ares = []
+        for i in indices:
+            ares.append((time.time(), pool.apply_async(func, (i,), kwds, callback)))
 
-    def map_model(self, method, indices=None, args=(), **kwargs):
+        # get result and handle errors and timeout individually
+        res = []
+        try:
+            for i, tr in zip(indices, ares):
+                try:
+                    start, r = tr
+                    elapsed = time.time() - start
+                    if self.timeout is not None:
+                        timeout = max(0, self.timeout - elapsed)
+                    else:
+                        timeout = None
+                    res.append( r.get(timeout) )
+                except multiprocessing.TimeoutError:
+                    logging.warn('TIMEOUT: '+str(i))
+                    res.append( None )
+                except KeyboardInterrupt:
+                    raise
+                except Exception as error:
+                    logging.warn(str(i)+' :: '+str(error))
+                    res.append( None )
+
+        finally:
+            # kill any remaining task
+            pool.terminate()
+            pool.close()
+        return res
+
+    def map_model(self, method, indices=None, args=(), check=True, **kwargs):
         """call FrozenModel method
         """
         func = ModelFunc(self, method, args=args, kwargs=kwargs)
-        return self.map(func, indices)
+        res = self.map(func, indices)
+        if check:
+            anygood = False
+            for m in res:
+                if m is not None:
+                    anygood = True
+                    break
+            if not anygood:
+                raise RuntimeError('all model run failed')
+        return res
 
 
     def run(self, indices=None, **kwargs):
@@ -208,7 +257,4 @@ class ModelFunc(object):
         if self.load:
             model.load()
         func = getattr(model, self.method)
-        try:
-            return func(*self.args, **self.kwargs)
-        except RuntimeError as error:
-            return None
+        return func(*self.args, **self.kwargs)

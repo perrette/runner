@@ -18,6 +18,8 @@ parser.add_argument('out')
 parser.add_argument('--params-file')
 parser.add_argument('--aa', type=float)
 parser.add_argument('--bb', type=float)
+parser.add_argument('--sleep', type=int)
+parser.add_argument('--hang-if-not-aa', action='store_true')
 
 o = parser.parse_args()
 
@@ -35,8 +37,12 @@ if o.params_file:
 if o.aa is not None: aa = o.aa
 if o.bb is not None: bb = o.bb
 
-print('wait 2 sec')
-time.sleep(2)
+if o.hang_if_not_aa and not aa:
+    o.sleep = 100
+
+if o.sleep:
+    print('wait '+str(o.sleep)+' sec')
+    time.sleep(o.sleep)
 
 # output variables
 output = {'aa':aa,'bb':bb}

@@ -263,7 +263,7 @@ class ModelInterface(object):
         else:
             info['status'] = 'failed'
             self._write(rundir, info)
-            raise RuntimeError('model run failed')
+            raise RuntimeError('model run failed :: see log.err')
 
         return output
 
