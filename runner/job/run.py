@@ -67,6 +67,7 @@ import argparse
 import tempfile
 import numpy as np
 from runner.param import MultiParam, DiscreteParam
+from runner.model import Model
 #from runner.xparams import XParams
 from runner.xrun import XParams, XRun, XPARAM
 from runner.submit import submit_job
@@ -134,7 +135,6 @@ grp.add_argument('--shell', action='store_true',
                help='print output to terminal instead of log file, run sequentially, mostly useful for testing/debugging')
 grp.add_argument('--echo', action='store_true', 
                  help='display commands instead of running them (but does setup output directory). Alias for --shell --force echo [model args ...]')
-grp.add_argument('-w','--wait', action='store_true', help='wait for job to end')
 #grp.add_argument('-b', '--array', action='store_true', 
 #                 help='submit using sbatch --array (faster!), EXPERIMENTAL)')
 grp.add_argument('-f', '--force', action='store_true', 
@@ -285,10 +285,7 @@ def run_post(o):
     # the default
     else:
         assert not slurm_opt.pop('array', False), 'missed if then else --array????'
-        p = xrun.run(indices=indices, submit=o.submit, **slurm_opt)
-
-    if o.wait:
-        p.wait()
+        xrun.run(indices=indices, submit=o.submit, **slurm_opt)
 
     return
 

@@ -9,7 +9,7 @@ usage: job run [-h]
                [--default-file DEFAULT_FILE] [--work-dir WORK_DIR]
                [-p [NAME=SPEC [NAME=SPEC ...]] | -i PARAMS_FILE]
                [-j I,J...,START-STOP:STEP,...] [--include-default] [-o EXPDIR]
-               [-a] [-s] [--shell] [--echo] [-w] [-b] [-f] [--qos QOS]
+               [-a] [-n MAX_WORKERS] [-s] [--shell] [--echo] [-f] [--qos QOS]
                [--job-name JOB_NAME] [--account ACCOUNT] [--walltime WALLTIME]
                ...
 
@@ -106,14 +106,15 @@ simulation settings:
                         instead of run `id`
 
 simulation mode (submit, background...):
+  -n MAX_WORKERS, --max-workers MAX_WORKERS
+                        number of workers for parallel processing (need to be
+                        allocated, e.g. via sbatch)
   -s, --submit          submit job to slurm
   --shell               print output to terminal instead of log file, run
                         sequentially, mostly useful for testing/debugging
   --echo                display commands instead of running them (but does
                         setup output directory). Alias for --shell --force
                         echo [model args ...]
-  -w, --wait            wait for job to end
-  -b, --array           submit using sbatch --array (faster!), EXPERIMENTAL)
   -f, --force           perform run even in an existing directory
 
 slurm:

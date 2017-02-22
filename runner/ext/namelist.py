@@ -4,11 +4,18 @@ Originally adapted from
 https://github.com/leifdenby/namelist_python
 """
 from __future__ import print_function, absolute_import
-from collections import OrderedDict as odict
+from collections import OrderedDict as odict, namedtuple
 import re
 from itertools import groupby
-from runner.model import Param, ParamsFile
+from runner.model import ParamsFile, ParamIO
 from runner.register import register_filetype
+
+class ParamNml(object):
+    def __init__(self, group, name, value, help=None):
+        self.group = group
+        self.name = name
+        self.value = value
+        self.help = help
 
 class Namelist(ParamsFile):
     """Namelist format
@@ -18,22 +25,14 @@ class Namelist(ParamsFile):
 
     def dumps(self, params):
         pars = []
-        for p in params:
-            if hasattr(p, 'short') and hasattr(p, 'group'):
-                group, name = p.group, p.short
-            else:
-                group, name = p.name.split(self.sep)
-            pars.append(Param(name=name, group=group, value=p.value,
-                              help=getattr(p, 'help', None)))
+        for longname,value in params:
+            group, name = longname.split(self.sep)
+            pars.append(ParamNml(group, name, value))
         return format_nml(pars)
 
     def loads(self, string):
         params = parse_nml(string)
-        for p in params:
-            p.short = p.name
-            p.name = p.group + self.sep + p.name
-        return params
-
+        return [ParamIO(p.group + self.sep + p.name, p.value) for p in params]
 
 register_filetype("namelist", Namelist(), '.nml')
 

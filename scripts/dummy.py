@@ -9,14 +9,15 @@ output "aa" and "bb":
 """
 from __future__ import print_function
 import os
+import time
 import json
 import argparse 
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('out')
 parser.add_argument('--params-file')
-parser.add_argument('--aa')
-parser.add_argument('--bb')
+parser.add_argument('--aa', type=float)
+parser.add_argument('--bb', type=float)
 
 o = parser.parse_args()
 
@@ -33,6 +34,9 @@ if o.params_file:
 # ...from command-line
 if o.aa is not None: aa = o.aa
 if o.bb is not None: bb = o.bb
+
+print('wait 2 sec')
+time.sleep(2)
 
 # output variables
 output = {'aa':aa,'bb':bb}

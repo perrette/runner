@@ -1,26 +1,9 @@
-usage: job analyze [-h] [--out OUT] [-i IN_STATE] [-m USER_MODULE]
-                   [-v STATE_VARIABLES [STATE_VARIABLES ...]] [--stats]
-                   [-l NAME=DIST [NAME=DIST ...]] [--custom-cost]
+usage: job analyze [-h] [--out OUT] [-m USER_MODULE]
+                   [-v OUTPUT_VARIABLES [OUTPUT_VARIABLES ...]] [--stats]
+                   [-l NAME=DIST [NAME=DIST ...]] [-J COST [COST ...]]
                    expdir
 
 Analyze run results
-
-This requires a user-defined `getvar` function and possibly `getcost`
-
-Example
--------
-
-    from runner.register import define
-
-    @define.getvar
-    def getvar(name, rundir):
-        "retrieve state variable from run directory"
-        ...
-
-    @define.getcost
-    def getcost(rundir):
-        " cost function for one model, given its run directory (canonical form: J = (var - mean)/std)"
-        ...
 
 positional arguments:
   expdir                experiment directory to analyze
@@ -29,28 +12,26 @@ optional arguments:
   -h, --help            show this help message and exit
   --out OUT             experiment directory to write the diagnostics to (by
                         default same as expdir)
-  -i IN_STATE, --in-state IN_STATE
-                        input state file to consider (normally derived via
-                        custom getvar)
   -m USER_MODULE, --user-module USER_MODULE
-                        user-defined python module that contains model
-                        definitions, necessary for postprocessing
+                        user-defined python module that contains
+                        ModelInterface subclass
 
-model state:
-  For now this requires a custom `getvar` function to retrieve state variables
+model output:
 
-  -v STATE_VARIABLES [STATE_VARIABLES ...], --state-variables STATE_VARIABLES [STATE_VARIABLES ...]
-                        list of state variables to include in state.txt, does
-                        not necessarily enter in the likelihood
-  --stats               add statistics on model state
+  -v OUTPUT_VARIABLES [OUTPUT_VARIABLES ...], --output-variables OUTPUT_VARIABLES [OUTPUT_VARIABLES ...]
+                        list of output variables to include in output.txt,
+                        does not necessarily enter in the likelihood
+  --stats               add statistics on model output
 
 likelihood:
-  likelihood is provided a list of distributions (same convention as job sample) or via a custom `getcost`
+  likelihood is provided a list of distributions (same convention as job sample)
 
   -l NAME=DIST [NAME=DIST ...], --likelihood NAME=DIST [NAME=DIST ...]
                         NAME=SPEC where SPEC define a distribution: N?MEAN,STD
                         or U?MIN,MAX or TYPE?ARG1[,ARG2 ...] where TYPE is any
                         scipy.stats distribution with *shp, loc, scale
                         parameters.
-  --custom-cost         use custom getcost function (adds up) (see
-                        runner.register.define)
+  -J COST [COST ...], --cost COST [COST ...]
+                        output variables that shall be treated as the result
+                        of an objective (or cost) function, this is equivalent
+                        to have the likelihood N?0,1

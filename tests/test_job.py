@@ -1,3 +1,4 @@
+from __future__ import print_function
 import unittest
 import os, shutil
 import six
@@ -30,8 +31,8 @@ class TestSample(unittest.TestCase):
 
     def test_sample(self):
         out = getoutput(JOB+' sample a=U?0,1 b=N?0,1 --size 10 --seed 4')
-        # FIXME: python3 uses more digits, how to make a test that works for both versions?
         if six.PY3:
+            # note: python3 uses more digits
             self.assertEqual(out.strip(),"""
 a      b
 0.4252982362383444 0.9889538055947533
@@ -160,9 +161,11 @@ class TestAnalyze(unittest.TestCase):
     def setUpClass(cls):
         if os.path.exists('out'):
             raise RuntimeError('remove output directory `out` before running tests')
-        check_call(JOB+' run -p a=1,2 b=0. -o out'
+        cmd = (JOB+' run -p a=1,2 b=0. -o out'
                            +' --file-out '+cls.fileout
-                           +' --shell python scripts/dummy.py {} --aa {a} --bb {b}', shell=True)
+                           +' --shell python scripts/dummy.py {} --aa {a} --bb {b}')
+        print(cmd)
+        check_call(cmd, shell=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -171,7 +174,7 @@ class TestAnalyze(unittest.TestCase):
 
     def test_state(self):
         check_call(JOB+' analyze out -v aa bb', shell=True)
-        out = open('out/state.txt').read()
+        out = open('out/output.txt').read()
         self.assertEqual(out.strip(),"""
 	aa     bb
    1.0    0.0
@@ -180,7 +183,7 @@ class TestAnalyze(unittest.TestCase):
 
     def test_state_mixed(self):
         check_call(JOB+' analyze out -v aa -l bb=N?0,1', shell=True)
-        out = open('out/state.txt').read()
+        out = open('out/output.txt').read()
         self.assertEqual(out.strip(),"""
 	aa     bb
    1.0    0.0

@@ -6,7 +6,7 @@ import json
 import copy
 import os
 import sys
-from multiprocessing import Pool
+import multiprocessing
 import six
 from os.path import join
 import numpy as np
@@ -26,6 +26,16 @@ class XData(XParams):
     pass
 
 
+def _model_output_as_array(m, names=None):
+    if m.status == "success": 
+        if names is None:
+            names = m.output
+        res = [m.output[nm] if not np.ndim(m.output[nm]) else np.mean(m.output[nm]) for nm in names]
+    else:
+        res = np.nan
+    return res
+
+
 class XRun(object):
 
     def __init__(self, model, params, expdir='./', autodir=False, rundir_template='{}', max_workers=None, chunksize=None):
@@ -34,7 +44,7 @@ class XRun(object):
         self.expdir = expdir
         self.autodir = autodir
         self.rundir_template = rundir_template
-        self.pool = multiprocessing.Pool(max_workers or params.size)
+        self.max_workers = max_workers or params.size
         self.chunksize = chunksize
  
     def setup(self, force=False):
@@ -86,34 +96,30 @@ class XRun(object):
             yield self[i]
 
 
-    def map_async(self, func, indices=None, callback=None):
-        """Wrapper for XRun.pool.map_async
+    def map(self, func, indices=None):
+        """Wrapper for multiprocessing.Pool.map
         """
         if indices is None:
             indices = six.moves.range(self.params.size)
-        return self.pool.map_async(func, indices, chunksize=self.chunksize, callback=callback)
+        pool = multiprocessing.Pool(self.max_workers)
+        return pool.map_async(func, indices, chunksize=self.chunksize).get(1e9)
 
 
     def map_model(self, method, indices=None, args=(), **kwargs):
         """call FrozenModel method
         """
-        def func(runid):
-            try:
-                return getattr(self[runid], method)(*args, **kwargs)
-            except RuntimeError as error:
-                return None
-        return self.map_async(func, indices)
+        func = ModelFunc(self, method, args=args, kwargs=kwargs)
+        return self.map(func, indices)
 
 
     def run(self, indices=None, **kwargs):
-        """Run model via multiprocessing.Pool.map_async, and return async result
+        """Run model via multiprocessing.Pool.map
         """
         return self.map_model("run", indices, **kwargs)
 
 
     def postprocess(self):
-        r = self.map_model("postprocess")
-        return r.get()
+        return self.map_model("postprocess")
 
 
     def get_first_valid(self):
@@ -130,15 +136,11 @@ class XRun(object):
     def get_output(self, names=None):
         if names is None:
             names = self.get_output_names()
+        values = nans((len(self), len(names)))
+        for i, m in enumerate(self):
+            m.load()
+            values[i] = _model_output_as_array(m, names)
 
-        def func(runid):
-            m = self[runid].load()
-            if m.status == "success": 
-                return [m.output[nm] for nm in names]
-            else:
-                return [np.nan for nm in names]
-
-        values = np.asarray(self.map_async(func).get())
         return XData(values, names)
 
 
@@ -146,58 +148,64 @@ class XRun(object):
         " for checking only "
         if names is None:
             return self[self.get_first_valid()].load().params.keys()
-
-        def func(runid):
-            m = self[runid].load()
-            return [m.params[nm] for nm in names]
-
-        values = np.asarray(self.map_async(func).get())
+        values = np.empty((len(self), len(names)))
+        for i, m in enumerate(self):
+            m.load()
+            values[i] = [m.params[nm] for nm in names]
         return XData(values, names)
 
 
-    def get_loglik(self):
-
-        def func(runid):
-            m = self[runid].load()
-            if m.status == "success": 
-                return m.likelihood.logpdf()
-            else:
-                return [np.nan for nm in m.likelihood]
-
+    def get_logliks(self):
         names = self.model.likelihood.names
-        values = np.asarray(self.map_async(func).get())
+        values = nans((len(self), len(names)))
+        for i, m in enumerate(self):
+            m.load()
+            if m.status == "success": 
+                values[i] = m.likelihood.logpdf()
         return XData(values, names)
 
 
     def get_weight(self):
-        def func(runid):
-            m = self[runid].load()
-            if m.status == "success": 
-                return np.exp(m.likelihood.logpdf().sum())
+        logliks = self.get_logliks().values
+        return np.where(np.isnan(logliks), 0, np.exp(logliks.sum(axis=1)))
+
+
+    def get_valids(self, alpha, names=None):
+        if names is None:
+            names = self.model.likelihood.names
+
+        values = np.zeros((len(self), len(names)), dtype=bool)
+        for i, m in enumerate(self):
+            m.load()
+            if m.status != "success": 
+                continue
+            if alpha is None:
+                values[i] = True
             else:
-                return 0
-        return np.asarray(self.map_async(func).get())
-
-
-    def get_valids(self, alpha):
-
-        def func(runid):
-            m = self[runid].load()
-            if m.status == "success": 
-                return m.likelihood.isvalid(alpha)
-            else:
-                return [False for nm in m.likelihood]
-
-        names = self.model.likelihood.names
-        values = np.asarray(self.map_async(func).get())
+                values[i] = [m.likelihood[name].isvalid(alpha) for name in names]
         return XData(values, names)
 
 
-    def get_valid(self, alpha):
-        def func(runid):
-            m = self[runid].load()
-            if m.status == "success": 
-                return m.likelihood.isvalid(alpha).all()
-            else:
-                return False
-        return np.asarray(self.map_async(func).get())
+    def get_valid(self, alpha=None, names=None):
+        return self.get_valids(alpha, names).values.all(axis=1)
+
+
+class ModelFunc(object):
+    """pickable function for multiprocessing.Pool
+    """
+    def __init__(self, xrun, method, args=(), kwargs={}, load=False):
+        self.xrun = xrun
+        self.load = load
+        self.method = method
+        self.args = args
+        self.kwargs = kwargs
+
+    def __call__(self, runid):
+        model = self.xrun[runid]
+        if self.load:
+            model.load()
+        func = getattr(model, self.method)
+        try:
+            return func(*self.args, **self.kwargs)
+        except RuntimeError as error:
+            return None

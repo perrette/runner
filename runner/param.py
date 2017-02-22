@@ -6,6 +6,7 @@ import logging
 import sys
 import difflib
 import itertools
+from collections import OrderedDict as odict
 import numpy as np
 
 from runner.xparams import XParams
@@ -367,7 +368,7 @@ class MultiParam(ParamList):
 class FrozenParams(ParamList):
 
     def as_dict(self):
-        return {p.name : p.value for p in self if p.value is not None}
+        return odict([(p.name,p.value) for p in self if p.value is not None])
 
     def logpdf(self):
         #if np.isfinite(self.getvalue()) else 0.

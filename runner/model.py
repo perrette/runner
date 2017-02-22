@@ -18,6 +18,9 @@ from runner.submit import submit_job
 ENV_OUT = "RUNDIR"
 
 
+ParamIO = namedtuple("ParamIO", ["name","value"])
+
+
 class ParamsFile(object):
     """Parent class for the parameters
     """
@@ -120,8 +123,8 @@ class ModelInterface(object):
         args += self._format_args(rundir, **params_kw)
 
         # prepare modified command-line arguments with appropriate format
-        for p in self.prior(**params_kw):
-            args += self._command_param(p.name, p.value)
+        for name, value in params_kw.items():
+            args += self._command_param(name, value)
 
         return args
 
@@ -173,7 +176,7 @@ class ModelInterface(object):
         runinfo['version'] = __version__
         runinfo['rundir'] = rundir
 
-        with open(file or runfile, 'w') as f:
+        with open(runfile, 'w') as f:
             json.dump(runinfo, f, 
                       indent=2, 
                       default=lambda x: x.tolist() if hasattr(x, 'tolist') else x)
@@ -188,7 +191,7 @@ class ModelInterface(object):
             #TODO: rename filename --> file_in OR file_param
             filepath = os.path.join(rundir, self.filename)
             #TODO: filetype: have model params as a dictionary
-            paramlist = [Namespace(name=k, value=params_kw[k]) for k in params_kw]
+            paramlist = [ParamIO(k, params_kw[k]) for k in params_kw]
             self.filetype.dump(paramlist, open(filepath, 'w'))
 
 
@@ -211,7 +214,7 @@ class ModelInterface(object):
 
         # also write parameters in a format runner understands, for the record
         info = odict()
-        info['command'] = command
+        info['command'] = args
         info['workdir'] = workdir
         info['env'] = env
         info['params'] = params_kw
@@ -237,8 +240,11 @@ class ModelInterface(object):
                 stderr = None
 
             try:
-                env2 = os.environ.copy()
-                env2.update(env)
+                if env is not None:
+                    env2 = os.environ.copy()
+                    env2.update(env)
+                else:
+                    env2=None
                 p = subprocess.Popen(args, env=env2, cwd=workdir, 
                                      stdout=stdout, stderr=stderr)
             except OSError as error:
@@ -315,16 +321,19 @@ class FrozenModel(object):
         self.output = output
         self.status = None
 
+    @property
     def prior(self):
         """prior parameter distribution
         """
         return self.model.prior(**self.params)
 
+    @property
     def likelihood(self):
         """output variables' likelihood
         """
-        like = self.model.likelihood(**self.output)
+        return self.model.likelihood(**self.output)
 
+    @property
     def posterior(self):
         """model posterior (params' prior * output posterior)
         """
@@ -355,6 +364,7 @@ class FrozenModel(object):
         """Run the model (background subprocess, submit to slurm...)
         """
         self.output = self.model.interface.run(self.rundir, self.params, submit=submit, background=background, **kwargs)
+        self.status = "success"
         return self
 
 

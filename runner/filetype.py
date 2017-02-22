@@ -7,7 +7,7 @@ For more complex formats you may want to define your own class.
 It takes subclassing `ParamsFile.dumps`, and if needed `ParamsFile.loads`.
 """
 import json
-from runner.model import ParamsFile, Param
+from runner.model import ParamsFile, ParamIO
 from runner.tools import parse_val
 
 class FileTypeWrapper(ParamsFile):
@@ -19,12 +19,12 @@ class FileTypeWrapper(ParamsFile):
 
     def dumps(self, params):
         assert self._dumps is not None
-        self._dumps({p.name:p.value for p in params})
+        self._dumps({name:value for name,value in params})
 
     def loads(self, string):
         assert self._loads is not None
         kw = self._loads(string)
-        return [Param(k, kw[k]) for k in kw]
+        return [ParamIO(k, kw[k]) for k in kw]
 
 
 # Json file types
@@ -39,28 +39,12 @@ class JsonDict(ParamsFile):
         self.kwargs = kwargs
 
     def dumps(self, params):
-        return json.dumps({p.name:p.value for p in params}, **self.kwargs)
+        return json.dumps({name:value for name,value in params}, **self.kwargs)
 
     def loads(self, string):
         kwargs = json.loads(string)
-        return [Param(name=k, value=kwargs[k]) for k in sorted(kwargs.keys())]
+        return [ParamIO(name=k, value=kwargs[k]) for k in sorted(kwargs.keys())]
 
-
-class JsonList(ParamsFile):
-    """json file format
-    """
-    def __init__(self, indent=2, **kwargs):
-        kwargs["indent"] = indent
-        self.kwargs = kwargs
-
-    def dumps(self, params):
-        return json.dumps([p.__dict__ for p in params], **kwargs)
-
-    def loads(self, string):
-        return [Param(**p) for p in json.loads(string)]
-
-
-# Template base
 
 class TemplateFile(ParamsFile):
     """Custom file format based on a full file template (`dumps` ONLY)
@@ -75,7 +59,7 @@ class TemplateFile(ParamsFile):
         self._template = open(template_file).read()
 
     def dumps(self, params):
-        return self._template.format(**{p.name:p.value for p in params})
+        return self._template.format(**{name:value for name,value in params})
 
 
 class LineTemplate(ParamsFile):
@@ -89,8 +73,8 @@ class LineTemplate(ParamsFile):
 
     def dumps(self, params):
         lines = []
-        for p in params:
-            line = self.line.format(**p.__dict__)
+        for name,value in params:
+            line = self.line.format(name, value, name=name, value=value)
             lines.append(line)
         return "\n".join(lines) + "\n"
 
@@ -115,7 +99,7 @@ class LineSeparator(LineTemplate):
             name, value = line.split(self.sep.strip() or None)
             if self.reverse:
                 name, value = value, name
-            p = Param(name.strip(), parse_val(value))
+            p = ParamIO(name.strip(), parse_val(value))
             params.append( p )
         return params
 

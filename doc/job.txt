@@ -10,7 +10,7 @@ positional arguments:
     sample              generate ensemble by sampling prior distributions
     resample            resample parameters from previous simulation
     run                 run model (single version or ensemble)
-    analyze             analyze ensemble (state + loglik + stats) for
+    analyze             analyze ensemble (output + loglik + stats) for
                         resampling
 
 optional arguments:

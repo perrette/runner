@@ -170,11 +170,10 @@ def getinterface(o):
     # param and output file types
     loads = modelargs.pop('loads')
     dumps = modelargs.pop('dumps')
+    modelargs = {} # command, setup, getvar, filetype
+
     if loads or dumps:
         filetype = filetype_out = FileTypeWrapper(dumps, loads)
-    elif post_only:
-        filetype = None
-        filetype_out = getfiletype(o, o.file_type_out, o.file_out)
     else:
         filetype = getfiletype(o, o.file_type, o.file_in)
         filetype_out = getfiletype(o, o.file_type_out, o.file_out)
@@ -187,7 +186,7 @@ def getinterface(o):
     if o.command and o.command[0] == '--':
         o.command = o.command[1:]
 
-    modelargs.update( dict(command=o.command, 
+    modelargs.update( dict(args=o.command, 
                            work_dir=o.work_dir, 
                            arg_out_prefix=o.arg_out_prefix, arg_param_prefix=o.arg_prefix, 
                            env_out=o.env_out, env_prefix=o.env_prefix) )
