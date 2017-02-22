@@ -156,6 +156,39 @@ b 1
         self.assertEqual(out.strip(), self.namelist.strip())
 
 
+    def test_paramsio_file_json(self):
+        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --file-name params.json --line-sep " " --shell cat {}/params.json')
+        self.assertEqual(out.strip(),self.json.strip())
+
+    json = """
+{
+  "a": 2, 
+  "b": 0
+}
+{
+  "a": 2, 
+  "b": 1
+}
+{
+  "a": 3, 
+  "b": 0
+}
+{
+  "a": 3, 
+  "b": 1
+}
+{
+  "a": 4, 
+  "b": 0
+}
+{
+  "a": 4, 
+  "b": 1
+}
+
+    """
+
+
 class TestRunSubmit(TestRunBase):
 
     def test_shell(self):

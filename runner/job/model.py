@@ -18,10 +18,9 @@ from importlib import import_module
 import runner
 from runner import register
 import runner.model as mod
-from runner.model import Param, ModelInterface, Model, ParamsFile
+from runner.model import ModelInterface, Model
 from runner.param import MultiParam, Param, DiscreteParam
-from runner.filetype import (JsonDict, LineSeparator, LineTemplate, 
-                               TemplateFile, FileTypeWrapper)
+from runner.filetype import (LineSeparator, LineTemplate, TemplateFile, JsonFile)
 import runner.ext.namelist # automatically add Namelist to register
 
 
@@ -80,7 +79,8 @@ def getfiletype(o, file_type=None, file_name=None):
                 return ft
 
     if file_type in ("json", ".json"):
-        ft = JsonDict()
+        #ft = json
+        ft = JsonFile()
 
     elif file_type == "linesep":
         ft = LineSeparator(o.line_sep)

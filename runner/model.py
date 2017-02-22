@@ -9,6 +9,7 @@ from collections import OrderedDict as odict, namedtuple
 import six
 from argparse import Namespace
 from runner import __version__
+from runner.filetype import FileType
 from runner.param import Param, MultiParam
 from runner.tools import parse_val
 from runner.submit import submit_job
@@ -19,22 +20,6 @@ ENV_OUT = "RUNDIR"
 
 
 ParamIO = namedtuple("ParamIO", ["name","value"])
-
-
-class ParamsFile(object):
-    """Parent class for the parameters
-    """
-    def dumps(self, params):
-        raise NotImplementedError()
-
-    def loads(self, string):
-        raise NotImplementedError()
-
-    def dump(self, params, f):
-        f.write(self.dumps(params))
-
-    def load(self, f):
-        return self.loads(f.read())
 
 
 class ModelInterface(object):
@@ -50,7 +35,7 @@ class ModelInterface(object):
             Executable and command arguments. This command may contain the `{}` tag for model run
             directory, and any `{NAME}` for parameter names. Alternatively these
             might be set with `arg_out_prefix` and `arg_param_prefix` options.
-        * filetype : ParamsFile instance or anything with `dump` method, optional
+        * filetype : FileType instance or anything with `dump` method, optional
         * filename : relative path to rundir, optional
             filename for parameter passing to model (also needs filetype)
         * arg_out_prefix : str, optional
@@ -65,7 +50,7 @@ class ModelInterface(object):
         * work_dir: str, optional
             directory to start the model from (work directory)
             by default from the current directory
-        * filetype_output : ParamsFile instance or anything with `load` method, optional
+        * filetype_output : FileType instance or anything with `load` method, optional
         * filename_output : relative path to rundir, optional
             filename for output variable (also needs filetype_output)
         """
@@ -190,9 +175,7 @@ class ModelInterface(object):
             assert self.filetype
             #TODO: rename filename --> file_in OR file_param
             filepath = os.path.join(rundir, self.filename)
-            #TODO: filetype: have model params as a dictionary
-            paramlist = [ParamIO(k, params_kw[k]) for k in params_kw]
-            self.filetype.dump(paramlist, open(filepath, 'w'))
+            self.filetype.dump(params_kw, open(filepath, 'w'))
 
 
     def run(self, rundir, params_kw, background=True, submit=False, **kwargs):
@@ -276,9 +259,7 @@ class ModelInterface(object):
             return info.pop("output", {})
 
         assert self.filetype_output, "filetype_output is required"
-        variables = self.filetype_output.load(open(os.path.join(rundir, self.filename_output)))
-        return odict([(v.name,v.value) for v in variables])
-
+        return self.filetype_output.load(open(os.path.join(rundir, self.filename_output)))
 
 
 class Model(object):
