@@ -9,6 +9,7 @@ import copy
 import os
 import sys
 import multiprocessing
+from multiprocessing.dummy import Pool as ThreadPool
 import six
 from os.path import join
 import numpy as np
@@ -42,6 +43,21 @@ def init_worker():
     # to handle KeyboardInterrupt manually
     # http://stackoverflow.com/a/6191991/2192272
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
+def abortable_worker(func, *args, **kwargs):
+    # to handle TimeOut individually and freeup ressources
+	# http://stackoverflow.com/a/29495039/2192272
+
+    timeout = kwargs.pop('timeout', None)
+    p = ThreadPool(1)
+    res = p.apply_async(func, args=args, kwds=kwargs)
+    try:
+        out = res.get(timeout)  # Wait timeout seconds for func to complete.
+        return out
+    except multiprocessing.TimeoutError:
+        p.terminate()
+        raise
 
 
 class XRun(object):
@@ -119,20 +135,14 @@ class XRun(object):
         # submit
         ares = []
         for i in indices:
-            ares.append((time.time(), pool.apply_async(func, (i,), kwds, callback)))
+            ares.append(pool.apply_async(func, (i,), kwds, callback))
 
-        # get result and handle errors and timeout individually
+        # get result and handle errors individually
         res = []
         try:
-            for i, tr in zip(indices, ares):
+            for i, r in zip(indices, ares):
                 try:
-                    start, r = tr
-                    elapsed = time.time() - start
-                    if self.timeout is not None:
-                        timeout = max(0, self.timeout - elapsed)
-                    else:
-                        timeout = None
-                    res.append( r.get(timeout) )
+                    res.append( r.get() )
                 except multiprocessing.TimeoutError:
                     logging.warn('TIMEOUT: '+str(i))
                     res.append( None )
@@ -151,7 +161,7 @@ class XRun(object):
     def map_model(self, method, indices=None, args=(), check=True, **kwargs):
         """call FrozenModel method
         """
-        func = ModelFunc(self, method, args=args, kwargs=kwargs)
+        func = ModelFunc(self, method, args=args, kwargs=kwargs, timeout=self.timeout)
         res = self.map(func, indices)
         if check:
             anygood = False
@@ -245,16 +255,18 @@ class XRun(object):
 class ModelFunc(object):
     """pickable function for multiprocessing.Pool
     """
-    def __init__(self, xrun, method, args=(), kwargs={}, load=False):
+    def __init__(self, xrun, method, args=(), kwargs={}, timeout=None, load=False):
         self.xrun = xrun
         self.load = load
         self.method = method
         self.args = args
         self.kwargs = kwargs
+        self.timeout = timeout
 
     def __call__(self, runid):
         model = self.xrun[runid]
         if self.load:
             model.load()
         func = getattr(model, self.method)
-        return func(*self.args, **self.kwargs)
+        #return func(*self.args, **self.kwargs)
+        return abortable_worker(func, *self.args, timeout=self.timeout, **self.kwargs)
