@@ -44,8 +44,8 @@ class XRun(object):
         self.expdir = expdir
         self.autodir = autodir
         self.rundir_template = rundir_template
-        self.max_workers = max_workers or params.size
-        self.chunksize = chunksize
+        self.max_workers = max_workers
+        self.chunksize = chunksize or 1
  
     def setup(self, force=False):
         """Create directory and write experiment params
@@ -100,8 +100,11 @@ class XRun(object):
         """Wrapper for multiprocessing.Pool.map
         """
         if indices is None:
-            indices = six.moves.range(self.params.size)
-        pool = multiprocessing.Pool(self.max_workers)
+            N = len(self)
+            indices = six.moves.range(N)
+        else:
+            N = len(indices)
+        pool = multiprocessing.Pool(self.max_workers or max(1,N//self.chunksize))
         return pool.map_async(func, indices, chunksize=self.chunksize).get(1e9)
 
 
