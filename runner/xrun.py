@@ -60,6 +60,12 @@ def abortable_worker(func, *args, **kwargs):
         raise
 
 
+def run_model(xrun, i, **kwargs):
+    " wrapper to make the function pickable "
+    return xrun[i].run(**kwargs)
+
+
+
 class XRun(object):
 
     def __init__(self, model, params, expdir='./', autodir=False, rundir_template='{}', max_workers=None, chunksize=None, timeout=31536000):
@@ -79,16 +85,10 @@ class XRun(object):
             logging.info("create directory: "+self.expdir)
             os.makedirs(self.expdir)
 
-        if os.path.exists(join(self.expdir, XPARAM)) and not force:
-            raise RuntimeError(repr(self.expdir)+" experiment directory already exists")
+        pfile = join(self.expdir, XPARAM)
+        if os.path.exists(pfile) and not force:
+            raise RuntimeError(repr(pfile)+" param file already exists")
         self.params.write(join(self.expdir, XPARAM))
-        #try:
-        #    self.model.setup(join(expdir, 'default'))
-        #except KeyError:
-        #    logging.warn("Failed to setup default model version" +
-        #          "probably because no default values have been specified" +
-        #          "and {NAME} syntax was used for command line arguments." +
-        #          "Nevermind just skip this step.")
 
     def get_rundir(self, runid):
         if runid is None:
@@ -121,7 +121,7 @@ class XRun(object):
             yield self[i]
 
 
-    def map(self, func, indices=None, kwds={}, callback=None):
+    def run(self, indices=None, **kwargs):
         """Wrapper for multiprocessing.Pool.map
         """
         if indices is None:
@@ -134,15 +134,18 @@ class XRun(object):
 
         # submit
         ares = []
+        kwargs['timeout'] = self.timeout
         for i in indices:
-            ares.append(pool.apply_async(func, (i,), kwds, callback))
+            ares.append(pool.apply_async(abortable_worker, (run_model, self, i,), kwargs))
 
         # get result and handle errors individually
         res = []
+        sucesses = 0
         try:
             for i, r in zip(indices, ares):
                 try:
                     res.append( r.get() )
+                    sucesses += 1
                 except multiprocessing.TimeoutError:
                     logging.warn('TIMEOUT: '+str(i))
                     res.append( None )
@@ -156,32 +159,18 @@ class XRun(object):
             # kill any remaining task
             pool.terminate()
             pool.close()
+
+        if sucesses > 0:
+            logging.info("{} out of {} runs completed successfully".format(sucesses, N))
+        else:
+            logging.error("all runs failed")
+
         return res
-
-    def map_model(self, method, indices=None, args=(), check=True, **kwargs):
-        """call FrozenModel method
-        """
-        func = ModelFunc(self, method, args=args, kwargs=kwargs, timeout=self.timeout)
-        res = self.map(func, indices)
-        if check:
-            anygood = False
-            for m in res:
-                if m is not None:
-                    anygood = True
-                    break
-            if not anygood:
-                raise RuntimeError('all model run failed')
-        return res
-
-
-    def run(self, indices=None, **kwargs):
-        """Run model via multiprocessing.Pool.map
-        """
-        return self.map_model("run", indices, **kwargs)
 
 
     def postprocess(self):
-        return self.map_model("postprocess")
+        return [m.postprocess() if m.load().status == "success" else None 
+                for m in self]
 
 
     def get_first_valid(self):
@@ -250,23 +239,3 @@ class XRun(object):
 
     def get_valid(self, alpha=None, names=None):
         return self.get_valids(alpha, names).values.all(axis=1)
-
-
-class ModelFunc(object):
-    """pickable function for multiprocessing.Pool
-    """
-    def __init__(self, xrun, method, args=(), kwargs={}, timeout=None, load=False):
-        self.xrun = xrun
-        self.load = load
-        self.method = method
-        self.args = args
-        self.kwargs = kwargs
-        self.timeout = timeout
-
-    def __call__(self, runid):
-        model = self.xrun[runid]
-        if self.load:
-            model.load()
-        func = getattr(model, self.method)
-        #return func(*self.args, **self.kwargs)
-        return abortable_worker(func, *self.args, timeout=self.timeout, **self.kwargs)
