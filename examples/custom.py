@@ -26,4 +26,4 @@ class MyInterface(ModelInterface):
 
 # ModelInterface' first argument is a command, leave empty in this example
 # since we overwrite "command"
-copy = MyInterface('', work_dir="{}")
+mymodel = MyInterface('', work_dir="{}")

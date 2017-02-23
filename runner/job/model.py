@@ -160,17 +160,14 @@ def getcustominterface(user_module):
 
     user_module, ext = os.path.splitext(user_module)
     m = import_module(user_module)
+
+    if name:
+        return getattr(m, name)
+
     interfaces = inspect.getmembers(m, lambda x: isinstance(x, ModelInterface))
     if not interfaces:
         modelconfig.error('no runner.model.ModelInterface instance found')
-
-    # pick by name
-    if name:
-        interfaces = [nm for nm,val in interfaces if nm == name]
-        if not interfaces:
-            modelconfig.error('name {} not found'.format(name))
-
-    if len(interfaces) > 1:
+    elif len(interfaces) > 1:
         logging.warn('more than one runner.model.ModelInterface instance found, pick one')
     return interfaces[0][1]
 
