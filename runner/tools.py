@@ -192,6 +192,8 @@ def read_df(pfile):
         header = header[1:]
     pnames = header.split()
     pvalues = np.loadtxt(pfile, skiprows=1)  
+    if np.ndim(pvalues) == 1:
+        pvalues = pvalues[:, None]
     return pnames, pvalues
 
 
