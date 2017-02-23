@@ -221,8 +221,8 @@ class ModelInterface(object):
         if background:
             output = os.path.join(rundir, 'log.out')
             error = os.path.join(rundir, 'log.err')
-            stdout = open(output, 'w')
-            stderr = open(error, 'w')
+            stdout = open(output, 'a+')
+            stderr = open(error, 'a+')
         else:
             stdout = None
             stderr = None
