@@ -76,19 +76,6 @@ class _PickableMethod(object):
         return getattr(self.obj, self.method)(*args, **kwargs)
 
 
-class _PickableApply(object):
-    def __init__(self, func, *args, **kwds):
-        self.func = func
-        self.args = args
-        self.kwds = kwds
-
-    def __call__(self, *args, **kwargs):
-        kwds = self.kwds.copy()
-        kwds.update(kwargs)
-        args = self.args + args
-        return self.func(*args, **kwds)
-
-
 class XRun(object):
 
     def __init__(self, model, params, expdir='./', autodir=False, rundir_template='{}', max_workers=None, timeout=31536000):
@@ -155,15 +142,14 @@ class XRun(object):
         else:
             N = len(indices)
 
+        # workers pool
+        pool = multiprocessing.Pool(self.max_workers or N, init_worker)
+
         # prepare method
         run_model = _PickableMethod(self, '_run')
-        run_model = _PickableApply(run_model, **kwargs)
         run_model = _AbortableWorker(run_model, timeout=self.timeout)
 
-        pool = multiprocessing.Pool(self.max_workers or N, init_worker)
-        # use map_async as workaround to KeyboardInterrupt bug of map
-        #res = pool.map_async(run_model, indices, callback=callback).get(1e10)
-        ares = [pool.apply_async(run_model, (i,), callback=callback) for i in indices]
+        ares = [pool.apply_async(run_model, (i,), kwds=kwargs, callback=callback) for i in indices]
 
         res = []
         successes = 0
