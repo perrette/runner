@@ -54,7 +54,7 @@ class ModelInterface(object):
         * filename_output : relative path to rundir, optional
             filename for output variable (also needs filetype_output)
         """
-        if type(args) in six.string_types:
+        if isinstance(args, six.string_types):
             args = args.split()
         self.args = args or []
         self.filetype = filetype

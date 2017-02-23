@@ -15,7 +15,7 @@ class JobScript(object):
 
     def __init__(self, commands, env=None, **opt):
 
-        if type(commands) in six.string_types:
+        if isinstance(commands, six.string_types):
             commands = commands.splitlines()
         
         self.opt = opt
@@ -28,7 +28,7 @@ class JobScript(object):
 
         # add commands
         for cmd in commands:
-            assert type(cmd) in six.string_types, "commands must be strings"
+            assert isinstance(cmd, six.string_types), "commands must be strings"
             self.lines.append(cmd)
 
     @property

@@ -2,6 +2,7 @@ from __future__ import print_function
 import unittest
 import os, shutil
 import six
+import json
 import logging
 from subprocess import check_call
 
@@ -99,7 +100,7 @@ class TestParamsIO(TestRunBase):
                          """.strip())
 
     def test_paramsio_env(self):
-        out = getoutput(JOB+' run -p a=2,3 b=0. -o out --shell --env-prefix "" -- bash scripts/dummy.sh')
+        out = getoutput(JOB+' run -p a=2,3 b=0. -o out --shell --env-prefix "" -- bash examples/dummy.sh')
         self.assertEqual(out.strip(),"""
 RUNDIR out/0
 a 2
@@ -157,43 +158,14 @@ b 1
 
 
     def test_paramsio_file_json(self):
-        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --file-name params.json --line-sep " " --shell cat {}/params.json')
-        self.assertEqual(out.strip(),self.json.strip())
+        getoutput(JOB+' run -p a=2 b=0,1 -o out --file-name params.json --file-out params.json echo')
+        self.assertEqual(json.load(open('out/0/runner.json'))['output'], {'a':2,'b':0})
+        self.assertEqual(json.load(open('out/1/runner.json'))['output'], {'a':2,'b':1})
 
-    json = """
-{
-  "a": 2, 
-  "b": 0
-}
-{
-  "a": 2, 
-  "b": 1
-}
-{
-  "a": 3, 
-  "b": 0
-}
-{
-  "a": 3, 
-  "b": 1
-}
-{
-  "a": 4, 
-  "b": 0
-}
-{
-  "a": 4, 
-  "b": 1
-}
-    """
-
-
-class TestCustomInterface(TestRunBase):
-
-    def test_copy(self):
-        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --file-name params.json --line-sep " " cat {}/params.json')
-        self.assertEqual(out.strip(),self.json.strip())
-        
+    def test_custom(self):
+        getoutput(JOB+' run -p a=2 b=0,1 -m examples/custom.py -o out --file-name params.json')
+        self.assertEqual(json.load(open('out/0/runner.json'))['output'], {'a':2,'b':0})
+        self.assertEqual(json.load(open('out/1/runner.json'))['output'], {'a':2,'b':1})
 
 
 class TestRunSubmit(TestRunBase):
@@ -244,7 +216,7 @@ class TestAnalyze(unittest.TestCase):
             raise RuntimeError('remove output directory `out` before running tests')
         cmd = (JOB+' run -p a=1,2 b=0. -o out'
                            +' --file-out '+cls.fileout
-                           +' --shell python scripts/dummy.py {} --aa {a} --bb {b}')
+                           +' --shell python examples/dummy.py {} --aa {a} --bb {b}')
         print(cmd)
         check_call(cmd, shell=True)
 

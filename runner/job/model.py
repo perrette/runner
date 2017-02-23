@@ -147,16 +147,20 @@ def getdefaultparams(o, filetype=None, module=None):
 
 
 def getcustominterface(user_module):
-    sys.path.insert(0, os.getcwd())
-
     if '::' in user_module:
         user_module, name = user_module.split('::')
     else:
         name = None
 
+    if os.path.exists(user_module):
+        sys.path.insert(0, os.path.dirname(user_module))
+        user_module = os.path.basename(user_module)
+    else:
+        sys.path.insert(0, os.getcwd())
+
     user_module, ext = os.path.splitext(user_module)
     m = import_module(user_module)
-    interfaces = insert.getmembers(m, isinstance(x, ModelInterface))
+    interfaces = inspect.getmembers(m, lambda x: isinstance(x, ModelInterface))
     if not interfaces:
         modelconfig.error('no runner.model.ModelInterface instance found')
 

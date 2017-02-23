@@ -94,7 +94,7 @@ class Param(object):
 
     def __eq__(self, other):
         return (isinstance(other, Param) and self.name == other.name) \
-            or (type(other) in six.string_types and self.name == other)
+            or (isinstance(other, six.string_types) and self.name == other)
 
     @classmethod
     def parse(cls, string):
