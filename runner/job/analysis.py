@@ -65,84 +65,8 @@ def analyze_post(o):
     xparams = XData.read(paramsfile) # for the size & autodir
     xrun = XRun(model, xparams, expdir=o.expdir, autodir=cfg["auto_dir"])
 
-    if not o.out:
-        o.out = o.expdir
+    xrun.analyze(o.output_variables, anadir=o.out)
 
-    # Check number of valid runs
-    logging.info("Experiment directory: "+o.expdir)
-    logging.info("Total number of runs: {}".format(len(xrun)))
-    logging.info("Number of successful runs: {}".format(xrun.get_valid().sum()))
-
-    # write output.txt
-    # ===============
-    names = o.output_variables + [x.name for x in likelihood 
-                                 if x.name not in o.output_variables]
-
-    if not names:
-        names = xrun.get_output_names()
-        logging.info("Detected output variables: "+", ".join(names))
-
-    if names:
-        xoutput = xrun.get_output(names)
-    else:
-        xoutput = None
-
-    if xoutput is None:
-        analyze.error("no output var, stop")
-
-    if xoutput is not None:
-        outputfile = os.path.join(o.out, "output.txt")
-        logging.info("Write output variables to "+outputfile)
-        xoutput.write(outputfile)
-
-    # Derive likelihoods
-    # ==================
-    xlogliks = xrun.get_logliks()
-    file = os.path.join(o.out, 'logliks.txt')
-    logging.info('write logliks to '+ file)
-    xlogliks.write(file)
-
-    # Sum-up and apply custom distribution
-    # ====================================
-    logliksum = xlogliks.values.sum(axis=1)
-    file = os.path.join(o.out, "loglik.txt")
-    logging.info('write loglik (total) to '+ file)
-    np.savetxt(file, logliksum)
-
-    # Add statistics
-    # ==============
-    if not o.stats:
-        return
-
-    valid = np.isfinite(logliksum)
-    ii = [xoutput.names.index(c.name) for c in likelihoods]
-    output = xoutput.values[:, ii] # sort !
-    pct = lambda p: np.percentile(output[valid], p, axis=0)
-
-    names = [c.name for c in constraints]
-
-    res = [
-        ("obs", [c.dist.mean() for c in constraints]),
-        ("best", output[np.argmax(logliksum)]),
-        ("mean", output[valid].mean(axis=0)),
-        ("std", output[valid].std(axis=0)),
-        ("min", output[valid].min(axis=0)),
-        ("p05", pct(5)),
-        ("med", pct(50)),
-        ("p95", pct(95)),
-        ("max", output[valid].max(axis=0)),
-        ("valid_99%", xrun.get_valids(0.99).values.sum(axis=0)),
-        ("valid_67%", xrun.get_valids(0.67).values.sum(axis=0)),
-    ]
-
-    index = [nm for nm,arr in res if arr is not None]
-    values = [arr for nm,arr in res if arr is not None]
-
-    import pandas as pd
-    df = pd.DataFrame(np.array(values), columns=names, index=index)
-
-    with open(os.path.join(o.out, 'stats.txt'), 'w') as f:
-        f.write(str(df))
 
 register_job('analyze',analyze, analyze_post, 
              help="analyze ensemble (output + loglik + stats) for resampling")

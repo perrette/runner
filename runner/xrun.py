@@ -9,13 +9,12 @@ import copy
 import os
 import sys
 import multiprocessing
-from multiprocessing.dummy import Pool as ThreadPool
 import six
 from os.path import join
 import numpy as np
 
 from runner.model import Param, Model
-from runner.tools import autofolder, Namespace, nans
+from runner.tools import autofolder, Namespace, nans, str_dataframe
 from runner.xparams import XParams
 
 XPARAM = 'params.txt'
@@ -54,6 +53,7 @@ class _AbortableWorker(object):
         self.timeout = timeout
 
     def __call__(self, *args, **kwargs):
+        from multiprocessing.dummy import Pool as ThreadPool
         p = ThreadPool(1)
         res = p.apply_async(self.func, args=args, kwds=kwargs)
         try:
@@ -199,7 +199,7 @@ class XRun(object):
         return XData(values, names)
 
 
-    def get_params(self, names=None):
+    def _get_params(self, names=None):
         " for checking only "
         if names is None:
             return self[self.get_first_valid()].load().params.keys()
@@ -243,3 +243,93 @@ class XRun(object):
 
     def get_valid(self, alpha=None, names=None):
         return self.get_valids(alpha, names).values.all(axis=1)
+
+
+    def analyze(self, names=None, anadir=None):
+        """Perform analysis of the ensemble (write to disk)
+        """
+        if anadir is None:
+            anadir = self.expdir
+
+        # Check number of valid runs
+        print("Experiment directory: "+self.expdir)
+        print("Total number of runs: {}".format(len(self)))
+        print("Number of successful runs: {}".format(self.get_valid().sum()))
+
+
+        # Check outputs
+        # =============
+        names = names or []
+        names = names + [x.name for x in self.model.likelihood 
+                                 if x.name not in names]
+        if not names:
+            names = self.get_output_names()
+            logging.info("Detected output variables: "+", ".join(names))
+
+
+        # Write output variables
+        # ======================
+        if names:
+            xoutput = self.get_output(names)
+        else:
+            xoutput = None
+
+        if xoutput is not None:
+            outputfile = os.path.join(anadir, "output.txt")
+            logging.info("Write output variables to "+outputfile)
+            xoutput.write(outputfile)
+
+        # Derive likelihoods
+        # ==================
+        xlogliks = self.get_logliks()
+        file = os.path.join(anadir, 'logliks.txt')
+        logging.info('write logliks to '+ file)
+        xlogliks.write(file)
+
+        # Sum-up and apply custom distribution
+        # ====================================
+        logliksum = xlogliks.values.sum(axis=1)
+        file = os.path.join(anadir, "loglik.txt")
+        logging.info('write loglik (total) to '+ file)
+        np.savetxt(file, logliksum)
+
+        # Add statistics
+        # ==============
+        valid = np.isfinite(logliksum)
+        ii = [xoutput.names.index(c.name) for c in self.model.likelihood]
+        output = xoutput.values[:, ii] # sort !
+        pct = lambda p: np.percentile(output[valid], p, axis=0)
+
+        names = [c.name for c in self.model.likelihood]
+
+        #TODO: include parameters in the stats
+        #for c in self.model.prior:
+        #    if c.name not in self.params.names:
+        #        raise ValueError('prior name not in params: '+c.name)
+
+        res = [
+            ("obs", [c.dist.mean() for c in self.model.likelihood]),
+            ("best", output[np.argmax(logliksum)]),
+            ("mean", output[valid].mean(axis=0)),
+            ("std", output[valid].std(axis=0)),
+            ("min", output[valid].min(axis=0)),
+            ("p05", pct(5)),
+            ("med", pct(50)),
+            ("p95", pct(95)),
+            ("max", output[valid].max(axis=0)),
+            ("valid_99%", self.get_valids(0.99).values.sum(axis=0)),
+            ("valid_67%", self.get_valids(0.67).values.sum(axis=0)),
+        ]
+
+        index = [nm for nm,arr in res if arr is not None]
+        values = [arr for nm,arr in res if arr is not None]
+
+        stats = str_dataframe(names, values, include_index=True, index=index)
+
+        with open(os.path.join(anadir, 'stats.txt'), 'w') as f:
+            f.write(stats)
+
+        #import pandas as pd
+        #df = pd.DataFrame(np.array(values), columns=names, index=index)
+
+            #f.write(str(df))
