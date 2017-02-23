@@ -17,13 +17,6 @@ class MyInterface(ModelInterface):
         return json.load(open(os.path.join(rundir, "params.json")))
 
 
-    def command(self, rundir, params):
-        if not self.args:
-            return ['echo']  # just so that it does not fail
-        else:
-            return super(MyInterface, self).command(rundir, params)
-
-
-# ModelInterface' first argument is a command, leave empty in this example
-# since we overwrite "command"
+# ModelInterface' first argument is a command, leave empty in this example for 
+# interactive use with `job run` (any new arguments will be appended)
 mymodel = MyInterface('', work_dir="{}")

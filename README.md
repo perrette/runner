@@ -114,7 +114,7 @@ There are a number of other ways to communicate parameter values to your model
 the same result with less redundancy, when parameter names match). Parameters
 can also be passed via a file:
 
-    job run -p a=2,3,4 b=0,1 -o out --file-name params.txt --file-type linesep --line-sep " " echo
+    job run -p a=2,3,4 b=0,1 -o out --file-name params.txt --file-type linesep --line-sep " "
 
     cat out/*/params.txt
 
@@ -134,7 +134,7 @@ can also be passed via a file:
 with a number of other file types. File types that involve grouping, such as
 namelist, require a group prefix with a `.` separator in the parameter name:
 
-    job run -p g1.a=0,1 g2.b=2. -o out --file-name params.txt --file-type namelist echo
+    job run -p g1.a=0,1 g2.b=2. -o out --file-name params.txt --file-type namelist
 
     cat out/*/params.txt
 

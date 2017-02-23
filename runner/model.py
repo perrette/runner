@@ -94,7 +94,9 @@ class ModelInterface(object):
 
     def command(self, rundir, params_kw):
         if not self.args:
-            raise ValueError("model requires an executable")
+            msg = 'no executable provided, just echo this message and apply postproc'
+            logging.info(msg)
+            return ['echo']+msg.split()
 
         exe = self.args[0]
 
@@ -207,7 +209,7 @@ class ModelInterface(object):
 
         # also write parameters in a format runner understands, for the record
         info = odict()
-        info['command'] = args
+        info['command'] = " ".join(args)
         info['workdir'] = workdir
         info['env'] = env
         info['params'] = params_kw
