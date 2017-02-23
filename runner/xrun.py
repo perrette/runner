@@ -61,7 +61,7 @@ class _AbortableWorker(object):
             return out
         except multiprocessing.TimeoutError:
             p.terminate()
-            raise
+            raise multiprocessing.TimeoutError(str(self.timeout))
 
 
 class _PickableMethod(object):
@@ -87,23 +87,6 @@ class _PickableApply(object):
         kwds.update(kwargs)
         args = self.args + args
         return self.func(*args, **kwds)
-
-
-class _ExceptionCatcher(object):
-    def __init__(self, func, failedvalue=None, exceptions=None, logging=False):
-        self.func = func
-        self.failedvalue = failedvalue
-        self.exceptions = exceptions or (Exception,)
-        self.logging = logging
-
-    def __call__(self, *args, **kwargs):
-        try:
-            return self.func(*args, **kwargs)
-
-        except self.exceptions as error:
-            if self.logging:
-                logging.warn(type(error).__name__+'::'+str(error))
-            return self.failedvalue
 
 
 class XRun(object):
@@ -176,16 +159,27 @@ class XRun(object):
         run_model = _PickableMethod(self, '_run')
         run_model = _PickableApply(run_model, **kwargs)
         run_model = _AbortableWorker(run_model, timeout=self.timeout)
-        run_model = _ExceptionCatcher(run_model)
 
-        pool = multiprocessing.Pool(self.max_workers or N)
-        r = pool.map_async(run_model, indices, callback=callback)
+        pool = multiprocessing.Pool(self.max_workers or N, init_worker)
+        # use map_async as workaround to KeyboardInterrupt bug of map
+        #res = pool.map_async(run_model, indices, callback=callback).get(1e10)
+        ares = [pool.apply_async(run_model, (i,), callback=callback) for i in indices]
 
-        res = r.get(1e10)
-        successes = sum(ret is not None for ret in res)
+        res = []
+        successes = 0
+        for i,r in enumerate(ares):
+            try:
+                res.append(r.get(1e9))
+                successes += 1
+            except Exception as error:
+                logging.warn("run {} failed:{}:{}".format(i, type(error).__name__, str(error)))
+                res.append(None)
 
-        if successes > 0:
-            logging.info("{} out of {} runs completed successfully".format(successes, N))
+        if successes == N:
+            logging.info("all runs finished successfully")
+
+        elif successes > 0:
+            logging.warn("{} out of {} runs completed successfully".format(successes, N))
         else:
             logging.error("all runs failed")
 
