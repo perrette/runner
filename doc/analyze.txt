@@ -1,4 +1,4 @@
-usage: job analyze [-h] [--out OUT] [-m USER_MODULE]
+usage: job analyze [-h] [--out OUT]
                    [-v OUTPUT_VARIABLES [OUTPUT_VARIABLES ...]] [--stats]
                    [-l NAME=DIST [NAME=DIST ...]] [-J COST [COST ...]]
                    expdir
@@ -12,9 +12,6 @@ optional arguments:
   -h, --help            show this help message and exit
   --out OUT             experiment directory to write the diagnostics to (by
                         default same as expdir)
-  -m USER_MODULE, --user-module USER_MODULE
-                        user-defined python module that contains
-                        ModelInterface subclass
 
 model output:
 

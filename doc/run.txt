@@ -6,11 +6,12 @@ usage: job run [-h]
                [--file-in FILE_IN] [--file-out FILE_OUT]
                [--arg-out-prefix ARG_OUT_PREFIX] [--arg-prefix ARG_PREFIX]
                [--env-prefix ENV_PREFIX] [--env-out ENV_OUT] [-m USER_MODULE]
-               [--default-file DEFAULT_FILE] [--work-dir WORK_DIR]
-               [-p [NAME=SPEC [NAME=SPEC ...]] | -i PARAMS_FILE | --continue]
-               [-j I,J...,START-STOP:STEP,...] [--include-default] [-o EXPDIR]
-               [-a] [--max-workers MAX_WORKERS] [-t TIMEOUT] [--shell]
-               [--echo] [-f]
+               [--default-file DEFAULT_FILE] [--default-params DEFAULT_PARAMS]
+               [--work-dir WORK_DIR] [-p [NAME=SPEC [NAME=SPEC ...]] | -i
+               PARAMS_FILE] [-j I,J...,START-STOP:STEP,...]
+               [--include-default] [-o EXPDIR] [-a]
+               [--max-workers MAX_WORKERS] [-t TIMEOUT] [--shell] [--echo]
+               [-f]
                ...
 
 Run model ensemble
@@ -42,7 +43,6 @@ optional arguments:
                         `VALUE[,VALUE...]` or a range `START:STOP:N`.
   -i PARAMS_FILE, --params-file PARAMS_FILE
                         ensemble parameters file
-  --continue            load params.txt from simulation directory
   -j I,J...,START-STOP:STEP,..., --id I,J...,START-STOP:STEP,...
                         select one or several ensemble members (0-based !),
                         slurm sbatch --array syntax, e.g. `0,2,4` or `0-4:2`
@@ -94,6 +94,8 @@ model configuration:
   --default-file DEFAULT_FILE
                         default param file, required for certain file types
                         (e.g. namelist)
+  --default-params DEFAULT_PARAMS
+                        default param values (optional in most cases)
   --work-dir WORK_DIR   where to execute the model from, by default current
                         directory. Use "{}" for run directory.
 

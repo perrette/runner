@@ -148,7 +148,8 @@ x.add_argument('-p', '--params',
                  nargs='*')
 x.add_argument('-i','--params-file', help='ensemble parameters file')
 x.add_argument('--continue', dest="continue_simu", action='store_true', 
-                 help='load params.txt from simulation directory')
+                 help=argparse.SUPPRESS)
+                 #help='load params.txt from simulation directory')
 
 params_parser.add_argument('-j','--id', type=_typechecker(parse_slurm_array_indices), dest='runid', 
                  metavar="I,J...,START-STOP:STEP,...",
