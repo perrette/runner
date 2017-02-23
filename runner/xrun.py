@@ -89,6 +89,23 @@ class _PickableApply(object):
         return self.func(*args, **kwds)
 
 
+class _ExceptionCatcher(object):
+    def __init__(self, func, failedvalue=None, exceptions=None, logging=False):
+        self.func = func
+        self.failedvalue = failedvalue
+        self.exceptions = exceptions or (Exception,)
+        self.logging = logging
+
+    def __call__(self, *args, **kwargs):
+        try:
+            return self.func(*args, **kwargs)
+
+        except self.exceptions as error:
+            if self.logging:
+                logging.warn(type(error).__name__+'::'+str(error))
+            return self.failedvalue
+
+
 class XRun(object):
 
     def __init__(self, model, params, expdir='./', autodir=False, rundir_template='{}', max_workers=None, timeout=31536000):
@@ -143,6 +160,9 @@ class XRun(object):
             yield self[i]
 
 
+    def _run(self, i, **kwargs):
+        return self[i].run(**kwargs)
+
     def run(self, indices=None, callback=None, **kwargs):
         """Wrapper for multiprocessing.Pool.map
         """
@@ -151,40 +171,21 @@ class XRun(object):
             indices = six.moves.range(N)
         else:
             N = len(indices)
-        pool = multiprocessing.Pool(self.max_workers or N, init_worker)
 
-        # submit
-        ares = []
-        for model in self:
-            run_model = _PickableMethod(model, 'run')
-            run_model_limited = _AbortableWorker(run_model, timeout=self.timeout)
-            r = pool.apply_async(run_model_limited, kwds=kwargs, callback=callback)
-            ares.append(r)
+        # prepare method
+        run_model = _PickableMethod(self, '_run')
+        run_model = _PickableApply(run_model, **kwargs)
+        run_model = _AbortableWorker(run_model, timeout=self.timeout)
+        run_model = _ExceptionCatcher(run_model)
 
-        # get result and handle errors individually
-        res = []
-        sucesses = 0
-        try:
-            for i, r in zip(indices, ares):
-                try:
-                    res.append( r.get() )
-                    sucesses += 1
-                except multiprocessing.TimeoutError:
-                    logging.warn('TIMEOUT: '+str(i))
-                    res.append( None )
-                except KeyboardInterrupt:
-                    raise
-                except Exception as error:
-                    logging.warn(str(i)+' :: '+str(error))
-                    res.append( None )
+        pool = multiprocessing.Pool(self.max_workers or N)
+        r = pool.map_async(run_model, indices, callback=callback)
 
-        finally:
-            # kill any remaining task
-            pool.terminate()
-            pool.close()
+        res = r.get(1e10)
+        successes = sum(ret is not None for ret in res)
 
-        if sucesses > 0:
-            logging.info("{} out of {} runs completed successfully".format(sucesses, N))
+        if successes > 0:
+            logging.info("{} out of {} runs completed successfully".format(successes, N))
         else:
             logging.error("all runs failed")
 
