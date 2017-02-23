@@ -73,7 +73,7 @@ class TestRunBase(unittest.TestCase):
             shutil.rmtree('out') # clean up after each individual test
 
 
-class TestRunInterface(TestRunBase):
+class TestParamsIO(TestRunBase):
 
 
     def test_paramsio_args(self):
@@ -185,8 +185,15 @@ b 1
   "a": 4, 
   "b": 1
 }
-
     """
+
+
+class TestCustomInterface(TestRunBase):
+
+    def test_copy(self):
+        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --file-name params.json --line-sep " " cat {}/params.json')
+        self.assertEqual(out.strip(),self.json.strip())
+        
 
 
 class TestRunSubmit(TestRunBase):

@@ -14,10 +14,10 @@ import subprocess
 from collections import OrderedDict as odict
 from runner.tools import norm
 
-from runner.register import register_job
 from runner.param import ScipyParam
 from runner.model import Model
 from runner.xrun import XRun, XData
+from runner.job.register import register_job
 from runner.job.config import load_config
 from runner.job.model import getinterface
 from runner.job.run import parse_slurm_array_indices, _typechecker, run

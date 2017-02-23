@@ -14,29 +14,26 @@ from __future__ import absolute_import, print_function
 import argparse
 import os, sys
 import json
+import inspect
 from importlib import import_module
 import runner
-from runner import register
 import runner.model as mod
+from runner.job import register
 from runner.model import ModelInterface, Model
 from runner.param import MultiParam, Param, DiscreteParam
 from runner.filetype import (LineSeparator, LineTemplate, TemplateFile, JsonFile)
-import runner.ext.namelist # automatically add Namelist to register
+from runner.ext.namelist import Namelist
 
 
 # model file type
 # ===============
-choices = ['json', 'linesep', 'lineseprev', 'linetemplate', 'template']
-for c in choices:
-    if c in register.filetypes:
-        warnings.warn('registered file type overwrites a default: '+c)
+choices = ['json', 'linesep', 'lineseprev', 'linetemplate', 'template', 'namelist']
 
 filetype = argparse.ArgumentParser('[filetype]', add_help=False, 
                                    formatter_class=argparse.RawDescriptionHelpFormatter, description=__doc__)
-grp = filetype.add_argument_group('filetype', description='file formats to pass parameters from job to model. Enter --help-file-type to see how to register custom filetypes')
+grp = filetype.add_argument_group('filetype', description='file formats to pass parameters from job to model. Enter --help-file-type for additional info')
 
-grp.add_argument('--file-type', help='model params file type',
-                 choices=choices+list(register.filetypes.keys()))
+grp.add_argument('--file-type', help='model params file type', choices=choices)
 grp.add_argument('--file-type-out', help='model output file type',
                  choices=["json","linesep","lineseprev","namelist"])
 grp.add_argument('--line-sep', help='separator for "linesep" and "lineseprev" file types')
@@ -67,17 +64,6 @@ def getfiletype(o, file_type=None, file_name=None):
         # default to basic '{name} {value}' on each line if no extension
         file_type = 'linesep'
 
-    # check register first
-    if file_type in register.filetypes:
-        ft, ext = register.filetypes[file_type]
-        return ft
-
-    if file_type.startswith('.'):
-        for name in register.filetypes:
-            ft, ext = register.filetypes[name]
-            if file_type in ext:
-                return ft
-
     if file_type in ("json", ".json"):
         #ft = json
         ft = JsonFile()
@@ -97,6 +83,9 @@ def getfiletype(o, file_type=None, file_name=None):
         if not o.template_file:
             raise ValueError("template_file is required for 'template' file type")
         ft = TemplateFile(o.template_file)
+
+    elif file_type in ("namelist", ".nml"):
+        ft = Namelist()
 
     else:
         _print_filetypes()
@@ -130,7 +119,7 @@ grp.add_argument('--env-out', default=mod.ENV_OUT,
 custommodel = argparse.ArgumentParser(add_help=False, parents=[])
 grp = custommodel.add_argument_group('user-customed model')
 grp.add_argument('-m','--user-module', 
-                 help='user-defined python module that contains custom file type, model definitions, necessary for postprocessing (see `runner.register.define`)')
+                 help='user-defined python module that contains custom model definition')
 
 modelconfig = argparse.ArgumentParser(add_help=False, parents=[custommodel])
 grp = modelconfig.add_argument_group('model configuration')
@@ -157,34 +146,55 @@ def getdefaultparams(o, filetype=None, module=None):
     return default_params
 
 
+def getcustominterface(user_module):
+    sys.path.insert(0, os.getcwd())
+
+    if '::' in user_module:
+        user_module, name = user_module.split('::')
+    else:
+        name = None
+
+    user_module, ext = os.path.splitext(user_module)
+    m = import_module(user_module)
+    interfaces = insert.getmembers(m, isinstance(x, ModelInterface))
+    if not interfaces:
+        modelconfig.error('no runner.model.ModelInterface instance found')
+
+    # pick by name
+    if name:
+        interfaces = [nm for nm,val in interfaces if nm == name]
+        if not interfaces:
+            modelconfig.error('name {} not found'.format(name))
+
+    if len(interfaces) > 1:
+        logging.warn('more than one runner.model.ModelInterface instance found, pick one')
+    return interfaces[0][1]
+
+
 def getinterface(o):
     """return model interface
     """
+    if o.command and o.command[0] == '--':
+        o.command = o.command[1:]
+
+    # user-defined model?
     if o.user_module:
-        sys.path.insert(0, os.getcwd())
-        import_module(o.user_module)
+        model = getcustominterface(o.user_module)
+        # append any new arguments
+        if o.command:
+            model.args.extend(o.command)
+        return model
 
-    # check register first (from import module above)
-    modelargs = register.model.copy() # command, setup, getvar, filetype
+    # default model
+    modelargs = {}
 
-    # param and output file types
-    loads = modelargs.pop('loads')
-    dumps = modelargs.pop('dumps')
-    modelargs = {} # command, setup, getvar, filetype
-
-    if loads or dumps:
-        filetype = filetype_out = FileTypeWrapper(dumps, loads)
-    else:
-        filetype = getfiletype(o, o.file_type, o.file_in)
-        filetype_out = getfiletype(o, o.file_type_out, o.file_out)
+    filetype = getfiletype(o, o.file_type, o.file_in)
+    filetype_out = getfiletype(o, o.file_type_out, o.file_out)
 
     modelargs.update(dict(
         filetype=filetype, filename=o.file_in,
         filetype_output=filetype_out, filename_output=o.file_out,
     ))
-
-    if o.command and o.command[0] == '--':
-        o.command = o.command[1:]
 
     modelargs.update( dict(args=o.command, 
                            work_dir=o.work_dir, 

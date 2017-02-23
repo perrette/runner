@@ -3,7 +3,7 @@ import numpy as np
 from runner.param import MultiParam, Param, DiscreteParam
 import runner.resample as xp
 from runner.xparams import XParams, Resampler
-from runner.register import register_job
+from runner.job.register import register_job
 
 # generate params.txt (XParams)
 # =============================

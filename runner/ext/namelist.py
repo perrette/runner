@@ -8,7 +8,6 @@ from collections import OrderedDict as odict
 import re
 from itertools import groupby
 from runner.filetype import FileType
-from runner.register import register_filetype
 
 class ParamNml(object):
     def __init__(self, group, name, value, help=None):
@@ -34,8 +33,6 @@ class Namelist(FileType):
     def loads(self, string):
         params = parse_nml(string)
         return odict([(p.group + self.sep + p.name, p.value) for p in params])
-
-register_filetype("namelist", Namelist(), '.nml')
 
 
 def parse_nml(string, ignore_comments=False):

@@ -71,9 +71,11 @@ Run model ensemble
 The canonical form of `job run` is:
 
     job run [OPTIONS] -- EXECUTABLE [OPTIONS]
+    job run [OPTIONS] -m CUSTOM
 
 where `EXECUTABLE` is your model executable or a command, followed by its
-arguments. Note the `--` that separates `job run` arguments `OPTIONS` from the
+arguments, and `CUSTOM` indicates a custom model interface. 
+Note the `--` that separates `job run` arguments `OPTIONS` from the
 executable.  When there is no ambiguity in the command-line arguments (as seen
 by python's argparse) it may be dropped. `job run` options determine in which
 manner to run the model, which parameter values to vary (the ensemble), and how
@@ -81,7 +83,11 @@ to communicate these parameter values to the model.  The most straightforward
 way it to use formattable command-line argument. For instance using canonical
 UNIX command `echo` as executable:
 
-    job run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {}
+    job run -p a=2,3,4 b=0,1 -o out -- echo --a {a} --b {b} --out {}
+
+The standard output is written in log files under `out/RUNID`:
+
+    cat out/*/log.out
 
     --a 2 --b 0 --out out/0
     --a 2 --b 1 --out out/1
@@ -100,15 +106,17 @@ The `job run` parameter `-o/--out-dir` indicates experiment directory, under
 which individual ensemble member run directories `{}` will be created. There
 are a number of options to determine how this should be done (e.g.
 `-a/--auto-dir` to create sub-directory based on parameter names and values).
-Without `--shell`, the command would be executed via python `multiprocessing.Pool` 
-and the output would saved to log files.
+The command is executed in the background  and the standard output is
+saved to log files. 
 
 There are a number of other ways to communicate parameter values to your model
 (see also `--arg-prefix` parameter, e.g. with `--arg-prefix "--{} "` to achieve
 the same result with less redundancy, when parameter names match). Parameters
 can also be passed via a file:
 
-    job run -p a=2,3,4 b=0,1 -o out --file-name params.txt --file-type linesep --line-sep " " --shell cat {}/params.txt
+    job run -p a=2,3,4 b=0,1 -o out --file-name params.txt --file-type linesep --line-sep " " echo
+
+    cat out/*/params.txt
 
     a 2
     b 0
@@ -126,7 +134,9 @@ can also be passed via a file:
 with a number of other file types. File types that involve grouping, such as
 namelist, require a group prefix with a `.` separator in the parameter name:
 
-    job run -p g1.a=0,1 g2.b=2. -o out --file-name params.txt --file-type namelist --shell  cat {}/params.txt
+    job run -p g1.a=0,1 g2.b=2. -o out --file-name params.txt --file-type namelist echo
+
+    cat out/*/params.txt
 
     &g1
      a               = 0          
@@ -146,15 +156,21 @@ argument (e.g. `--env-prefix ""` for direct access via `$NAME` within the
 script).
 
 
+Custom model interface
+----------------------
+For more complex model setup you may subclass `runner.model.ModelInterface` methods
+`setup` and `postprocess`. See [examples/custom.py](examples/custom.py) how to do that.
+
 
 Note for use on the cluster
-===========================
+---------------------------
 The current version makes use of python's multiprocessing.Pool to handle parallel
 tasks. When running on the cluster, it is up to the user to allocate ressources, via
 sbatch, e.g. by simply writing the command in a bash script:
 
     
     # write job script
-    echo job run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {} > jobrun.sh
+    echo job run -p a=2,3,4 b=0,1 -o out -- echo --a {a} --b {b} --out {} > jobrun.sh
+
     # submit with slurm with 10 procs
     sbatch -n 10 jobrun.sh

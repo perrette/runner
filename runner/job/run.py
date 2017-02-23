@@ -71,9 +71,8 @@ from runner.model import Model
 #from runner.xparams import XParams
 from runner.xrun import XParams, XRun, XPARAM
 from runner.submit import submit_job
-from runner import register
+from runner.job import register
 from runner.job.model import model_parser as model, modelwrapper, getinterface, modelconfig, getdefaultparams
-import runner.job.stats  # register !
 from runner.job.config import write_config, json_config, filtervars
 import os
 

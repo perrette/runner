@@ -6,7 +6,7 @@ import sys, os
 from importlib import import_module
 import argparse
 import logging
-from runner import register
+from runner.job import register
 from .config import json_config, load_config, __version__
 
 

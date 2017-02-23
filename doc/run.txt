@@ -49,7 +49,7 @@ optional arguments:
   --include-default     also run default model version (with no parameters)
 
 filetype:
-  file formats to pass parameters from job to model. Enter --help-file-type to see how to register custom filetypes
+  file formats to pass parameters from job to model. Enter --help-file-type for additional info
 
   --file-type {json,linesep,lineseprev,linetemplate,template,namelist}
                         model params file type
@@ -86,9 +86,8 @@ interface:
 
 user-customed model:
   -m USER_MODULE, --user-module USER_MODULE
-                        user-defined python module that contains custom file
-                        type, model definitions, necessary for postprocessing
-                        (see `runner.register.define`)
+                        user-defined python module that contains custom model
+                        definition
 
 model configuration:
   --default-file DEFAULT_FILE
