@@ -124,6 +124,7 @@ grp.add_argument('-m','--user-module',
 modelconfig = argparse.ArgumentParser(add_help=False, parents=[custommodel])
 grp = modelconfig.add_argument_group('model configuration')
 grp.add_argument('--default-file', help='default param file, required for certain file types (e.g. namelist)')
+grp.add_argument('--default-params', default=[], help='default param values (optional in most cases)')
 grp.add_argument('--work-dir', default=None, 
                  help='where to execute the model from, by default current directory. Use "{}" for run directory.')
 modelconfig.add_argument('command', metavar='...', nargs=argparse.REMAINDER, default=[], help='model executable and its command-line arguments (need to be last on the command-line, possibly separated from other arguments with `--`). \
@@ -142,7 +143,7 @@ def getdefaultparams(o, filetype=None, module=None):
             model_parser.error('need to provide filetype along with default_file')
         default_params = filetype.load(open(o.default_file))
     else:
-        default_params = []
+        default_params = getattr(o, 'default_params', [])
     return default_params
 
 
@@ -192,16 +193,20 @@ def getinterface(o):
     filetype = getfiletype(o, o.file_type, o.file_in)
     filetype_out = getfiletype(o, o.file_type_out, o.file_out)
 
-    modelargs.update(dict(
-        filetype=filetype, filename=o.file_in,
-        filetype_output=filetype_out, filename_output=o.file_out,
-    ))
+    return ModelInterface(
+        args=o.command, 
+        work_dir=o.work_dir, 
 
-    modelargs.update( dict(args=o.command, 
-                           work_dir=o.work_dir, 
-                           arg_out_prefix=o.arg_out_prefix, arg_param_prefix=o.arg_prefix, 
-                           env_out=o.env_out, env_prefix=o.env_prefix) )
+        arg_out_prefix=o.arg_out_prefix, 
+        arg_param_prefix=o.arg_prefix, 
 
-    model = ModelInterface(**modelargs)
+        defaults=getdefaultparams(o, filetype),
 
-    return model
+        env_out=o.env_out, 
+        env_prefix=o.env_prefix,
+
+        filetype=filetype, 
+        filename=o.file_in,
+        filetype_output=filetype_out, 
+        filename_output=o.file_out,
+    )

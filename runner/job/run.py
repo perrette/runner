@@ -71,7 +71,7 @@ from runner.model import Model
 #from runner.xparams import XParams
 from runner.xrun import XParams, XRun, XPARAM
 from runner.job import register
-from runner.job.model import model_parser as model, modelwrapper, getinterface, modelconfig, getdefaultparams
+from runner.job.model import model_parser as model, modelwrapper, getinterface, modelconfig
 from runner.job.config import write_config, json_config, filtervars
 import os
 
@@ -182,25 +182,14 @@ experiment = argparse.ArgumentParser(add_help=False, parents=[modelconfig, model
 experiment.add_argument('-a','--auto-dir', action='store_true')
 
 
-#def getmodel(o):
-#
-#    # ...default values
-#    #default_params = getdefaultparams(o, interface.filetype)
-#
-#    #for p in default_params:
-#    #    if p.name in prior.names:
-#    #        prior[p.name].default = p.value
-#
-#
-#    return Model(interface, prior=None)
-
-
 def run_post(o):
 
     if o.echo:
         o.model = ['echo'] + o.model
         o.shell = True
         o.force = True
+
+    model = Model(getinterface(o))
 
     pfile = os.path.join(o.expdir, XPARAM)
 
@@ -218,8 +207,6 @@ def run_post(o):
     else:
         xparams = XParams(np.empty((0,0)), names=[])
         o.include_default = True
-
-    model = Model(getinterface(o))
 
     xrun = XRun(model, xparams, expdir=o.expdir, autodir=o.auto_dir, max_workers=o.max_workers, timeout=o.timeout)
     # create dir, write params.txt file, as well as experiment configuration

@@ -28,6 +28,7 @@ class ModelInterface(object):
                  env_out=ENV_OUT, env_prefix=None,
                  work_dir=None, 
                  filetype_output=None, filename_output=None,
+                 defaults=None,
                  ):
         """
         * args : [str] or str
@@ -52,6 +53,7 @@ class ModelInterface(object):
         * filetype_output : FileType instance or anything with `load` method, optional
         * filename_output : relative path to rundir, optional
             filename for output variable (also needs filetype_output)
+        * defaults : dict, optional, default parameters
         """
         if isinstance(args, six.string_types):
             args = args.split()
@@ -65,6 +67,7 @@ class ModelInterface(object):
         self.env_prefix = env_prefix
         self.env_out = env_out
         self.work_dir = work_dir or os.getcwd() 
+        self.defaults = defaults or {}
 
         # check !
         if filename:
@@ -85,14 +88,14 @@ class ModelInterface(object):
         prefix = self.arg_param_prefix.format(name, value)
         return (prefix + str(value)).split()
 
-    def _format_args(self, rundir, **params_kw):
+    def _format_args(self, rundir, **params):
         """two-pass formatting: first rundir and params with `{}` and `{NAME}`
         then `{{rundir}}`
         """
-        return [arg.format(rundir, **params_kw).format(rundir=rundir) 
+        return [arg.format(rundir, **params).format(rundir=rundir) 
                 for arg in self.args[1:]]
 
-    def command(self, rundir, params_kw):
+    def command(self, rundir, params):
         if not self.args:
             msg = 'no executable provided, just echo this message and apply postproc'
             logging.info(msg)
@@ -106,15 +109,15 @@ class ModelInterface(object):
 
         args = [exe] 
         args += self._command_out(rundir)
-        args += self._format_args(rundir, **params_kw)
+        args += self._format_args(rundir, **params)
 
         # prepare modified command-line arguments with appropriate format
-        for name, value in params_kw.items():
+        for name, value in params.items():
             args += self._command_param(name, value)
 
         return args
 
-    def environ(self, rundir, params_kw, env=None):
+    def environ(self, rundir, params, env=None):
         """define environment variables to pass to model
         """
         if self.env_prefix is None:
@@ -124,7 +127,7 @@ class ModelInterface(object):
         context = {}
         if self.env_out is not None:
             context[self.env_out] = rundir 
-        context.update(params_kw)
+        context.update(params)
 
         # format them with appropriate prefix
         update = {self.env_prefix+k:str(context[k])
@@ -167,7 +170,7 @@ class ModelInterface(object):
                       indent=2, 
                       default=lambda x: x.tolist() if hasattr(x, 'tolist') else x)
 
-    def setup(self, rundir, params_kw):
+    def setup(self, rundir, params):
         """Write param file to run directory (assumed already created)
         can be subclassed by the user
         """
@@ -176,7 +179,7 @@ class ModelInterface(object):
             assert self.filetype
             #TODO: rename filename --> file_in OR file_param
             filepath = os.path.join(rundir, self.filename)
-            self.filetype.dump(params_kw, open(filepath, 'w'))
+            self.filetype.dump(params, open(filepath, 'w'))
             
 
     def postprocess(self, rundir):
@@ -190,8 +193,17 @@ class ModelInterface(object):
         return self.filetype_output.load(open(os.path.join(rundir, self.filename_output)))
 
 
-    def run(self, rundir, params_kw, background=True, shell=False):
+    def run(self, rundir, params, background=True, shell=False):
         """Run the model
+
+        Arguments:
+
+        * rundir : run directory
+        * params : dict of parameters (will be updated with default params)
+        * background : if False, no log file will be created
+        * shell : passed to subprocess
+
+        Steps:
 
         - create directory if not existing
         - setup() : write param file if needed
@@ -202,6 +214,9 @@ class ModelInterface(object):
         # create run directory
         if not os.path.exists(rundir):
             os.makedirs(rundir)
+
+        params_kw = odict(self.defaults)
+        params_kw.update(params)
 
         args = self.command(rundir, params_kw)
         workdir = self.workdir(rundir)
@@ -229,6 +244,8 @@ class ModelInterface(object):
 
         # wait for execution and postprocess
         try:
+            if shell:
+                args = " ".join(args)
             subprocess.check_call(args, env=env, cwd=workdir, 
                                   stdout=stdout, stderr=stderr, shell=shell)
             info['status'] = 'success'

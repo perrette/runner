@@ -30,9 +30,6 @@ analyze.add_argument('expdir', default=EXPDIR,
 analyze.add_argument('--out', default=None,
                                help='experiment directory to write the diagnostics to (by default same as expdir)')
 
-analyze.add_argument('-m','--user-module', 
-                 help='user-defined python module that contains ModelInterface subclass')
-
 grp =analyze.add_argument_group("model output", description='')
 
 grp.add_argument("-v", "--output-variables", nargs='+', default=[],
@@ -58,7 +55,7 @@ grp.add_argument('-J', '--cost', nargs='+', default=[], help='output variables t
 def analyze_post(o):
 
     cfg = load_config(os.path.join(o.expdir, EXPCONFIG))
-    cfg["user_module"] = o.user_module
+    cfg['expdir'] = o.expdir
     interface = getinterface(argparse.Namespace(**cfg))
 
     likelihood = o.likelihood + [Param.parse(name+"=N?0,1") for name in o.cost]
