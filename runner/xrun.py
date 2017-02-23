@@ -64,18 +64,29 @@ class _AbortableWorker(object):
             raise
 
 
-class _PickableMethod(_AbortableWorker):
+class _PickableMethod(object):
     """ make a class method pickable (because defined at module-level) 
     for use in multiprocessing
     """
-    def __init__(self, obj, method, timeout=None):
+    def __init__(self, obj, method):
         self.obj = obj
         self.method = method
-        self.timeout = timeout
 
-    @property
-    def func(self):
-        return getattr(self.obj, self.method)
+    def __call__(self, *args, **kwargs):
+        return getattr(self.obj, self.method)(*args, **kwargs)
+
+
+class _PickableApply(object):
+    def __init__(self, func, *args, **kwds):
+        self.func = func
+        self.args = args
+        self.kwds = kwds
+
+    def __call__(self, *args, **kwargs):
+        kwds = self.kwds.copy()
+        kwds.update(kwargs)
+        args = self.args + args
+        return self.func(*args, **kwds)
 
 
 class XRun(object):
@@ -145,8 +156,9 @@ class XRun(object):
         # submit
         ares = []
         for model in self:
-            run_model = _PickableMethod(model, 'run', timeout=self.timeout)
-            r = pool.apply_async(run_model, kwds=kwargs, callback=callback)
+            run_model = _PickableMethod(model, 'run')
+            run_model_limited = _AbortableWorker(run_model, timeout=self.timeout)
+            r = pool.apply_async(run_model_limited, kwds=kwargs, callback=callback)
             ares.append(r)
 
         # get result and handle errors individually
