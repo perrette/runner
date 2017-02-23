@@ -45,25 +45,37 @@ def init_worker():
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
-def abortable_worker(func, *args, **kwargs):
-    # to handle TimeOut individually and freeup ressources
-	# http://stackoverflow.com/a/29495039/2192272
+class _AbortableWorker(object):
+    """ to handle TimeOut individually and freeup ressources
+    http://stackoverflow.com/a/29495039/2192272
+    """
+    def __init__(self, func, timeout=None):
+        self.func = func
+        self.timeout = timeout
 
-    timeout = kwargs.pop('timeout', None)
-    p = ThreadPool(1)
-    res = p.apply_async(func, args=args, kwds=kwargs)
-    try:
-        out = res.get(timeout)  # Wait timeout seconds for func to complete.
-        return out
-    except multiprocessing.TimeoutError:
-        p.terminate()
-        raise
+    def __call__(self, *args, **kwargs):
+        p = ThreadPool(1)
+        res = p.apply_async(self.func, args=args, kwds=kwargs)
+        try:
+            out = res.get(self.timeout)  # Wait timeout seconds for func to complete.
+            return out
+        except multiprocessing.TimeoutError:
+            p.terminate()
+            raise
 
 
-def run_model(xrun, i, **kwargs):
-    " wrapper to make the function pickable "
-    return xrun[i].run(**kwargs)
+class _PickableMethod(_AbortableWorker):
+    """ make a class method pickable (because defined at module-level) 
+    for use in multiprocessing
+    """
+    def __init__(self, obj, method, timeout=None):
+        self.obj = obj
+        self.method = method
+        self.timeout = timeout
 
+    @property
+    def func(self):
+        return getattr(self.obj, self.method)
 
 
 class XRun(object):
@@ -134,9 +146,10 @@ class XRun(object):
 
         # submit
         ares = []
-        kwargs['timeout'] = self.timeout
-        for i in indices:
-            ares.append(pool.apply_async(abortable_worker, (run_model, self, i,), kwargs))
+        for model in self:
+            run_model = _PickableMethod(model, 'run', timeout=self.timeout)
+            r = pool.apply_async(run_model, kwds=kwargs)
+            ares.append(r)
 
         # get result and handle errors individually
         res = []
