@@ -175,6 +175,17 @@ class ModelInterface(object):
             #TODO: rename filename --> file_in OR file_param
             filepath = os.path.join(rundir, self.filename)
             self.filetype.dump(params_kw, open(filepath, 'w'))
+            
+
+    def postprocess(self, rundir):
+        """return model output as dictionary or None
+        """
+        if not self.filename_output:
+            info = json.load(open(self.runfile(rundir)))
+            return info.pop("output", {})
+
+        assert self.filetype_output, "filetype_output is required"
+        return self.filetype_output.load(open(os.path.join(rundir, self.filename_output)))
 
 
     def run(self, rundir, params_kw, background=True, shell=False):
@@ -235,15 +246,11 @@ class ModelInterface(object):
         return output
 
 
-    def postprocess(self, rundir):
-        """return model output as dictionary or None
+    def __call__(self, rundir, params):
+        """freeze run directory and parameters
         """
-        if not self.filename_output:
-            info = json.load(open(self.runfile(rundir)))
-            return info.pop("output", {})
-
-        assert self.filetype_output, "filetype_output is required"
-        return self.filetype_output.load(open(os.path.join(rundir, self.filename_output)))
+        model = Model(self)
+        return model(rundir, params)
 
 
 class Model(object):
