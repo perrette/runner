@@ -80,14 +80,13 @@ class _PickableMethod(_AbortableWorker):
 
 class XRun(object):
 
-    def __init__(self, model, params, expdir='./', autodir=False, rundir_template='{}', max_workers=None, chunksize=None, timeout=31536000):
+    def __init__(self, model, params, expdir='./', autodir=False, rundir_template='{}', max_workers=None, timeout=31536000):
         self.model = model
         self.params = params  # XParams class
         self.expdir = expdir
         self.autodir = autodir
         self.rundir_template = rundir_template
         self.max_workers = max_workers
-        self.chunksize = chunksize or 1
         self.timeout = timeout
  
     def setup(self, force=False):
@@ -133,7 +132,7 @@ class XRun(object):
             yield self[i]
 
 
-    def run(self, indices=None, **kwargs):
+    def run(self, indices=None, callback=None, **kwargs):
         """Wrapper for multiprocessing.Pool.map
         """
         if indices is None:
@@ -141,14 +140,13 @@ class XRun(object):
             indices = six.moves.range(N)
         else:
             N = len(indices)
-        pool = multiprocessing.Pool(self.max_workers or max(1,N//self.chunksize), 
-                                    init_worker)
+        pool = multiprocessing.Pool(self.max_workers or N, init_worker)
 
         # submit
         ares = []
         for model in self:
             run_model = _PickableMethod(model, 'run', timeout=self.timeout)
-            r = pool.apply_async(run_model, kwds=kwargs)
+            r = pool.apply_async(run_model, kwds=kwargs, callback=callback)
             ares.append(r)
 
         # get result and handle errors individually
