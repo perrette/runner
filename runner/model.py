@@ -12,7 +12,6 @@ from runner import __version__
 from runner.filetype import FileType
 from runner.param import Param, MultiParam
 from runner.tools import parse_val
-from runner.submit import submit_job
 #from runner.model.generic import get_or_make_filetype
 
 # default values
@@ -178,8 +177,8 @@ class ModelInterface(object):
             self.filetype.dump(params_kw, open(filepath, 'w'))
 
 
-    def run(self, rundir, params_kw, background=True, submit=False, **kwargs):
-        """Run the model (background subprocess, submit to slurm...)
+    def run(self, rundir, params_kw, background=True, shell=False):
+        """Run the model
 
         - create directory if not existing
         - setup() : write param file if needed
@@ -193,7 +192,7 @@ class ModelInterface(object):
 
         args = self.command(rundir, params_kw)
         workdir = self.workdir(rundir)
-        env = self.environ(rundir, params_kw)
+        env = self.environ(rundir, params_kw, env=os.environ.copy())
 
         # also write parameters in a format runner understands, for the record
         info = odict()
@@ -206,47 +205,32 @@ class ModelInterface(object):
 
         self.setup(rundir, params_kw)
 
-        output = kwargs.pop('output', os.path.join(rundir, 'log.out'))
-        error = kwargs.pop('error', os.path.join(rundir, 'log.err'))
-
-        if submit:
-            jobfile = kwargs.pop('jobfile', os.path.join(rundir, 'submit.sh'))
-            p = submit_job(" ".join(args), env=env, workdir=workdir, 
-                              output=output, error=error, jobfile=jobfile, **kwargs)
-
+        if background:
+            output = os.path.join(rundir, 'log.out')
+            error = os.path.join(rundir, 'log.err')
+            stdout = open(output, 'w')
+            stderr = open(error, 'w')
         else:
-            if background:
-                stdout = open(output, 'w')
-                stderr = open(error, 'w')
-            else:
-                stdout = None
-                stderr = None
-
-            try:
-                if env is not None:
-                    env2 = os.environ.copy()
-                    env2.update(env)
-                else:
-                    env2=None
-                p = subprocess.Popen(args, env=env2, cwd=workdir, 
-                                     stdout=stdout, stderr=stderr)
-            except OSError as error:
-                raise OSError("FAILED TO EXECUTE: `"+" ".join(args)+"` FROM `"+workdir+"`")
+            stdout = None
+            stderr = None
 
         # wait for execution and postprocess
-        ret = p.wait()
-
-        if ret == 0:
+        try:
+            subprocess.check_call(args, env=env, cwd=workdir, 
+                                  stdout=stdout, stderr=stderr, shell=shell)
             info['status'] = 'success'
-            try:
-                info['output'] = output = self.postprocess(rundir)
-            except Exception as error:
-                logging.warn("error during postprocessing: "+str(error))
-            self._write(rundir, info)
-        else:
+            info['output'] = output = self.postprocess(rundir)
+
+        except OSError as error:
             info['status'] = 'failed'
+            raise OSError("FAILED TO EXECUTE: `"+" ".join(args)+"` FROM `"+workdir+"`")
+
+        except:
+            info['status'] = 'failed'
+            raise
+
+        finally:
             self._write(rundir, info)
-            raise RuntimeError('model run failed :: see log.err')
 
         return output
 
@@ -341,10 +325,10 @@ class FrozenModel(object):
         }, update=True)
 
 
-    def run(self, background=True, submit=False, **kwargs):
-        """Run the model (background subprocess, submit to slurm...)
+    def run(self, background=True, shell=False):
+        """Run the model
         """
-        self.output = self.model.interface.run(self.rundir, self.params, submit=submit, background=background, **kwargs)
+        self.output = self.model.interface.run(self.rundir, self.params, background=background, shell=shell)
         self.status = "success"
         return self
 
@@ -353,4 +337,3 @@ class FrozenModel(object):
         self.output = self.model.interface.postprocess(self.rundir)
         self.save()
         return self
-
