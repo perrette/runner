@@ -14,8 +14,16 @@ class MyInterface(ModelInterface):
 
 
     def postprocess(self, rundir):
-        return json.load(open(os.path.join(rundir, "output.json")))
+        return json.load(open(os.path.join(rundir, "params.json")))
 
 
-# ModelInterface' first argument is a command
-copy = MyInterface('cp {}/params.json {}/output.json')
+    def command(self, rundir, params):
+        if not self.args:
+            return ['echo']  # just so that it does not fail
+        else:
+            return super(MyInterface, self).command(rundir, params)
+
+
+# ModelInterface' first argument is a command, leave empty in this example
+# since we overwrite "command"
+copy = MyInterface('', work_dir="{}")
