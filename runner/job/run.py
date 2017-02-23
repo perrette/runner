@@ -113,7 +113,7 @@ def _typechecker(type):
         return string
 
 submit = argparse.ArgumentParser(add_help=False)
-grp = submit.add_argument_group("simulation mode (submit, background...)")
+grp = submit.add_argument_group("simulation modes")
 #grp.add_argument('--batch-script', help='')
 #x = grp.add_mutually_exclusive_group()
 grp.add_argument('--max-workers', type=int, 
@@ -126,7 +126,7 @@ grp.add_argument('--echo', action='store_true',
 #grp.add_argument('-b', '--array', action='store_true', 
 #                 help='submit using sbatch --array (faster!), EXPERIMENTAL)')
 grp.add_argument('-f', '--force', action='store_true', 
-                 help='perform run even in an existing directory')
+                 help='perform run even if params.txt already exists directory')
 
 folders = argparse.ArgumentParser(add_help=False)
 grp = folders.add_argument_group("simulation settings")
@@ -147,11 +147,15 @@ x.add_argument('-p', '--params',
                  metavar="NAME=SPEC",
                  nargs='*')
 x.add_argument('-i','--params-file', help='ensemble parameters file')
+x.add_argument('--continue', dest="continue_simu", action='store_true', 
+                 help='load params.txt from simulation directory')
+
 params_parser.add_argument('-j','--id', type=_typechecker(parse_slurm_array_indices), dest='runid', 
                  metavar="I,J...,START-STOP:STEP,...",
                  help='select one or several ensemble members (0-based !), \
 slurm sbatch --array syntax, e.g. `0,2,4` or `0-4:2` \
     or a combination of these, `0,2,4,5` <==> `0-4:2,5`')
+
 params_parser.add_argument('--include-default', 
                   action='store_true', 
                   help='also run default model version (with no parameters)')
@@ -178,32 +182,17 @@ experiment = argparse.ArgumentParser(add_help=False, parents=[modelconfig, model
 experiment.add_argument('-a','--auto-dir', action='store_true')
 
 
-def getmodel(o):
-
-    interface = getinterface(o)
-
-    # prior parameter distributions
-    if getattr(o, 'params', None):
-        prior_params = o.params
-
-    elif getattr(o, 'params_file', None):
-        xparam = XParams(np.empty((0,0)), names=[])
-        prior_params = [Param(name) for name in xparam.names]
-
-    else:
-        prior_params = []
-
-    prior = MultiParam(prior_params)
-
-    # ...default values
-    default_params = getdefaultparams(o, interface.filetype)
-
-    for p in default_params:
-        if p.name in prior.names:
-            prior[p.name].default = p.value
-
-
-    return Model(interface, prior)
+#def getmodel(o):
+#
+#    # ...default values
+#    #default_params = getdefaultparams(o, interface.filetype)
+#
+#    #for p in default_params:
+#    #    if p.name in prior.names:
+#    #        prior[p.name].default = p.value
+#
+#
+#    return Model(interface, prior=None)
 
 
 def run_post(o):
@@ -213,8 +202,15 @@ def run_post(o):
         o.shell = True
         o.force = True
 
+    pfile = os.path.join(o.expdir, XPARAM)
+
+    if o.continue_simu:
+        o.params_file = pfile
+        o.force = True
+
     if o.params_file:
         xparams = XParams.read(o.params_file)
+
     elif o.params:
         prior = MultiParam(o.params)
         xparams = prior.product() # only product allowed as direct input
@@ -223,13 +219,13 @@ def run_post(o):
         xparams = XParams(np.empty((0,0)), names=[])
         o.include_default = True
 
-    model = getmodel(o) 
+    model = Model(getinterface(o))
 
     xrun = XRun(model, xparams, expdir=o.expdir, autodir=o.auto_dir, max_workers=o.max_workers, timeout=o.timeout)
     # create dir, write params.txt file, as well as experiment configuration
     try:
-        xrun.setup(force=o.force)  
-        pfile = os.path.join(o.expdir, XPARAM)
+        if not o.continue_simu:
+            xrun.setup(force=o.force)  
     except RuntimeError as error:
         print("ERROR :: "+str(error))
         print("Use -f/--force to bypass this check")

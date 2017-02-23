@@ -7,7 +7,7 @@ usage: job run [-h]
                [--arg-out-prefix ARG_OUT_PREFIX] [--arg-prefix ARG_PREFIX]
                [--env-prefix ENV_PREFIX] [--env-out ENV_OUT] [-m USER_MODULE]
                [--default-file DEFAULT_FILE] [--work-dir WORK_DIR]
-               [-p [NAME=SPEC [NAME=SPEC ...]] | -i PARAMS_FILE]
+               [-p [NAME=SPEC [NAME=SPEC ...]] | -i PARAMS_FILE | --continue]
                [-j I,J...,START-STOP:STEP,...] [--include-default] [-o EXPDIR]
                [-a] [--max-workers MAX_WORKERS] [-t TIMEOUT] [--shell]
                [--echo] [-f]
@@ -42,6 +42,7 @@ optional arguments:
                         `VALUE[,VALUE...]` or a range `START:STOP:N`.
   -i PARAMS_FILE, --params-file PARAMS_FILE
                         ensemble parameters file
+  --continue            load params.txt from simulation directory
   -j I,J...,START-STOP:STEP,..., --id I,J...,START-STOP:STEP,...
                         select one or several ensemble members (0-based !),
                         slurm sbatch --array syntax, e.g. `0,2,4` or `0-4:2`
@@ -104,7 +105,7 @@ simulation settings:
   -a, --auto-dir        run directory named according to parameter values
                         instead of run `id`
 
-simulation mode (submit, background...):
+simulation modes:
   --max-workers MAX_WORKERS
                         number of workers for parallel processing (need to be
                         allocated, e.g. via sbatch) -- default to the number
@@ -116,7 +117,8 @@ simulation mode (submit, background...):
   --echo                display commands instead of running them (but does
                         setup output directory). Alias for --shell --force
                         echo [model args ...]
-  -f, --force           perform run even in an existing directory
+  -f, --force           perform run even if params.txt already exists
+                        directory
 
 Examples
 --------

@@ -274,16 +274,15 @@ class Model(object):
     def __call__(self, rundir, params, output=None):
         """freeze model with rundir and params
         """
-        # replace missing params with default values, get rid of params that are not defined
-        params = self.prior(**params).as_dict()
-        output = self.likelihood(**(output or {})).as_dict()
+        #params = self.prior(**params).as_dict()
+        #output = self.likelihood(**(output or {})).as_dict()
         return FrozenModel(self, rundir, params, output)
 
 
 class FrozenModel(object):
     """'Frozen' model instance representing a model run, with fixed rundir, params and output variables
     """
-    def __init__(self, model, rundir, params, output):
+    def __init__(self, model, rundir, params, output=None):
         """
         params : parameters as (possibly ordered) dict
 
@@ -292,7 +291,7 @@ class FrozenModel(object):
         self.model = model
         self.rundir = rundir
         self.params = params
-        self.output = output
+        self.output = output or {}
         self.status = None
 
     @property
