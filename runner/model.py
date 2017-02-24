@@ -3,7 +3,7 @@ import subprocess
 import os
 import logging
 import sys
-import json
+import json, pickle
 import datetime
 from collections import OrderedDict as odict, namedtuple
 import six
@@ -284,7 +284,7 @@ class Model(object):
         * likelihood : [Param], optional
             list of model output variables distributions (output)
         """
-        self.interface = interface
+        self.interface = interface or ModelInterface()
         self.prior = MultiParam(prior or [])
         self.likelihood = MultiParam(likelihood or [])
 
@@ -294,6 +294,46 @@ class Model(object):
         #params = self.prior(**params).as_dict()
         #output = self.likelihood(**(output or {})).as_dict()
         return FrozenModel(self, rundir, params, output)
+
+
+    @classmethod
+    def files(cls, folder, prefix=""):
+        return (os.path.join(folder, prefix+'interface.pickle'),
+                os.path.join(folder, prefix+'prior.json'),
+                os.path.join(folder, prefix+'likelihood.json'))
+
+    def write(self, folder, prefix="", force=False):
+
+        fi, fp, fl = self.files(folder, prefix)
+        for f in fi, fp, fl:
+            if os.path.exists(f) and not force:
+                raise IOError("Model.write: file already exists:"+f)
+
+        with open(fi,'w') as f:
+            pickle.dump(self.interface, f)
+
+        with open(fp,'w') as f:
+            json.dump({'prior':[p.as_dict() for p in self.prior]}, f)
+
+        with open(fl,'w') as f:
+            json.dump({'likelihood':[p.as_dict() for p in self.likelihood]}, f)
+
+
+    @classmethod
+    def read(cls, folder, prefix=""):
+
+        fi, fp, fl = self.files(folder, prefix)
+
+        with open(fi) as f:
+            interface = pickle.load(f)
+
+        with open(fp) as f:
+            prior = [Param.fromkw(p) for p in json.load(f)['prior']]
+
+        with open(fl) as f:
+            likelihood = [Param.fromkw(p) for p in json.load(f)['likelihood']]
+
+        return cls(interface, prior, likelihood)
 
 
 class FrozenModel(object):
