@@ -4,16 +4,15 @@ from __future__ import division
 import json
 import logging
 import sys
-import difflib
 import itertools
 from collections import OrderedDict as odict
 import numpy as np
 
-from runner.xparams import XParams
-from runner.tools import parse_dist as parse_scipy, parse_list, parse_range, dist_to_str as scipy_to_str, LazyDist, dist_todict as scipy_todict, dist_fromkw as scipy_fromkw
-from runner.lib.doelhs import lhs
-
 import runner.xparams as xp
+from runner.xparams import XParams
+from runner.lib.doelhs import lhs
+from runner.tools.dist import parse_val, DiscreteDist, cost
+from runner.tools.dist import parse_dist2, dist_to_str2, dist_todict2, dist_fromkw2
 
 # default criterion for the lhs method
 LHS_CRITERION = 'centermaximin' 
@@ -21,66 +20,21 @@ LHS_CRITERION = 'centermaximin'
 # for reading...
 ALPHA = 0.99  # validity interval
 
-# emulate scipy dist
-class DiscreteDist(object):
-    """Prior parameter that takes a number of discrete values
-    """
-    def __init__(self, values):
-        self.values = np.asarray(values)
-
-    def rvs(self, size):
-        indices = np.random.randint(0, len(self.values), size)
-        return self.values[indices]
-
-    def ppf(self, q, interpolation='nearest'):
-        return np.percentile(self.values, q*100, interpolation=interpolation)
-
-    def __str__(self):
-        return ",".join(*[str(v) for v in self.values])
-
-    @classmethod
-    def parse(cls, string):
-        if ':' in string:
-            values = parse_range(string)
-        else:
-            values = parse_list(string)
-        return cls(values)
-
-
-def parse_dist(string):
-    if '?' in string:
-        return parse_scipy(string)
-    else:
-        return DiscreteDist.parse(string)
-
-def dist_to_str(dist):
-    if isinstance(dist, DiscreteDist):
-        return str(dist)
-    else:
-        return scipy_to_str(dist)
-
-
 class Param(object):
     """random variable: parameter or state var
     """
-    def __init__(self, name, default=None, dist=None, help=None, full_name=None, group=None):
+    def __init__(self, name, default=None, dist=None, help=None, full_name=None):
         """
         * name 
         * dist : scipy distribution - like
         * help : parameter info
         * full_name : to be used for file I/O (e.g. namelist, includes prefix)
-        * group : could be used to specify correlations between parameters
         """
-        #TODO: remove unused group
-        #TODO: remove value
-        if group:
-            warnings.warn(DeprecationWarning('Param group will be removed'))
         self.name = name
         self.dist = dist
         self.default = default
         self.help = help
         self.full_name = full_name
-        self.group = group
 
     def __call__(self, value=None):
         return FrozenParam(self, value)
@@ -88,13 +42,14 @@ class Param(object):
     def __str__(self):
         #return "{name}={value}".format(name=self.name, value=self.value)
         if self.dist:
-            return "{name}={dist}".format(name=self.name, dist=dist_to_str(self.dist))
+            return "{name}={dist}".format(name=self.name, dist=dist_to_str2(self.dist))
         else:
             return "{name}={default}".format(name=self.name, default=self.default)
 
     def __eq__(self, other):
         return (isinstance(other, Param) and self.name == other.name) \
             or (isinstance(other, six.string_types) and self.name == other)
+
 
     @classmethod
     def parse(cls, string):
@@ -116,7 +71,7 @@ class Param(object):
                 default = parse_val(default)
             else:
                 default = None
-            dist = parse_dist(spec)
+            dist = parse_dist2(spec)
             return cls(name, dist=dist, default=default)
 
         except Exception as error:
@@ -127,66 +82,22 @@ class Param(object):
     def as_dict(self):
         kw = self.__dict__.copy()
         dist = kw.pop('dist')
-        kw2 = dist_todict(dist)
+        kw2 = dist_todict2(dist)
         for k in kw2:
             kw['dist_'+k] = kw2[k]
-        return kw
+        return {k:v for k,v in kw.items() if v is not None}
 
     @classmethod
     def fromkw(cls, name, **kwargs):
         kw2 = {}
-        for k in kwargs:
+        for k in kwargs.keys():
             if k.startswith('dist_'):
                 kw2[k[5:]] = kwargs.pop(k)
         if kw2:
-            dist = dist_fromkw(**kw2)
+            dist = dist_fromkw2(**kw2)
         else:
             dist = None
         return cls(name, dist=dist, **kwargs)
-
-
-def dist_todict(dist):
-    if isinstance(dist, DiscreteDist):
-        return {'values':dist.values.tolist(), 'name':'discrete'}
-    return scipy_todict(dist)
-
-def dist_fromkw(name, **kwargs):
-    if name == 'discrete':
-        return DiscreteDist(**kwargs)
-    return scipy_fromkw(name, **kwargs)
-
-def cost(dist, value):
-    " logpdf = -0.5*cost + cte, only makes sense for normal distributions "
-    logpdf = dist.logpdf(value)
-    cst = dist.logpdf(dist.mean())
-    return -2*(logpdf - cst)
-
-
-def dummydist(default):
-    """dummy distribution built on rv_continuous
-
-    Example
-    -------
-    >>> dummy = dummydist(3)
-    >>> dummy.interval(0.9)
-    (-inf, inf)
-    >>> dummy.pdf(0)
-    1.0
-    >>> dummy.logpdf(0)
-    0.0
-    >>> dummy.rvs(2)
-    np.array([3.0, 3.0])
-    """
-    from scipy.stats import rv_continuous
-    class dummy_gen(rv_continuous): 
-        def _pdf(self, x):
-            return 1
-        def _ppf(self, x): # for interval to work
-            return np.inf if x >= 0.5 else -np.inf
-        def rvs(self, size=None, loc=0, **kwargs):
-            return np.zeros(size)+loc if size is not None else loc
-    dummy = dummy_gen('none')
-    return dummy(loc=default)
 
 
 class FrozenParam(object):
@@ -250,25 +161,6 @@ class ScipyParam(Param):
             raise TypeError("expected scipy dist, got discrete values")
         
 
-
-
-# Commented out because the LHS topic is in fact non-trivial
-# and involves correcting for space uniformity in the multi-
-# dimensional space (e.g. see orthogonal lhs). The case below
-# is a centered LHS where the only degree of randomness stems 
-# from shuffling intervals. Fair enough but insatisfactory in 
-# multiple dimensions.
-#
-#    def sample_lhs(self, size):
-#        """Latin hypercube sampling distribution
-#        """
-#        qe = np.linspace(0, 1, size+1)
-#        qc = (qe[:size] + qe[size:])/2
-#        q = self.quantile(qc)
-#        return np.random.shuffle(q)
-
-
-
 def filterkeys(kwargs, keys):
     return {k:kwargs[k] for k in kwargs if k in keys}
 
@@ -296,23 +188,6 @@ class ParamList(list):
 
     def __add__(self, other):
         return type(self)(list(self) + list(other))
-
-
-#    def _apply(self, func, *args, **kwargs):
-#        return type(self)(func(self, *args, **kwargs))
-#    def filter(self, predicate=None):
-#        """filter params, by default all that have a distribution defined
-#        """
-#        if predicate is None:
-#            predicate = lambda p : p.dist is not None
-#
-#        elif isinstance(predicate, list):
-#            names = predicate
-#            predicate = lambda p : p.name in names
-#
-#        params = [p for p in self if predicate(p)]
-#        return type(self)(params)
-
 
 
 class MultiParam(ParamList):
@@ -363,6 +238,15 @@ class MultiParam(ParamList):
 
     def __call__(self, **kw):
         return FrozenParams([p(kw.pop(p.name, p.default)) for p in self])
+
+
+    def asdict(self, key=None):
+        return {key:[p.as_dict() for p in self]}
+
+    @classmethod
+    def fromdict(cls, kwds, key=None):
+        return cls([Param.fromkw(p) for p in kwds[key]])
+
 
 
 class FrozenParams(ParamList):

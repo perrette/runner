@@ -13,11 +13,18 @@ import six
 from os.path import join
 import numpy as np
 
+from runner.tools.tree import autofolder
+from runner.tools.frame import str_dataframe
 from runner.model import Param, Model
-from runner.tools import autofolder, Namespace, nans, str_dataframe
 from runner.xparams import XParams
 
 XPARAM = 'params.txt'
+
+def nans(N):
+    a = np.empty(N)
+    a.fill(np.nan)
+    return a
+
 
 
 # Ensemble Xperiment
@@ -105,7 +112,7 @@ class XRun(object):
 
         if self.autodir:
             #raise NotImplementedError('autodir')
-            params = [Namespace(name=name, value=value) 
+            params = [(name,value)
                       for name,value in zip(self.params.names, 
                                             self.params.pset_as_array(runid))]
             rundir = join(self.expdir, autofolder(params))
