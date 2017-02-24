@@ -1,69 +1,62 @@
+import argparse
+from collections import OrderedDict as odict
 import datetime
 import json
 from runner import __version__
 
-# job config I/O
-# ==============
-def _parser_defaults(parser):
-    " parser default values "
-    return {a.dest: a.default for a in parser._actions}
+class ParserIO(object):
+
+    def __init__(self, parser, dump_filter=None, load_filter=None, get=None):
+        """
+        * parser : argparse.ArgumentParser instance
+        """
+        self.parser = parser
+        self._dump_filter = dump_filter or self._filter
+        self._load_filter = load_filter or self._filter
+        self.get = get
+
+    def _names(self):
+        for a in self.parser._actions: 
+            yield a.dest
+
+    def _filter(self, dict_):
+        return odict([(k,v) for k,v in dict_.items() if k in self._names()])
+
+    def _get_defaults(self):
+        return {name:self.parser.get_default(name) for name in self._names()}
+
+    def namespace(self, **kwargs):
+        opt = self._get_defaults()
+        opt.update(self._filter(kwargs))
+        return argparse.Namespace(**opt)
+
+    def dumps(self, namespace, name=None, indent=2, **kwargs):
+        js = {
+            'defaults': self._dump_filter(vars(namespace)),
+            'version':__version__,
+            'date':str(datetime.date.today()),
+            'name':name,  # just as metadata
+        }
+        return json.dumps(js, indent=indent, **kwargs)
+
+    def loads(self, string, update={}):
+        js = json.loads(string)
+        js = self._load_filter(js)
+        js.update(update)
+        return self.namespace(**js)
+
+    def dump(self, namespace, file, **kwargs):
+        file.write(self.dumps(namespace, **kwargs))
+
+    def load(self, file, update={}):
+        return self.loads(file.read(), update)
 
 
-def _modified(kw, defaults):
-    """return key-words that are different from default parser values
-    """
-    return {k:kw[k] for k in kw if k in defaults and kw[k] != defaults[k]}
-
-def _filter(kw, after, diff=False, include_none=True):
-    if diff:
-        filtered = _modified(kw, after)
-    else:
-        filtered = {k:kw[k] for k in kw if k in after}
-    if not include_none:
-        filtered = {k:filtered[k] for k in filtered if filtered[k] is not None}
-    return filtered
-
-
-def filtervars(namespace, parser, include_none=True):
-    """like vars(namespace), but just taking arguments from one parser
-    """
-    opt = {a.dest:getattr(namespace, a.dest) 
-            for a in parser._actions if hasattr(namespace, a.dest)}
-    if not include_none:
-        opt = {k:opt[k] for k in opt if opt[k] is not None}
-    return opt
-
-
-def json_config(cfg, parser=None, diff=False, name=None, include_none=True):
-    if parser is None:
-        defaults = cfg
-    else:
-        defaults = _filter(cfg, _parser_defaults(parser), diff, include_none=include_none)
-    js = {
-        'defaults': defaults,
-        'version':__version__,
-        'date':str(datetime.date.today()),
-        'name':name,  # just as metadata
-    }
-    return json.dumps(js, indent=2, sort_keys=True, default=lambda x: str(x))
-
-def write_config(cfg, file, parser=None, diff=False, name=None, include_none=True):
-    string = json_config(cfg, parser, diff, name, include_none=include_none)
-    with open(file, 'w') as f:
-        f.write(string)
-
-def load_config(file, parser=None):
-    "parser needed to cast variable types"
-    js = json.load(open(file))["defaults"]
-
-    if parser is None:
-        return js
-
-    # cast type:
-    for a in parser._actions:
-        if a.dest in js and a.type is not None:
-            if isinstance(js[a.dest], list):
-                js[a.dest] = [a.type(e) for e in js[a.dest]]
-            else:
-                js[a.dest] = a.type(js[a.dest])
-    return js
+    def join(self, other, **kwargs):
+        " for I/O only, forget about get "
+        parser = argparse.ArgumentParser(add_help=False, 
+                                         parents=[self.parser, other.parser], **kwargs)
+        return ParserIO(parser, 
+                        lambda x: other._dump_filter(self._dump_filter(x)),
+                        lambda x: other._load_filter(self._load_filter(x)),
+                        get = self.get or other.get)

@@ -18,10 +18,8 @@ from runner.param import ScipyParam
 from runner.model import Model
 from runner.xrun import XRun, XData
 from runner.job.register import register_job
-from runner.job.config import load_config
-from runner.job.model import getinterface
-from runner.job.run import parse_slurm_array_indices, _typechecker, run
-from runner.job.run import XPARAM, EXPDIR, EXPCONFIG
+from runner.job.run import runio, EXPCONFIG, interface
+from runner.job.run import XPARAM, EXPDIR
 
 
 analyze = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -54,16 +52,15 @@ grp.add_argument('-J', '--cost', nargs='+', default=[], help='output variables t
 
 def analyze_post(o):
 
-    cfg = load_config(os.path.join(o.expdir, EXPCONFIG))
-    cfg['expdir'] = o.expdir
-    interface = getinterface(argparse.Namespace(**cfg))
+    # load namespace saved along with run command
+    orun = runio.load(open(os.path.join(o.expdir, EXPCONFIG)))
 
     likelihood = o.likelihood + [Param.parse(name+"=N?0,1") for name in o.cost]
 
-    model = Model(interface, likelihood=likelihood)
+    model = Model(interface.get(orun), likelihood=likelihood)
     paramsfile = os.path.join(o.expdir, XPARAM)
     xparams = XData.read(paramsfile) # for the size & autodir
-    xrun = XRun(model, xparams, expdir=o.expdir, autodir=cfg["auto_dir"])
+    xrun = XRun(model, xparams, expdir=o.expdir, autodir=orun.auto_dir)
 
     xrun.analyze(o.output_variables, anadir=o.out)
 

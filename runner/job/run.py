@@ -71,8 +71,8 @@ from runner.model import Model
 #from runner.xparams import XParams
 from runner.xrun import XParams, XRun, XPARAM
 from runner.job import register
-from runner.job.model import model_parser as model, modelwrapper, getinterface, modelconfig
-from runner.job.config import write_config, json_config, filtervars
+from runner.job.model import interface
+from runner.job.config import ParserIO
 import os
 
 
@@ -161,7 +161,6 @@ params_parser.add_argument('--include-default',
                   action='store_true', 
                   help='also run default model version (with no parameters)')
 
-output_parser = argparse.ArgumentParser(add_help=False)
 #grp = output_parser.add_argument_group("model output", 
 #                                       description='model output variables')
 #grp.add_argument("-v", "--output-variables", nargs='+', default=[],
@@ -175,12 +174,9 @@ output_parser = argparse.ArgumentParser(add_help=False)
 #                 nargs='+')
 
 
-run = argparse.ArgumentParser(parents=[model, params_parser, output_parser, folders, submit], epilog=examples, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+run = argparse.ArgumentParser(parents=[interface.parser, params_parser, folders, submit], epilog=examples, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
-
-# keep group of params for later
-experiment = argparse.ArgumentParser(add_help=False, parents=[modelconfig, modelwrapper])
-experiment.add_argument('-a','--auto-dir', action='store_true')
+runio = interface.join(ParserIO(folders)) # interface + folder: saveit
 
 
 def run_post(o):
@@ -190,7 +186,7 @@ def run_post(o):
         o.shell = True
         o.force = True
 
-    model = Model(getinterface(o))
+    model = Model(interface.get(o))
 
     pfile = os.path.join(o.expdir, XPARAM)
 
@@ -219,7 +215,8 @@ def run_post(o):
         print("Use -f/--force to bypass this check")
         run.exit(1)
 
-    write_config(vars(o), os.path.join(o.expdir, EXPCONFIG), parser=experiment)
+    #write_config(vars(o), os.path.join(o.expdir, EXPCONFIG), parser=experiment)
+    runio.dump(o, open(os.path.join(o.expdir, EXPCONFIG),'w'))
 
     if o.runid:
         indices = parse_slurm_array_indices(o.runid)

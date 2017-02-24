@@ -20,9 +20,9 @@ import runner
 import runner.model as mod
 from runner.job import register
 from runner.model import ModelInterface, Model
-from runner.param import MultiParam, Param, DiscreteParam
 from runner.filetype import (LineSeparator, LineTemplate, TemplateFile, JsonFile)
 from runner.ext.namelist import Namelist
+from runner.job.config import ParserIO
 
 
 # model file type
@@ -210,3 +210,6 @@ def getinterface(o):
         filetype_output=filetype_out, 
         filename_output=o.file_out,
     )
+
+
+interface = ParserIO(model_parser, get=getinterface)
