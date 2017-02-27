@@ -90,7 +90,7 @@ class Param(object):
     @classmethod
     def fromkw(cls, name, **kwargs):
         kw2 = {}
-        for k in kwargs.keys():
+        for k in list(kwargs.keys()):
             if k.startswith('dist_'):
                 kw2[k[5:]] = kwargs.pop(k)
         if kw2:
