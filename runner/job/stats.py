@@ -3,7 +3,7 @@ import numpy as np
 from runner.param import MultiParam, Param, DiscreteParam
 import runner.resample as xp
 from runner.xparams import XParams, Resampler
-from runner.job.register import register_job
+from runner.job.config import Job
 
 # generate params.txt (XParams)
 # =============================
@@ -17,22 +17,22 @@ def _return_params(xparams, out):
 
 # product
 # -------
-product = argparse.ArgumentParser(description="Factorial combination of parameter values")
-product.add_argument('factors',
+product_parser = argparse.ArgumentParser(description="Factorial combination of parameter values")
+product_parser.add_argument('factors',
                  type=DiscreteParam.parse,
                  metavar="NAME=VAL1[,VAL2 ...]",
                  nargs='*')
-product.add_argument('-o','--out', help="output parameter file")
+product_parser.add_argument('-o','--out', help="output parameter file")
 
 
 def product_post(o):
     if not o.factors:
-        product.error("must provide at least one parameter")
+        product_parser.error("must provide at least one parameter")
     xparams = MultiParam(o.factors).product()
     return _return_params(xparams, o.out)
 
-register_job('product', product, product_post,
-                 help='generate ensemble from all parameter combinations')
+product = Job(product_parser, product_post)
+product.register('product', help='generate ensemble from all parameter combinations')
 
 
 # sample
@@ -76,8 +76,8 @@ def sample_post(o):
                            iterations=o.lhs_iterations)
     return _return_params(xparams, o.out)
 
-register_job('sample', sample, sample_post,
-                 help='generate ensemble by sampling prior distributions')
+sample = Job(sample, sample_post)
+sample.register('sample', help='generate ensemble by sampling prior distributions')
 
 
 # resample
@@ -135,8 +135,8 @@ def resample_post(o):
     return _return_params(xparams, o.out)
 
 
-register_job('resample', resample, resample_post,
-                 help='resample parameters from previous simulation')
+resample = Job(resample, sample_post)
+resample.register('resample', help='resample parameters from previous simulation')
 
 
 # TODO : implement 1 check or tool function that returns a number of things, such as neff

@@ -6,8 +6,11 @@ import sys, os
 from importlib import import_module
 import argparse
 import logging
-from runner.job import register
 from runner import __version__
+from runner.job.config import jobs
+
+# import module to register job
+from runner.job import stats, run, analysis
 
 
 # pull main job together
@@ -26,10 +29,8 @@ def main(argv=None):
 
     # add subcommands
     subp = job.add_subparsers(dest='cmd')
-    postprocs = {}
-    parsers = {}
 
-    for j in register.jobs:
+    for name,j in jobs.items():
         subp.add_parser(j.name, 
                         parents=[j.parser], 
                         add_help=False, 
@@ -38,16 +39,13 @@ def main(argv=None):
                         help=j.help,
                         formatter_class=j.parser.formatter_class)
         tops.add_parser(j.name, help=j.help, add_help=False)
-        parsers[j.name] = j.parser
-        postprocs[j.name] = j.postproc
 
     if argv is None:
         argv = sys.argv[1:]
 
     # parse arguments and select sub-parser
     o = job.parse_args(argv)
-    parser = parsers[o.cmd]
-    func = postprocs[o.cmd]
+    j = jobs[o.cmd]
 
     if o.debug:
         logging.basicConfig(level=logging.DEBUG)
@@ -59,10 +57,10 @@ def main(argv=None):
     o = top.parse_args(topargs)  # no subcommands
 
     # now subparser 
-    cmdo = parser.parse_args(cmdargs)
+    cmdo = j.parser.parse_args(cmdargs)
 
     try:
-        func(cmdo)
+        j.run(cmdo)
     except Exception as error:
         if o.debug:
             raise

@@ -17,7 +17,7 @@ from runner.tools import norm
 from runner.param import ScipyParam
 from runner.model import Model
 from runner.xrun import XRun, XData
-from runner.job.register import register_job
+from runner.job.config import Job
 from runner.job.run import runio, EXPCONFIG, interface
 from runner.job.run import XPARAM, EXPDIR
 
@@ -65,8 +65,8 @@ def analyze_post(o):
     xrun.analyze(o.output_variables, anadir=o.out)
 
 
-register_job('analyze',analyze, analyze_post, 
-             help="analyze ensemble (output + loglik + stats) for resampling")
+analyze = Job(analyze, analyze_post)
+analyze.register('analyze', help="analyze ensemble (output + loglik + stats) for resampling")
 
 #
 #    def add_iis(self):

@@ -70,9 +70,8 @@ from runner.param import MultiParam, DiscreteParam
 from runner.model import Model
 #from runner.xparams import XParams
 from runner.xrun import XParams, XRun, XPARAM
-from runner.job import register
 from runner.job.model import interface
-from runner.job.config import ParserIO
+from runner.job.config import ParserIO, Job
 import os
 
 
@@ -80,9 +79,6 @@ EXPCONFIG = 'experiment.json'
 EXPDIR = 'out'
 
 
-# prepare job
-# ===========
-register_job = register.register_job
 # run
 # ---
 
@@ -174,7 +170,7 @@ params_parser.add_argument('--include-default',
 #                 nargs='+')
 
 
-run = argparse.ArgumentParser(parents=[interface.parser, params_parser, folders, submit], epilog=examples, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+parser = argparse.ArgumentParser(parents=[interface.parser, params_parser, folders, submit], epilog=examples, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
 runio = interface.join(ParserIO(folders)) # interface + folder: saveit
 
@@ -213,7 +209,7 @@ def run_post(o):
     except RuntimeError as error:
         print("ERROR :: "+str(error))
         print("Use -f/--force to bypass this check")
-        run.exit(1)
+        parser.exit(1)
 
     #write_config(vars(o), os.path.join(o.expdir, EXPCONFIG), parser=experiment)
     runio.dump(o, open(os.path.join(o.expdir, EXPCONFIG),'w'))
@@ -238,4 +234,10 @@ def run_post(o):
     return
 
 
-register_job('run', run, run_post, help='run model (single version or ensemble)')
+run = Job(parser, run_post)
+run.register('run', help='run model (single version or ensemble)')
+
+main = run
+
+if __name__ == '__main__':
+    main()

@@ -60,3 +60,27 @@ class ParserIO(object):
                         lambda x: other._dump_filter(self._dump_filter(x)),
                         lambda x: other._load_filter(self._load_filter(x)),
                         get = self.get or other.get)
+
+
+jobs = odict()
+
+class Job(object):
+    """job subcommand entry
+    """
+
+    def __init__(self, parser=None, run=None):
+        self.parser = parser or argparse.ArgumentParser(**kwargs)
+        self.run = run
+        self.help = None
+        self.name = None
+
+    def __call__(self, argv=None):
+        namespace = self.parser.parse_args(argv)
+        return self.run(namespace)
+
+    def register(self, name, help=None):
+        if name in jobs:
+            warnings.warn("overwrite already registered job: "+name)
+        self.name = name
+        self.help = help
+        jobs[name] = self
