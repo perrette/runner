@@ -71,7 +71,7 @@ from runner.model import Model
 #from runner.xparams import XParams
 from runner.xrun import XParams, XRun, XPARAM
 from runner.job.model import interface
-from runner.job.config import ParserIO, Job
+from runner.job.config import ParserIO, program
 import os
 
 
@@ -175,7 +175,8 @@ parser = argparse.ArgumentParser(parents=[interface.parser, params_parser, folde
 runio = interface.join(ParserIO(folders)) # interface + folder: saveit
 
 
-def run_post(o):
+@program(parser)
+def main(o):
 
     if o.echo:
         o.model = ['echo'] + o.model
@@ -233,11 +234,7 @@ def run_post(o):
 
     return
 
-
-run = Job(parser, run_post)
-run.register('run', help='run model (single version or ensemble)')
-
-main = run
+main.register('run', help='run model (single version or ensemble)')
 
 if __name__ == '__main__':
     main()
