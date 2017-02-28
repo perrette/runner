@@ -67,9 +67,12 @@ jobs = odict()
 class Job(object):
     """job subcommand entry
     """
+
     def __init__(self, parser=None, run=None):
         self.parser = parser or argparse.ArgumentParser(**kwargs)
         self.run = run
+        self.help = None
+        self.name = None
 
     def __call__(self, argv=None):
         namespace = self.parser.parse_args(argv)
@@ -81,13 +84,3 @@ class Job(object):
         self.name = name
         self.help = help
         jobs[name] = self
-
-
-def program(parser):
-    """decorator for a postprocessor (syntaxic sugar)
-    """
-    def decorator(func):
-        job = Job(parser, func)
-        return job
-
-    return decorator
