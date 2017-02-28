@@ -227,9 +227,22 @@ class XRun(object):
         return XData(values, names)
 
 
-    def get_weight(self):
-        logliks = self.get_logliks().values
-        return np.where(np.isnan(logliks), 0, np.exp(logliks.sum(axis=1)))
+    def get_likelihood(self):
+        values = np.zeros(len(self), dtype=float)
+        for i, m in enumerate(self):
+            m.load()
+            if m.status == "success": 
+                values[i] = np.exp(m.likelihood.logpdf().sum())
+        return values
+
+
+    def get_prior(self):
+        if not self.model.prior:
+            return 1
+        values = np.ones(len(self), dtype=float)
+        for i, m in enumerate(self):
+            values[i] = np.exp(m.prior.logpdf().sum())
+        return values
 
 
     def get_valids(self, alpha, names=None):

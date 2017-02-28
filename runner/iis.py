@@ -45,20 +45,14 @@ from runner.xrun import XRun, XParams
 class IISExp(object):
     """Handle IIS experiment
     """
-    def __init__(self, model, initdir, constraints, iter=0, epsilon=None, resampling=RESAMPLING_METHOD):
+    def __init__(self, model, initdir, iter=0, epsilon=None, seed=None, resampling=RESAMPLING_METHOD, size=None):
         self.model = model
         self.initdir = initdir
-        self.constraints = constraints
         self.iter = iter
         self.epsilon = epsilon
         self.resampling = resampling
-
-    def is_analyzed(self, iter=None):
-        return os.path.exists(self.path("loglik.txt", iter))
-
-    def goto_last_iter(self):
-        while self.is_analyzed():
-            self.iter += 1
+        self.size = size
+        self.seed = seed
 
     def expdir(self, iter=None):
         iter = self.iter if iter is None else iter
@@ -67,19 +61,36 @@ class IISExp(object):
     def path(self, file, iter=None):
         return os.path.join(self.expdir(iter), file)
 
+    def is_analyzed(self, iter=None):
+        return os.path.exists(self.path("weights.txt", iter))
+
+    def goto_last_iter(self):
+        while self.is_analyzed():
+            self.iter += 1
+
     def xrun(self, iter=None):
         return XRun(self.model, XParams.read(self.path("params.txt", iter)))
 
     def resample(self, iter, **kwargs):
         xrun = self.xrun(iter)
-        w = np.exp(np.loadtxt(xrun.path("loglik.txt")))
+        w = np.loadtxt(self.path("weights.txt", iter))
 
-        opt = dict(epsilon=self.epsilon, method=self.resampling)
+        opt = dict(epsilon=self.epsilon, method=self.resampling, size=self.size, seed=self.seed)
         opt.update(kwargs)
-        xrun.params = xrun.params.resample(weights, **opt)
-
+        xrun.params = xrun.params.resample(w, **opt)
         xrun.expdir = self.expdir(iter+1)
+        xrun.write(self.path("params.txt"))
         return xrun
+
+
+    def sample(self, size=None, **sampling):
+        print("******** iis sampling from prior")
+        pfile = self.path("params.txt", 0)
+        assert not os.path.exists(pfile), 'already initialized'
+        assert size or self.size, 'size required'
+        xparam = self.model.prior.sample(size or self.size, seed=self.seed, **sampling)
+        xparam.write(pfile)
+
 
     def step(self, **kwargs):
 
@@ -88,26 +99,38 @@ class IISExp(object):
 
         if self.iter == 0:
             print("*** first iteration")
-            xrun = self.xun()
+            xrun = self.xrun()
         else:
             print("*** resample")
             xrun = self.resample(self.iter-1)
 
-        print("*** runbatch")
-        xrun.runbatch(wait=True, **kwargs)
+        print("*** run")
+        xrun.run(**kwargs)
         print("*** analysis")
-        xrun.analyze(self.constraints).write(xrun.expdir)
+        posterior = xrun.get_prior()*xrun.get_likelihood()
+        np.savetxt( self.path("weights.txt"), posterior )
+        #xrun.analyze()
 
         # increment iterations and recursive call
         self.iter += 1
+        if self.seed is not None:
+            self.seed += 1
 
-    def runiis(self, maxiter, **kwargs):
-        """Iterative Importance Sampling (recursive)
-        """
+
+    def run(self, maxiter, **kwargs):
         while self.iter < maxiter:
             self.step(**kwargs)
-
-        print("******** runiis terminated")
-
+        print("******** iis run terminated")
 
 
+    def start(self, niter, size=None, **kwargs):
+        assert self.iter == 0
+        self.sample(size)
+        self.run(niter, **kwargs)
+
+
+    def restart(self, niter, size=None, **kwargs):
+         self.goto_last_iter()
+         if size:
+             self.size = size
+         self.run(self.iter + niter, **kwargs)

@@ -10,7 +10,7 @@ from runner import __version__
 from runner.job.config import jobs
 
 # import module to register job
-from runner.job import stats, run, analysis
+from runner.job import stats, run, analysis, iis
 
 
 # pull main job together
