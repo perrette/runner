@@ -296,6 +296,10 @@ def post(o):
     if os.path.exists(interfacepick) and not o.force:
         raise IOError("file already exists:"+interfacepick+" , use -f/--force or -u/--update")
 
+    if getattr(o, "interface"):
+        _, ext = os.path.splitext(o.interface)
+        assert ext != '.json', '.json type interface can only be edited via -u/--update'
+
     # check it can be retrieved correctly
     mi = rawinterface.get(o)
 
