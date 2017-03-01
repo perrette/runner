@@ -1,0 +1,77 @@
+usage: job setup [-h]
+                 [--file-type {json,linesep,lineseprev,linetemplate,template,namelist}]
+                 [--file-type-out {json,linesep,lineseprev,namelist}]
+                 [--line-sep LINE_SEP] [--line-template LINE_TEMPLATE]
+                 [--template-file TEMPLATE_FILE] [--help-file-type]
+                 [--file-in FILE_IN] [--file-out FILE_OUT]
+                 [--arg-out-prefix ARG_OUT_PREFIX] [--arg-prefix ARG_PREFIX]
+                 [--env-prefix ENV_PREFIX] [--env-out ENV_OUT]
+                 [--work-dir WORK_DIR] [-m INTERFACE]
+                 [--default-file DEFAULT_FILE]
+                 [--default-params DEFAULT_PARAMS] [-f] [-u]
+                 ...
+
+Setup runner model interface * interface.json : argparse argument values
+(loaded if --update is set) * interface.pickle : initialized ModelInterface
+instance (loaded by `job run` etc)
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -f, --force           overwrite any previous setup
+  -u, --update          update previous setup
+
+filetype:
+  file formats to pass parameters from job to model. Enter --help-file-type
+  for additional info
+
+  --file-type {json,linesep,lineseprev,linetemplate,template,namelist}
+                        model params file type
+  --file-type-out {json,linesep,lineseprev,namelist}
+                        model output file type
+  --line-sep LINE_SEP   separator for "linesep" and "lineseprev" file types
+  --line-template LINE_TEMPLATE
+                        line template for "linetemplate" file type
+  --template-file TEMPLATE_FILE
+                        template file for "template" file type
+  --help-file-type      print help for filetype and exit
+
+interface:
+  job to model communication
+
+  --file-in FILE_IN, --file-name FILE_IN
+                        param file name to pass to model, relatively to
+                        {rundir}. If provided, param passing via file instead
+                        of command arg.
+  --file-out FILE_OUT   model output file name, relatively to {rundir}. If
+                        provided, param passing via file instead of command
+                        arg.
+  --arg-out-prefix ARG_OUT_PREFIX
+                        prefix for output directory on the command-line. None
+                        by default.
+  --arg-prefix ARG_PREFIX
+                        prefix for passing param as command-line, e.g. `--{} `
+                        where `{}` will be replaced by param name. None by
+                        default.
+  --env-prefix ENV_PREFIX
+                        prefix for environment variables
+  --env-out ENV_OUT     environment variable for output (after prefix)
+                        (default:RUNDIR)
+  --work-dir WORK_DIR   where to execute the model from, by default current
+                        directory. Use "{}" for run directory.
+
+custom model:
+  -m INTERFACE, --interface INTERFACE
+                        user-defined python module that contains custom model
+                        definition, or pickled model interface, or previous
+                        setup json file
+
+run-specific model configuration:
+  --default-file DEFAULT_FILE
+                        default param file, required for certain file types
+                        (e.g. namelist)
+  --default-params DEFAULT_PARAMS
+                        default param values (optional in most cases)
+  COMMAND ...           model executable and/or command-line arguments.
+                        Consumes all remaining arguments. `{}` and `{NAME}`
+                        will be replaced by the run directory and
+                        corresponding parameter value, respectively.

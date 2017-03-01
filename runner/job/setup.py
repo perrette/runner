@@ -146,7 +146,7 @@ modelconfig = argparse.ArgumentParser(add_help=False, parents=[])
 grp = modelconfig.add_argument_group('run-specific model configuration')
 grp.add_argument('--default-file', help='default param file, required for certain file types (e.g. namelist)')
 grp.add_argument('--default-params', default=[], help='default param values (optional in most cases)')
-grp.add_argument('command', nargs=argparse.REMAINDER, default=[], help='model executable and/or command-line arguments. Consumes all remaining arguments. \
+grp.add_argument('command', nargs=argparse.REMAINDER, default=[], metavar="COMMAND ...", help='model executable and/or command-line arguments. Consumes all remaining arguments. \
 `{}` and `{NAME}` will be replaced by \
     the run directory and corresponding parameter value, respectively.')
 

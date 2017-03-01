@@ -1,24 +1,12 @@
-usage: job run [-h]
-               [--file-type {json,linesep,lineseprev,linetemplate,template,namelist}]
-               [--file-type-out {json,linesep,lineseprev,namelist}]
-               [--line-sep LINE_SEP] [--line-template LINE_TEMPLATE]
-               [--template-file TEMPLATE_FILE] [--help-file-type]
-               [--file-in FILE_IN] [--file-out FILE_OUT]
-               [--arg-out-prefix ARG_OUT_PREFIX] [--arg-prefix ARG_PREFIX]
-               [--env-prefix ENV_PREFIX] [--env-out ENV_OUT] [-m USER_MODULE]
-               [--default-file DEFAULT_FILE] [--default-params DEFAULT_PARAMS]
-               [--work-dir WORK_DIR] [-p [NAME=SPEC [NAME=SPEC ...]] | -i
+usage: job run [-h] [-m INTERFACE] [-p [NAME=SPEC [NAME=SPEC ...]] | -i
                PARAMS_FILE] [-j I,J...,START-STOP:STEP,...]
                [--include-default] [-o EXPDIR] [-a]
                [--max-workers MAX_WORKERS] [-t TIMEOUT] [--shell] [--echo]
                [-f]
-               ...
 
 Run model ensemble
 
-The canonical form of `job run` is:
-
-    job run [OPTIONS] -- EXECUTABLE [OPTIONS]
+Requires `job setup` prior execution.
 
 where `EXECUTABLE` is your model executable or a command, followed by its
 arguments. Note the `--` that separates `job run` arguments `OPTIONS` from the
@@ -26,14 +14,6 @@ executable.  When there is no ambiguity in the command-line arguments (as seen
 by python's argparse) it may be dropped. `job run` options determine in which
 manner to run the model, which parameter values to vary (the ensemble), and how
 to communicate these parameter values to the model.
-
-positional arguments:
-  ...                   model executable and its command-line arguments (need
-                        to be last on the command-line, possibly separated
-                        from other arguments with `--`). `{}` and `{NAME}`
-                        will be replaced by the run directory and
-                        corresponding parameter value, respectively. See also
-                        --arg-out-prefix, --arg-prefix
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -49,55 +29,11 @@ optional arguments:
                         or a combination of these, `0,2,4,5` <==> `0-4:2,5`
   --include-default     also run default model version (with no parameters)
 
-filetype:
-  file formats to pass parameters from job to model. Enter --help-file-type for additional info
-
-  --file-type {json,linesep,lineseprev,linetemplate,template,namelist}
-                        model params file type
-  --file-type-out {json,linesep,lineseprev,namelist}
-                        model output file type
-  --line-sep LINE_SEP   separator for "linesep" and "lineseprev" file types
-  --line-template LINE_TEMPLATE
-                        line template for "linetemplate" file type
-  --template-file TEMPLATE_FILE
-                        template file for "template" file type
-  --help-file-type      print help for filetype and exit
-
-interface:
-  job to model communication
-
-  --file-in FILE_IN, --file-name FILE_IN
-                        param file name to pass to model, relatively to
-                        {rundir}. If provided, param passing via file instead
-                        of command arg.
-  --file-out FILE_OUT   model output file name, relatively to {rundir}. If
-                        provided, param passing via file instead of command
-                        arg.
-  --arg-out-prefix ARG_OUT_PREFIX
-                        prefix for output directory on the command-line. None
-                        by default.
-  --arg-prefix ARG_PREFIX
-                        prefix for passing param as command-line, e.g. `--{} `
-                        where `{}` will be replaced by param name. None by
-                        default.
-  --env-prefix ENV_PREFIX
-                        prefix for environment variables
-  --env-out ENV_OUT     environment variable for output (after prefix)
-                        (default:RUNDIR)
-
-user-customed model:
-  -m USER_MODULE, --user-module USER_MODULE
-                        user-defined python module that contains custom model
-                        definition
-
-model configuration:
-  --default-file DEFAULT_FILE
-                        default param file, required for certain file types
-                        (e.g. namelist)
-  --default-params DEFAULT_PARAMS
-                        default param values (optional in most cases)
-  --work-dir WORK_DIR   where to execute the model from, by default current
-                        directory. Use "{}" for run directory.
+model interface:
+  -m INTERFACE, --interface INTERFACE
+                        model interface. If not provided will look for
+                        interface[.py, .pickle, .json] (the last two are
+                        produced by job setup)
 
 simulation settings:
   -o EXPDIR, --out-dir EXPDIR
@@ -125,7 +61,8 @@ simulation modes:
 Examples
 --------
 
-    job run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {}
+    job setup echo --a {a} --b {b} --out {}
+    job run -p a=2,3,4 b=0,1 -o out --shell
 
     --a 2 --b 0 --out out/0
     --a 2 --b 1 --out out/1
@@ -138,7 +75,8 @@ The command above runs an ensemble of 6 model versions, by calling `echo --a {a}
 --b {b} --out {}`  where `{a}`, `{b}` and `{}` are formatted using runtime with
 parameter and run directory values, as displayed in the output above. Parameters can also be provided as a file:
 
-    job run -p a=2,3,4 b=0,1 -o out --file-name "params.txt" --file-type "linesep" --line-sep " " --shell cat {}/params.txt
+    job setup --file-name "params.txt" --file-type "linesep" --line-sep " " -- cat {}/params.txt
+    job run -p a=2,3,4 b=0,1 -o out --shell
 
     a 2
     b 0
@@ -157,7 +95,8 @@ Where UNIX `cat` command displays file content into the terminal. File types
 that involve grouping, such as namelist, require a group prefix with a `.`
 separator in the parameter name:
 
-    job run -p g1.a=0,1 g2.b=2. -o out --file-name "params.txt" --file-type "namelist" --shell  cat {}/params.txt
+    job setup --file-name "params.txt" --file-type "namelist" cat {}/params.txt
+    job run -p g1.a=0,1 g2.b=2. -o out --shell
 
     &g1
      a               = 0          
