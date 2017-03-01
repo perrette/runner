@@ -4,7 +4,7 @@ import datetime
 import json
 from runner import __version__
 
-class ParserIO(object):
+class ObjectParser(object):
 
     def __init__(self, parser, dump_filter=None, load_filter=None, get=None):
         """
@@ -40,7 +40,7 @@ class ParserIO(object):
         return json.dumps(js, indent=indent, **kwargs)
 
     def loads(self, string, update={}):
-        js = json.loads(string)
+        js = json.loads(string)['defaults']
         js = self._load_filter(js)
         js.update(update)
         return self.namespace(**js)
@@ -56,7 +56,7 @@ class ParserIO(object):
         " for I/O only, forget about get "
         parser = argparse.ArgumentParser(add_help=False, 
                                          parents=[self.parser, other.parser], **kwargs)
-        return ParserIO(parser, 
+        return ObjectParser(parser, 
                         lambda x: other._dump_filter(self._dump_filter(x)),
                         lambda x: other._load_filter(self._load_filter(x)),
                         get = self.get or other.get)
@@ -68,13 +68,18 @@ class Job(object):
     """job subcommand entry
     """
 
-    def __init__(self, parser=None, run=None):
+    def __init__(self, parser=None, run=None, init=None):
         self.parser = parser or argparse.ArgumentParser(**kwargs)
         self.run = run
+        self.init = init
         self.help = None
         self.name = None
 
     def __call__(self, argv=None):
+
+        if self.init:
+            self.init(self.parser, argv)
+
         namespace = self.parser.parse_args(argv)
         return self.run(namespace)
 

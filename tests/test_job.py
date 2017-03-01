@@ -1,12 +1,11 @@
 from __future__ import print_function
 import unittest
+import itertools, json
 import os, shutil
 import six
 import json
 import logging
 from subprocess import check_call
-
-JOB = "./scripts/job"
 
 if six.PY2:
     from subprocess import check_output
@@ -15,11 +14,31 @@ if six.PY2:
 else:
     from subprocess import getoutput
 
+JOB = "./scripts/job"
+
+def product(cmd):
+    return getoutput(JOB + " product "+cmd)
+
+def sample(cmd):
+    return getoutput(JOB + " sample "+cmd)
+
+def resample(cmd):
+    return getoutput(JOB + " resample "+cmd)
+
+def setup(cmd):
+    return getoutput(JOB + " setup "+cmd)
+
+def run(cmd):
+    return getoutput(JOB + " run "+cmd)
+
+def analyze(cmd):
+    return getoutput(JOB + " analyze "+cmd)
+
 
 class TestSample(unittest.TestCase):
 
     def test_product(self):
-        out = getoutput(JOB+' product a=2,3,4 b=0,1')
+        out = product('a=2,3,4 b=0,1')
         self.assertEqual(out.strip(), """
      a      b
      2      0
@@ -31,7 +50,7 @@ class TestSample(unittest.TestCase):
                          """.strip())
 
     def test_sample(self):
-        out = getoutput(JOB+' sample a=U?0,1 b=N?0,1 --size 10 --seed 4')
+        out = sample('a=U?0,1 b=N?0,1 --size 10 --seed 4')
         if six.PY3:
             # note: python3 uses more digits
             self.assertEqual(out.strip(),"""
@@ -63,22 +82,33 @@ a      b
 0.800898609767 -0.948326628599
                              """.strip())
 
+#class TestSetup(unittest.TestCase):
+
+
 class TestRunBase(unittest.TestCase):
 
+    def setInterface(self):
+        pass
+
     def setUp(self):
+        self.setInterface()
         if os.path.exists('out'):
             raise RuntimeError('remove output directory `out` before running run tests')
+        if os.path.exists('interface.json'):
+            raise RuntimeError('remove interface.json before running run tests')
 
     def tearDown(self):
         if os.path.exists('out'):
             shutil.rmtree('out') # clean up after each individual test
+        if os.path.exists('interface.json'):
+            os.remove('interface.json')
 
 
 class TestParamsIO(TestRunBase):
 
-
     def test_paramsio_args(self):
-        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {}')
+        setup('-- echo --a {a} --b {b} --out {}')
+        out = run('-p a=2,3,4 b=0,1 -o out --shell')
         self.assertEqual(out.strip(),"""
 --a 2 --b 0 --out out/0
 --a 2 --b 1 --out out/1
@@ -89,7 +119,8 @@ class TestParamsIO(TestRunBase):
                          """.strip())
 
     def test_paramsio_args_prefix(self):
-        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --shell --arg-prefix "--{} " --arg-out-prefix "--out " -- echo')
+        setup('--arg-prefix "--{} " --arg-out-prefix "--out " -- echo')
+        out = run('-p a=2,3,4 b=0,1 -o out --shell')
         self.assertEqual(out.strip(),"""
 --out out/0 --a 2 --b 0
 --out out/1 --a 2 --b 1
@@ -100,7 +131,8 @@ class TestParamsIO(TestRunBase):
                          """.strip())
 
     def test_paramsio_env(self):
-        out = getoutput(JOB+' run -p a=2,3 b=0. -o out --shell --env-prefix "" -- bash examples/dummy.sh')
+        setup('--env-prefix "" -- bash examples/dummy.sh')
+        out = run('-p a=2,3 b=0. -o out --shell')
         self.assertEqual(out.strip(),"""
 RUNDIR out/0
 a 2
@@ -111,7 +143,8 @@ b 0.0
                          """.strip())
 
     def test_paramsio_file_linesep(self):
-        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --file-name params.txt --file-type linesep --line-sep " " --shell cat {}/params.txt')
+        setup('--file-name params.txt --file-type linesep --line-sep " " -- cat {}/params.txt')
+        out = run('-p a=2,3,4 b=0,1 -o out --shell')
         self.assertEqual(out.strip(),self.linesep.strip())
 
     linesep = """
@@ -130,11 +163,14 @@ b 1
     """
 
     def test_paramsio_file_linesep_auto(self):
-        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --file-name params.txt --shell cat {}/params.txt')
+        setup('--file-name params.txt -- cat {}/params.txt')
+        out = run('-p a=2,3,4 b=0,1 -o out --shell')
         self.assertEqual(out.strip(),self.linesep.strip())
 
+
     def test_paramsio_file_namelist(self):
-        out = getoutput(JOB+' run -p g1.a=0,1 g2.b=2. -o out --file-name params.txt --file-type namelist --shell  cat {}/params.txt')
+        setup('--file-name params.txt --file-type namelist cat {}/params.txt')
+        out = run('-p g1.a=0,1 g2.b=2. -o out --shell')
         self.assertEqual(out.strip(), self.namelist.strip())
         
     namelist = """
@@ -153,17 +189,21 @@ b 1
     """
 
     def test_paramsio_file_namelist_auto(self):
-        out = getoutput(JOB+' run -p g1.a=0,1 g2.b=2. -o out --file-name params.nml --shell  cat {}/params.nml')
+        setup('--file-name params.nml -- cat {}/params.nml')
+        out = run('-p g1.a=0,1 g2.b=2. -o out --shell')
         self.assertEqual(out.strip(), self.namelist.strip())
 
 
     def test_paramsio_file_json(self):
-        getoutput(JOB+' run -p a=2 b=0,1 -o out --file-name params.json --file-out params.json echo')
+        setup('--file-name params.json --file-out params.json -- echo')
+        run('-p a=2 b=0,1 -o out')
         self.assertEqual(json.load(open('out/0/runner.json'))['output'], {'a':2,'b':0})
         self.assertEqual(json.load(open('out/1/runner.json'))['output'], {'a':2,'b':1})
 
+
     def test_custom(self):
-        getoutput(JOB+' run -p a=2 b=0,1 -m examples/custom.py -o out --file-name params.json')
+        setup('-m examples/custom.py --file-name params.json')
+        run('-p a=2 b=0,1 -o out')
         self.assertEqual(json.load(open('out/0/runner.json'))['output'], {'a':2,'b':0})
         self.assertEqual(json.load(open('out/1/runner.json'))['output'], {'a':2,'b':1})
 
@@ -171,7 +211,8 @@ b 1
 class TestRunSubmit(TestRunBase):
 
     def test_shell(self):
-        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --shell -- echo --a {a} --b {b} --out {}')
+        setup('-- echo --a {a} --b {b} --out {}')
+        out = run('-p a=2,3,4 b=0,1 -o out --shell')
         self.assertEqual(out.strip(),"""
 --a 2 --b 0 --out out/0
 --a 2 --b 1 --out out/1
@@ -182,7 +223,8 @@ class TestRunSubmit(TestRunBase):
                          """.strip())
 
     def test_main(self):
-        _ = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out -- echo --a {a} --b {b} --out {}')
+        setup('-- echo --a {a} --b {b} --out {}')
+        run('-p a=2,3,4 b=0,1 -o out')
         out = getoutput('cat out/*/log.out')
         self.assertEqual(out.strip(),"""
 --a 2 --b 0 --out out/0
@@ -197,7 +239,8 @@ class TestRunSubmit(TestRunBase):
 class TestRunIndices(TestRunBase):
 
     def test_shell(self):
-        out = getoutput(JOB+' run -p a=2,3,4 b=0,1 -o out --shell -j 0,2-4 -- echo --a {a} --b {b} --out {}')
+        setup('-- echo --a {a} --b {b} --out {}')
+        out = run('-p a=2,3,4 b=0,1 -o out --shell -j 0,2-4')
         self.assertEqual(out.strip(),"""
 --a 2 --b 0 --out out/0
 --a 3 --b 0 --out out/2
@@ -214,19 +257,24 @@ class TestAnalyze(unittest.TestCase):
     def setUpClass(cls):
         if os.path.exists('out'):
             raise RuntimeError('remove output directory `out` before running tests')
-        cmd = (JOB+' run -p a=1,2 b=0. -o out'
-                           +' --file-out '+cls.fileout
-                           +' --shell python examples/dummy.py {} --aa {a} --bb {b}')
-        print(cmd)
-        check_call(cmd, shell=True)
+        setupcmd = ('--file-out '+cls.fileout 
+                    +' python examples/dummy.py {} --aa {a} --bb {b}')
+        runcmd = ('-p a=1,2 b=0. -o out' +' --shell')
+        print('setup', setupcmd)
+        setup(setupcmd)
+        print('run', runcmd)
+        run(runcmd)
+        #check_call(cmd, shell=True)
 
     @classmethod
     def tearDownClass(cls):
         if os.path.exists('out'):
             shutil.rmtree('out') # clean up after each individual test
+        if os.path.exists('interface.json'):
+            os.remove('interface.json')
 
     def test_state(self):
-        check_call(JOB+' analyze out -v aa bb', shell=True)
+        analyze('out -v aa bb')
         out = open('out/output.txt').read()
         self.assertEqual(out.strip(),"""
 	aa     bb
@@ -235,7 +283,7 @@ class TestAnalyze(unittest.TestCase):
                          """.strip())
 
     def test_state_mixed(self):
-        check_call(JOB+' analyze out -v aa -l bb=N?0,1', shell=True)
+        analyze('out -v aa -l bb=N?0,1')
         out = open('out/output.txt').read()
         self.assertEqual(out.strip(),"""
 	aa     bb
@@ -244,7 +292,7 @@ class TestAnalyze(unittest.TestCase):
                          """.strip())
 
     def test_like(self):
-        check_call(JOB+' analyze out -l aa=N?0,1', shell=True)
+        analyze('out -l aa=N?0,1')
         out = open('out/loglik.txt').read()
         self.assertEqual(out.strip(),"""
 -1.418938533204672670e+00

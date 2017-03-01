@@ -101,10 +101,29 @@ class XRun(object):
             logging.info("create directory: "+self.expdir)
             os.makedirs(self.expdir)
 
-        pfile = join(self.expdir, XPARAM)
+        # model params
+        pfile = self.path(XPARAM)
         if os.path.exists(pfile) and not force:
             raise RuntimeError(repr(pfile)+" param file already exists")
-        self.params.write(join(self.expdir, XPARAM))
+        self.params.write(self.path(XPARAM))
+
+        # model interface
+        self.model.write(self.expdir, force)
+
+        # directory structure
+        with open(self.path('xrun.json'), 'w') as f:
+            json.dump({k:v for k,v in vars(self).items() 
+                       if k not in ['model', 'params', 'expdir']}, f)
+
+    @classmethod
+    def load(cls, expdir='./'): 
+        model = Model.read(expdir)
+        params = XParams.read(join(expdir, XPARAM))
+        kwds = json.load(open(join(expdir, 'xrun.json')))
+        return cls(model, params, expdir, **kwds)
+
+    def path(self, *args):
+        return os.path.join(self.expdir, *args)
 
     def get_rundir(self, runid):
         if runid is None:

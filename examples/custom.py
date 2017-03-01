@@ -1,7 +1,7 @@
 """dummy model interface, as an example
 """
 import os
-import json
+import json, logging
 from runner.model import ModelInterface
 
 class MyInterface(ModelInterface):

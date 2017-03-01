@@ -302,14 +302,14 @@ class Model(object):
                 os.path.join(folder, prefix+'prior.json'),
                 os.path.join(folder, prefix+'likelihood.json'))
 
-    def write(self, folder, prefix="", force=False):
+    def write(self, folder, force=False, prefix=""):
 
         fi, fp, fl = self.files(folder, prefix)
         for f in fi, fp, fl:
             if os.path.exists(f) and not force:
                 raise IOError("Model.write: file already exists:"+f)
 
-        with open(fi,'w') as f:
+        with open(fi,'wb') as f:
             pickle.dump(self.interface, f)
 
         with open(fp,'w') as f:
@@ -322,9 +322,9 @@ class Model(object):
     @classmethod
     def read(cls, folder, prefix=""):
 
-        fi, fp, fl = self.files(folder, prefix)
+        fi, fp, fl = cls.files(folder, prefix)
 
-        with open(fi) as f:
+        with open(fi, 'rb') as f:
             interface = pickle.load(f)
 
         with open(fp) as f:

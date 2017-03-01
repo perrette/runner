@@ -7,7 +7,7 @@ from importlib import import_module
 import argparse
 import logging
 from runner import __version__
-from runner.job.config import jobs
+from runner.job.tools import jobs
 
 # import module to register job
 from runner.job import stats, run, analysis, iis
@@ -31,14 +31,14 @@ def main(argv=None):
     subp = job.add_subparsers(dest='cmd')
 
     for name,j in jobs.items():
-        subp.add_parser(j.name, 
+        subp.add_parser(name, 
                         parents=[j.parser], 
                         add_help=False, 
                         description=j.parser.description, 
                         epilog=j.parser.epilog, 
                         help=j.help,
                         formatter_class=j.parser.formatter_class)
-        tops.add_parser(j.name, help=j.help, add_help=False)
+        tops.add_parser(name, help=j.help, add_help=False)
 
     if argv is None:
         argv = sys.argv[1:]
@@ -57,6 +57,8 @@ def main(argv=None):
     o = top.parse_args(topargs)  # no subcommands
 
     # now subparser 
+    if j.init:
+        j.init(j.parser, cmdargs)
     cmdo = j.parser.parse_args(cmdargs)
 
     try:
@@ -68,6 +70,7 @@ def main(argv=None):
             print("ERROR: "+str(error))
             print("ERROR: use --debug to print full traceback")
             job.exit(1)
+
 
 if __name__ == '__main__':
     main()

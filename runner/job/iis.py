@@ -4,10 +4,10 @@ import argparse
 from runner.param import Param, MultiParam
 from runner.model import Model
 from runner.iis import IISExp
-from runner.job.model import model_parser, interface
-from runner.job.config import Job
+from runner.job.setup import interface
+from runner.job.tools import Job
 
-parser = argparse.ArgumentParser(parents=[model_parser], description=__doc__)
+parser = argparse.ArgumentParser(parents=[interface.parser], description=__doc__)
 parser.add_argument('-o', '--out', default='.')
 parser.add_argument('--niter', default=10, help="number of iterations", type=int)
 parser.add_argument('-N', '--size', help="New sample size (default: same size as before)", type=int)

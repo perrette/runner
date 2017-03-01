@@ -3,7 +3,7 @@ import numpy as np
 from runner.param import MultiParam, Param, DiscreteParam
 import runner.resample as xp
 from runner.xparams import XParams, Resampler
-from runner.job.config import Job
+from runner.job.tools import Job
 
 # generate params.txt (XParams)
 # =============================
@@ -137,6 +137,16 @@ def resample_post(o):
 
 resample = Job(resample, sample_post)
 resample.register('resample', help='resample parameters from previous simulation')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    from .tools import jobs
+    sp = parser.add_subparsers(dest='cmd')
+    for k,j in jobs.items():
+        sp.add_parser(k, help=help, add_help=False, parents=[j.parser])
+    o = parser.parse_args()
+    jobs[o.cmd].run(o)
 
 
 # TODO : implement 1 check or tool function that returns a number of things, such as neff
