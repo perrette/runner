@@ -2,6 +2,7 @@
 """
 from __future__ import print_function, absolute_import
 import logging
+import cPickle
 import signal
 import time
 import json
@@ -183,6 +184,8 @@ class XRun(object):
             try:
                 res.append(r.get(1e9))
                 successes += 1
+            except cPickle.PicklingError:
+                raise
             except Exception as error:
                 logging.warn("run {} failed:{}:{}".format(i, type(error).__name__, str(error)))
                 res.append(None)
