@@ -179,6 +179,12 @@ def _getinterface(o):
     return model
 
 
+def issubclass_(a, cls):
+    try:
+        return issubclass(a, cls)
+    except TypeError:
+        return False
+
 def getcustominterface(user_module):
     if '::' in user_module:
         user_module, name = user_module.split('::')
@@ -199,7 +205,11 @@ def getcustominterface(user_module):
 
     interfaces = inspect.getmembers(m, lambda x: isinstance(x, ModelInterface))
     if not interfaces:
-        modelconfig.error('no runner.model.ModelInterface instance found')
+        subclasses = inspect.getmembers(m, lambda x: not issubclass_(x, ModelInterface))
+        if subclasses:
+            modelconfig.error('runner.model.ModelInterface subclass found, but no instance')
+        else:
+            modelconfig.error('no runner.model.ModelInterface instance found')
     elif len(interfaces) > 1:
         logging.warn('more than one runner.model.ModelInterface instance found, pick one')
     return interfaces[0][1]
@@ -208,9 +218,18 @@ def getcustominterface(user_module):
 
 def loadinterface(file=INTERFACE):
     " load interface after a setup "
+    # load from user-defined module?
+    if '::' in file:
+        file_ = file.split('::')[0]
+    else:
+        file_ = file
+    _, ext = os.path.splitext(file_)
+
+    if ext in ('.py','') or '::' in file:
+        return getcustominterface(file)
+
     if not os.path.exists(file):
         parser.error("file "+file+" not found, run `job setup` first")
-    _, ext = os.path.splitext(file)
 
     # load from json file (job setup's argparse)
     if ext == '.json':
@@ -218,10 +237,6 @@ def loadinterface(file=INTERFACE):
         namespace = rawinterface.load(open(file))
         #logging.debug('get model from '+repr(namespace))
         model = rawinterface.get(namespace)
-
-    # load from user-defined module?
-    elif ext in ('.py','') or '::' in file:
-        model = getcustominterface(file)
 
     # default: pickle returned by setup.py
     else:
