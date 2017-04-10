@@ -224,7 +224,10 @@ class XRun(object):
         for i, m in enumerate(self):
             m.load()
             if m.status == "success": 
-                values[i] = _model_output_as_array(m, names)
+                try:
+                    values[i] = _model_output_as_array(m, names)
+                except Exception as error:
+                    logging.warn('run '+str(i)+' failed :: '+type(error).__name__+' :: '+str(error))
 
         return XData(values, names)
 
