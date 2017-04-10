@@ -223,7 +223,8 @@ class XRun(object):
         values = nans((len(self), len(names)))
         for i, m in enumerate(self):
             m.load()
-            values[i] = _model_output_as_array(m, names)
+            if m.status == "success": 
+                values[i] = _model_output_as_array(m, names)
 
         return XData(values, names)
 
