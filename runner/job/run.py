@@ -114,7 +114,7 @@ submit = argparse.ArgumentParser(add_help=False)
 grp = submit.add_argument_group("simulation modes")
 #grp.add_argument('--batch-script', help='')
 #x = grp.add_mutually_exclusive_group()
-grp.add_argument('--max-workers', type=int, 
+grp.add_argument('-n','--max-workers', type=int, 
                  help="number of workers for parallel processing (need to be allocated, e.g. via sbatch) -- default to the number of runs")
 grp.add_argument('-t', '--timeout', type=float, default=31536000, help='timeout in seconds (default to %(default)s)')
 grp.add_argument('--shell', action='store_true',

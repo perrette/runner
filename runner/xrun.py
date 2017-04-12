@@ -170,7 +170,7 @@ class XRun(object):
             N = len(indices)
 
         # workers pool
-        pool = multiprocessing.Pool(self.max_workers or N, init_worker)
+        pool = multiprocessing.Pool(self.max_workers, init_worker)
 
         # prepare method
         run_model = _PickableMethod(self, '_run')
