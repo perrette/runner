@@ -342,6 +342,10 @@ class XRun(object):
         # Add statistics
         # ==============
         valid = np.isfinite(logliksum)
+        if not np.any(valid):
+            logging.warn('no valid run !')
+            return
+
         ii = [xoutput.names.index(c.name) for c in self.model.likelihood]
         output = xoutput.values[:, ii] # sort !
         pct = lambda p: np.percentile(output[valid], p, axis=0)
