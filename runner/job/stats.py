@@ -54,21 +54,21 @@ grp.add_argument('--lhs-criterion',
 grp.add_argument('--lhs_iterations', type=int)
 
 
-sample = argparse.ArgumentParser(description="Sample prior parameter distribution", parents=[prior, lhs])
-sample.add_argument('-o', '--out', help="output parameter file")
+samplepars = argparse.ArgumentParser(description="Sample prior parameter distribution", parents=[prior, lhs])
+samplepars.add_argument('-o', '--out', help="output parameter file")
 
-sample.add_argument('-N', '--size',type=int, 
+samplepars.add_argument('-N', '--size',type=int, 
                   help="Sample size")
-sample.add_argument('--seed', type=int, 
+samplepars.add_argument('--seed', type=int, 
                   help="random seed, for reproducible results (default to None)")
-sample.add_argument('--method', choices=['montecarlo','lhs'], default='lhs', 
+samplepars.add_argument('--method', choices=['montecarlo','lhs'], default='lhs', 
                     help="sampling method (default=%(default)s)")
 
 def sample_post(o):
     if not o.size:
-        sample.error("argument -N/--size is required")
+        samplepars.error("argument -N/--size is required")
     if not o.dist:
-        sample.error("must provide at least one parameter")
+        samplepars.error("must provide at least one parameter")
     prior = MultiParam(o.dist)
     xparams = prior.sample(o.size, seed=o.seed, 
                            method=o.method,
@@ -76,7 +76,7 @@ def sample_post(o):
                            iterations=o.lhs_iterations)
     return _return_params(xparams, o.out)
 
-sample = Job(sample, sample_post)
+sample = Job(samplepars, sample_post)
 sample.register('sample', help='generate ensemble by sampling prior distributions')
 
 
@@ -124,6 +124,7 @@ def resample_post(o):
     weights = np.loadtxt(o.weights_file)
     if o.log:
         weights = np.exp(weights)
+    weights[np.isnan(weights)] = 0
     if np.all(weights == 0):
         raise ValueError("all weights are zero")
     xpin = XParams.read(o.params_file)
@@ -135,7 +136,7 @@ def resample_post(o):
     return _return_params(xparams, o.out)
 
 
-resample = Job(resample, sample_post)
+resample = Job(resample, resample_post)
 resample.register('resample', help='resample parameters from previous simulation')
 
 
