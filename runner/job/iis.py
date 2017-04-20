@@ -1,9 +1,10 @@
 """Iterative Importance Sampling Calibration
 """
 import argparse
+import os
 from runner.param import Param, MultiParam
 from runner.model import Model
-from runner.iis import IISExp
+from runner.iis import IISExp, XParams
 from runner.job.setup import interface
 from runner.job.tools import Job
 
@@ -52,7 +53,7 @@ def run(o):
         model = Model(interface.get(o), o.prior, o.likelihood)
         model.write(o.out, o.force)
 
-    iis = IISExp(model, initdir, epsilon=self.epsilon, seed=o.seed, size=o.size, timeout=o.timeout, 
+    iis = IISExp(model, initdir, epsilon=o.epsilon, seed=o.seed, size=o.size, timeout=o.timeout, 
                  max_workers=o.max_workers)
 
     if o.params_file:

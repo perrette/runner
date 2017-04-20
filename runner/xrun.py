@@ -70,6 +70,11 @@ class _AbortableWorker(object):
         except multiprocessing.TimeoutError:
             p.terminate()
             raise multiprocessing.TimeoutError(str(self.timeout))
+        except Exception as error:
+            p.terminate()
+            logging.warn('whats wrong? :: {} :: {}'.format(type(error).__name__), str(error))
+            raise
+
 
 
 class _PickableMethod(object):
