@@ -12,10 +12,18 @@ parser.add_argument('-o', '--out', default='.')
 parser.add_argument('--niter', default=10, help="number of iterations", type=int)
 parser.add_argument('-N', '--size', help="New sample size (default: same size as before)", type=int)
 parser.add_argument('--seed', type=int, help="random seed, for reproducible results (default to None)")
+
+grp = parser.add_argument_group('run')
+grp.add_argument('-t', '--timeout', type=float, default=31536000, help='max time for individual simulation in seconds (default to %(default)s)')
+
+grp.add_argument('-n','--max-workers', type=int, 
+                 help="number of workers for parallel processing (need to be allocated, e.g. via sbatch) -- default to the number of runs")
 x = parser.add_mutually_exclusive_group()
 x.add_argument('--restart', action='store_true')
 x.add_argument('--params-file', help="initial param file (sampled from prior if not provided)")
+
 parser.add_argument('-f', '--force', action='store_true')
+
 grp = parser.add_argument_group('iis')
 grp.add_argument('--epsilon', help="", type=float)
 
@@ -44,7 +52,8 @@ def run(o):
         model = Model(interface.get(o), o.prior, o.likelihood)
         model.write(o.out, o.force)
 
-    iis = IISExp(model, initdir, epsilon=self.epsilon, seed=o.seed, size=o.size)
+    iis = IISExp(model, initdir, epsilon=self.epsilon, seed=o.seed, size=o.size, timeout=o.timeout, 
+                 max_workers=o.max_workers)
 
     if o.params_file:
         xparam = XParams.read(o.params_file)
@@ -61,4 +70,4 @@ def run(o):
 
 
 main = Job(parser, run)
-main.register('iis', help='tuning: iterative importance samplping')
+main.register('iis', help='tuning: iterative importance sampling')

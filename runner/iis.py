@@ -45,8 +45,9 @@ from runner.xrun import XRun, XParams
 class IISExp(object):
     """Handle IIS experiment
     """
-    def __init__(self, model, initdir, iter=0, epsilon=None, seed=None, resampling=RESAMPLING_METHOD, size=None):
+    def __init__(self, model, initdir, iter=0, epsilon=None, seed=None, resampling=RESAMPLING_METHOD, size=None, **kwargs):
         self.model = model
+        self.kwargs = kwargs # for XRun (timeout, max_workers)
         self.initdir = initdir
         self.iter = iter
         self.epsilon = epsilon
@@ -69,7 +70,7 @@ class IISExp(object):
             self.iter += 1
 
     def xrun(self, iter=None):
-        return XRun(self.model, XParams.read(self.path("params.txt", iter)))
+        return XRun(self.model, XParams.read(self.path("params.txt", iter)), **self.kwargs)
 
     def resample(self, iter, **kwargs):
         xrun = self.xrun(iter)
