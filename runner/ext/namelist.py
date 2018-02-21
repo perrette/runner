@@ -88,7 +88,7 @@ def parse_nml(string, ignore_comments=False):
         for line in group_lines:
             name, value, comment = _parse_line(line)
 
-            param = ParamNml(name, value, help=comment, group=group_name)
+            param = ParamNml(group_name, name, value, help=comment)
 
             # group[variable_name] = parsed_value
             params.append(param)
