@@ -1,4 +1,4 @@
-# runner
+# runner (migrated to [fesmc/runner](https://github.com/fesmc/runner))
 
 Sample parameters, run model ensemble over multiple processors
 
